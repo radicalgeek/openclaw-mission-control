@@ -1,0 +1,42 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-redis
+  namespace: mission-control
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mission-control-redis
+  template:
+    metadata:
+      labels:
+        app: mission-control-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mission-control-redis
+  namespace: mission-control
+spec:
+  selector:
+    app: mission-control-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis

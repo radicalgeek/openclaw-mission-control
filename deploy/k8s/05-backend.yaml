@@ -1,0 +1,88 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-backend
+  namespace: mission-control
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mission-control-backend
+  template:
+    metadata:
+      labels:
+        app: mission-control-backend
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:16-alpine
+        command: ['sh', '-c', 'until pg_isready -h mission-control-postgres -p 5432; do echo waiting for postgres; sleep 2; done;']
+      - name: migrate
+        image: ${BACKEND_IMAGE}
+        command: ['alembic', 'upgrade', 'head']
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mission-control-secrets
+              key: DATABASE_URL
+      containers:
+      - name: backend
+        image: ${BACKEND_IMAGE}
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: mission-control-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          value: redis://mission-control-redis:6379/0
+        - name: CORS_ORIGINS
+          value: https://mission-control.radicalgeek.co.uk
+        - name: AUTH_MODE
+          value: local
+        - name: LOCAL_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mission-control-secrets
+              key: LOCAL_AUTH_TOKEN
+        - name: LOG_LEVEL
+          value: INFO
+        - name: DB_AUTO_MIGRATE
+          value: "false"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mission-control-backend
+  namespace: mission-control
+spec:
+  selector:
+    app: mission-control-backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http

@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-frontend
+  namespace: mission-control
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mission-control-frontend
+  template:
+    metadata:
+      labels:
+        app: mission-control-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ${FRONTEND_IMAGE}
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: https://mission-control.radicalgeek.co.uk/api
+        - name: NEXT_PUBLIC_AUTH_MODE
+          value: local
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mission-control-frontend
+  namespace: mission-control
+spec:
+  selector:
+    app: mission-control-frontend
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
