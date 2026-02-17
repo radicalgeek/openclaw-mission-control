@@ -31,8 +31,8 @@ build:backend:
         TAG="$CI_COMMIT_SHORT_SHA"
       fi
     - |
+      # Backend build context is repo root; Dockerfile is backend/Dockerfile
       docker build \
-        --platform linux/arm64 \
         -f backend/Dockerfile \
         -t $IMAGE_BACKEND:$TAG \
         -t $IMAGE_BACKEND:latest \
@@ -55,14 +55,13 @@ build:frontend:
         TAG="$CI_COMMIT_SHORT_SHA"
       fi
     - |
+      # Frontend build context is ./frontend/ directory
       docker build \
-        --platform linux/arm64 \
         --build-arg NEXT_PUBLIC_API_URL=https://mission-control.radicalgeek.co.uk/api \
         --build-arg NEXT_PUBLIC_AUTH_MODE=local \
-        -f frontend/Dockerfile \
         -t $IMAGE_FRONTEND:$TAG \
         -t $IMAGE_FRONTEND:latest \
-        .
+        frontend/
     - docker push $IMAGE_FRONTEND:$TAG
     - docker push $IMAGE_FRONTEND:latest
     - echo "FRONTEND_TAG=$TAG" >> build.env
