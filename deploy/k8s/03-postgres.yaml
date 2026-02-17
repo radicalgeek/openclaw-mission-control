@@ -10,7 +10,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: synology-iscsi
+  storageClassName: synology-iscsi-storage
 ---
 apiVersion: apps/v1
 kind: StatefulSet
