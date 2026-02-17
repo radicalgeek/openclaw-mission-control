@@ -71,7 +71,7 @@ build:frontend:
 
 deploy:test:
   stage: deploy-test
-  image: bitnami/kubectl:1.31
+  image: bitnami/kubectl:1.31.4
   dependencies:
     - build:backend
     - build:frontend
@@ -103,7 +103,7 @@ deploy:test:
 
 deploy:prod:
   stage: deploy-prod
-  image: bitnami/kubectl:1.31
+  image: bitnami/kubectl:1.31.4
   dependencies:
     - build:backend
     - build:frontend
