@@ -14,6 +14,8 @@ spec:
       labels:
         app: mission-control-backend
     spec:
+      imagePullSecrets:
+      - name: gitlab-registry
       initContainers:
       - name: wait-for-postgres
         image: postgres:16-alpine
