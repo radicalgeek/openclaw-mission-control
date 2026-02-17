@@ -31,9 +31,9 @@ build:backend:
         TAG="$CI_COMMIT_SHORT_SHA"
       fi
     - |
-      # Backend build context is repo root; Dockerfile is backend/Dockerfile
+      # Backend build context is repo root; use custom Dockerfile (installs uv via pip)
       docker build \
-        -f backend/Dockerfile \
+        -f deploy/docker/backend.Dockerfile \
         -t $IMAGE_BACKEND:$TAG \
         -t $IMAGE_BACKEND:latest \
         .
