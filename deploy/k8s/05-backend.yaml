@@ -41,6 +41,8 @@ spec:
               key: DATABASE_URL
         - name: REDIS_URL
           value: redis://mission-control-redis:6379/0
+        - name: RQ_REDIS_URL
+          value: redis://mission-control-redis:6379/0
         - name: CORS_ORIGINS
           value: https://mission-control.radicalgeek.co.uk
         - name: AUTH_MODE

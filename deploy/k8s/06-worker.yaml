@@ -26,6 +26,8 @@ spec:
               key: DATABASE_URL
         - name: REDIS_URL
           value: redis://mission-control-redis:6379/0
+        - name: RQ_REDIS_URL
+          value: redis://mission-control-redis:6379/0
         - name: LOG_LEVEL
           value: INFO
         resources:
