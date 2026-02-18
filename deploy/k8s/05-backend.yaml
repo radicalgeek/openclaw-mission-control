@@ -29,6 +29,13 @@ spec:
             secretKeyRef:
               name: mission-control-secrets
               key: DATABASE_URL
+        - name: AUTH_MODE
+          value: local
+        - name: LOCAL_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mission-control-secrets
+              key: LOCAL_AUTH_TOKEN
       containers:
       - name: backend
         image: ${BACKEND_IMAGE}
