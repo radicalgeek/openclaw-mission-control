@@ -65,6 +65,10 @@ spec:
           value: INFO
         - name: DB_AUTO_MIGRATE
           value: "false"
+        - name: BASE_URL
+          value: https://mission-control.radicalgeek.co.uk
+        - name: ROOT_PATH
+          value: /api
         livenessProbe:
           httpGet:
             path: /health
