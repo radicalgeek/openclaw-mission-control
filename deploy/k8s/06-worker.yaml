@@ -32,6 +32,16 @@ spec:
           value: redis://mission-control-redis:6379/0
         - name: LOG_LEVEL
           value: INFO
+        - name: GITLAB_SKILLS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mission-control-secrets
+              key: GITLAB_SKILLS_TOKEN
+        - name: GITLAB_SKILLS_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: mission-control-secrets
+              key: GITLAB_SKILLS_PROJECT_ID
         resources:
           requests:
             memory: "256Mi"
