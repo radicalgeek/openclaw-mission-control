@@ -7,17 +7,59 @@ describe("/dashboard - mobile sidebar", () => {
 
   setupCommonPageTestHooks(apiBase);
 
+  const emptySeries = {
+    primary: { range: "7d", bucket: "day", points: [] },
+    comparison: { range: "7d", bucket: "day", points: [] },
+  };
+
   function stubDashboardApis() {
     cy.intercept("GET", `${apiBase}/metrics/dashboard*`, {
       statusCode: 200,
       body: {
-        total_boards: 0,
-        total_tasks: 0,
-        tasks_by_status: {},
-        active_agents: 0,
-        pending_approvals: 0,
+        generated_at: new Date().toISOString(),
+        range: "7d",
+        kpis: {
+          inbox_tasks: 0,
+          in_progress_tasks: 0,
+          review_tasks: 0,
+          done_tasks: 0,
+          tasks_in_progress: 0,
+          active_agents: 0,
+          error_rate_pct: 0,
+          median_cycle_time_hours_7d: null,
+        },
+        throughput: emptySeries,
+        cycle_time: emptySeries,
+        error_rate: emptySeries,
+        wip: emptySeries,
+        pending_approvals: { items: [], total: 0 },
       },
     }).as("dashboardMetrics");
+
+    cy.intercept("GET", `${apiBase}/boards*`, {
+      statusCode: 200,
+      body: { items: [], total: 0 },
+    }).as("boardsList");
+
+    cy.intercept("GET", `${apiBase}/agents*`, {
+      statusCode: 200,
+      body: { items: [], total: 0 },
+    }).as("agentsList");
+
+    cy.intercept("GET", `${apiBase}/activity*`, {
+      statusCode: 200,
+      body: { items: [], total: 0 },
+    }).as("activityList");
+
+    cy.intercept("GET", `${apiBase}/gateways/status*`, {
+      statusCode: 200,
+      body: { gateways: [] },
+    }).as("gatewaysStatus");
+
+    cy.intercept("GET", `${apiBase}/board-groups*`, {
+      statusCode: 200,
+      body: { items: [], total: 0 },
+    }).as("boardGroupsList");
   }
 
   function visitDashboardAuthenticated() {
