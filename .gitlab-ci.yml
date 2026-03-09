@@ -13,7 +13,9 @@ variables:
   services:
     - docker:24-dind
   tags:
-    - radicalgeek-dev-cluster-runner
+    - k8s
+    - arm64
+    - hoofer
   variables:
     DOCKER_TLS_CERTDIR: ""
     DOCKER_HOST: tcp://docker:2375
