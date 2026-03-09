@@ -16,7 +16,6 @@ variables:
     - docker:24-dind
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
-    - arm64
 
 build:backend:
   <<: *docker_build
