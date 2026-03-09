@@ -64,7 +64,7 @@ build:frontend:
       fi
     - |
       docker build \
-        --build-arg NEXT_PUBLIC_API_URL=https://mission-control.radicalgeek.co.uk/api \
+        --build-arg NEXT_PUBLIC_API_URL=https://mission-control.radicalgeek.co.uk \
         --build-arg NEXT_PUBLIC_AUTH_MODE=local \
         -t $IMAGE_FRONTEND:$TAG \
         -t $IMAGE_FRONTEND:latest \
