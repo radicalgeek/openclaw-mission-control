@@ -16,8 +16,6 @@ variables:
     - docker:24-dind
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
-  tags:
-    - k8s
     - arm64
 
 build:backend:
@@ -98,8 +96,6 @@ deploy:test:
     url: https://mission-control.radicalgeek.co.uk
   only:
     - main
-  tags:
-    - k8s
 
 deploy:prod:
   stage: deploy-prod
@@ -131,5 +127,3 @@ deploy:prod:
   when: manual
   only:
     - tags
-  tags:
-    - k8s
