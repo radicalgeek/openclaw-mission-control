@@ -4,16 +4,17 @@ stages:
   - deploy-prod
 
 variables:
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
   REGISTRY: reg.gitlab.radicalgeek.co.uk
   IMAGE_BACKEND: $REGISTRY/radicalgeek/openclaw-mission-control/backend
   IMAGE_FRONTEND: $REGISTRY/radicalgeek/openclaw-mission-control/frontend
 
 .docker_build: &docker_build
-  image: docker:24-dind
+  image: docker:24
   services:
     - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
 
@@ -28,7 +29,6 @@ build:backend:
         TAG="$CI_COMMIT_SHORT_SHA"
       fi
     - |
-      # Backend build context is repo root; use custom Dockerfile (installs uv via pip)
       docker build \
         -f deploy/docker/backend.Dockerfile \
         -t $IMAGE_BACKEND:$TAG \
@@ -52,7 +52,6 @@ build:frontend:
         TAG="$CI_COMMIT_SHORT_SHA"
       fi
     - |
-      # Frontend build context is ./frontend/ directory
       docker build \
         --build-arg NEXT_PUBLIC_API_URL=https://mission-control.radicalgeek.co.uk/api \
         --build-arg NEXT_PUBLIC_AUTH_MODE=local \
@@ -84,7 +83,6 @@ deploy:test:
       export POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
       export LOCAL_AUTH_TOKEN="${LOCAL_AUTH_TOKEN}"
     - |
-      # Deploy using envsubst to replace placeholders
       for f in deploy/k8s/*.yaml; do
         envsubst < "$f" | kubectl apply -f - --insecure-skip-tls-verify
       done
@@ -114,7 +112,6 @@ deploy:prod:
       export POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
       export LOCAL_AUTH_TOKEN="${LOCAL_AUTH_TOKEN}"
     - |
-      # Deploy using envsubst to replace placeholders
       for f in deploy/k8s/*.yaml; do
         envsubst < "$f" | kubectl apply -f - --insecure-skip-tls-verify
       done
