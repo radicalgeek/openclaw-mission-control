@@ -126,6 +126,58 @@ class AgentBase(SQLModel):
 class AgentCreate(AgentBase):
     """Payload for creating a new agent."""
 
+    auth_profile: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Full auth-profiles.json content written to the agent workspace at provision time. "
+            "Supports multiple providers (Anthropic, GitHub Copilot, etc.). "
+            "Written as auth-profiles.json — not stored on the agent record. "
+            "Example: {\"version\": 1, \"profiles\": {\"anthropic:main\": {\"type\": \"token\", "
+            "\"provider\": \"anthropic\", \"token\": \"sk-ant-...\"}}, "
+            "\"order\": {\"anthropic\": [\"anthropic:main\"]}, \"lastGood\": {}, \"usageStats\": {}}."
+        ),
+        examples=[{
+            "version": 1,
+            "profiles": {
+                "anthropic:main": {
+                    "type": "token",
+                    "provider": "anthropic",
+                    "token": "sk-ant-oat01-...",
+                    "expires": 1803423216508,
+                },
+                "github-copilot:github": {
+                    "type": "token",
+                    "provider": "github-copilot",
+                    "token": "ghu_...",
+                },
+            },
+            "order": {
+                "anthropic": ["anthropic:main"],
+                "github-copilot": ["github-copilot:github"],
+            },
+            "lastGood": {},
+            "usageStats": {},
+        }],
+    )
+    skill_env: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-skill credential overrides written to skills/<slug>/config.env at provision time. "
+            "Example: {\"plane-workflow\": {\"PLANE_API_KEY\": \"plane_api_xxx\"}}. "
+            "Values are write-only and not stored on the agent record."
+        ),
+        examples=[{"hoofer-k8s": {"GITLAB_TOKEN": "glpat-xxx"}}],
+    )
+    tool_instructions: str | None = Field(
+        default=None,
+        description=(
+            "Optional additional tool documentation appended to TOOLS.md at provision time. "
+            "Use for custom API instructions, endpoints, or usage notes specific to this agent. "
+            "Write-only — not stored on the agent record."
+        ),
+        examples=["## Plane\nPLANE_API_URL=https://plane.example.com\nUse the plane-workflow skill for ticket management."],
+    )
+
 
 class AgentUpdate(SQLModel):
     """Payload for patching an existing agent."""

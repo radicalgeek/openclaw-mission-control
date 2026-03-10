@@ -103,6 +103,7 @@ deploy:test:
     name: test
     url: https://mission-control.radicalgeek.co.uk
   only:
+    - master
     - main
 
 deploy:prod:
