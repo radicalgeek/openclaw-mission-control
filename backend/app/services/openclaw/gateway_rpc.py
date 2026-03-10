@@ -41,6 +41,10 @@ CONTROL_UI_CLIENT_ID = "openclaw-control-ui"
 CONTROL_UI_CLIENT_MODE = "ui"
 GatewayConnectMode = Literal["device", "control_ui"]
 
+# Origin header sent on every WebSocket upgrade.  The gateway validates the
+# Origin against its controlUi.allowedOrigins list; this must match.
+GATEWAY_ORIGIN_HEADER = "https://mission-control.radicalgeek.co.uk"
+
 # NOTE: These are the base gateway methods from the OpenClaw gateway repo.
 # The gateway can expose additional methods at runtime via channel plugins.
 GATEWAY_METHODS = [
@@ -401,11 +405,10 @@ async def _openclaw_call_once(
     config: GatewayConfig,
     gateway_url: str,
 ) -> object:
-    origin = _build_control_ui_origin(gateway_url) if config.disable_device_pairing else None
+    # Always send the MC origin header so the gateway accepts the connection
+    # regardless of the gateway URL (avoids "origin not allowed" rejections).
     ssl_context = _create_ssl_context(config)
-    connect_kwargs: dict[str, Any] = {"ping_interval": None}
-    if origin is not None:
-        connect_kwargs["origin"] = origin
+    connect_kwargs: dict[str, Any] = {"ping_interval": None, "additional_headers": {"Origin": GATEWAY_ORIGIN_HEADER}}
     if ssl_context is not None:
         connect_kwargs["ssl"] = ssl_context
     async with websockets.connect(gateway_url, **connect_kwargs) as ws:
@@ -419,11 +422,10 @@ async def _openclaw_connect_metadata_once(
     config: GatewayConfig,
     gateway_url: str,
 ) -> object:
-    origin = _build_control_ui_origin(gateway_url) if config.disable_device_pairing else None
+    # Always send the MC origin header so the gateway accepts the connection
+    # regardless of the gateway URL (avoids "origin not allowed" rejections).
     ssl_context = _create_ssl_context(config)
-    connect_kwargs: dict[str, Any] = {"ping_interval": None}
-    if origin is not None:
-        connect_kwargs["origin"] = origin
+    connect_kwargs: dict[str, Any] = {"ping_interval": None, "additional_headers": {"Origin": GATEWAY_ORIGIN_HEADER}}
     if ssl_context is not None:
         connect_kwargs["ssl"] = ssl_context
     async with websockets.connect(gateway_url, **connect_kwargs) as ws:
