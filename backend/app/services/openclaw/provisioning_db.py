@@ -351,6 +351,31 @@ class _SyncContext:
     options: GatewayTemplateSyncOptions
 
 
+def _build_extra_files(payload: AgentCreate) -> dict[str, str] | None:
+    """Build the extra_files mapping from AgentCreate fields.
+
+    Handles:
+    - ``auth_profile``: written verbatim as ``auth-profiles.json`` in the agent config dir.
+    - ``skill_env``: each slug→env-vars dict written as ``skills/<slug>/config.env``.
+    - ``tool_instructions``: appended to ``TOOLS.md`` as an additional section.
+
+    Returns ``None`` when no extra files are required so callers can skip the write step.
+    """
+    files: dict[str, str] = {}
+
+    if payload.auth_profile:
+        files["auth-profiles.json"] = json.dumps(payload.auth_profile)
+
+    for slug, env_vars in (payload.skill_env or {}).items():
+        lines = [f"{k}={v}" for k, v in env_vars.items()]
+        files[f"skills/{slug}/config.env"] = "\n".join(lines)
+
+    if payload.tool_instructions:
+        files["TOOLS.md"] = payload.tool_instructions
+
+    return files or None
+
+
 def _parse_tools_md(content: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw in content.splitlines():
@@ -1082,6 +1107,7 @@ class AgentLifecycleService(OpenClawDBService):
         wakeup_verb: str,
         force_bootstrap: bool,
         raise_gateway_errors: bool,
+        extra_files: dict[str, str] | None = None,
     ) -> None:
         self.logger.log(
             TRACE_LEVEL,
@@ -1110,6 +1136,7 @@ class AgentLifecycleService(OpenClawDBService):
                 wakeup_verb=wakeup_verb,
                 clear_confirm_token=True,
                 raise_gateway_errors=raise_gateway_errors,
+                extra_files=extra_files,
             )
             record_activity(
                 self.session,
@@ -1165,6 +1192,7 @@ class AgentLifecycleService(OpenClawDBService):
         auth_token: str,
         user: User | None,
         force_bootstrap: bool,
+        extra_files: dict[str, str] | None = None,
     ) -> None:
         await self._apply_gateway_provisioning(
             agent=agent,
@@ -1175,6 +1203,7 @@ class AgentLifecycleService(OpenClawDBService):
             wakeup_verb="provisioned",
             force_bootstrap=force_bootstrap,
             raise_gateway_errors=True,
+            extra_files=extra_files,
         )
 
     async def validate_agent_update_inputs(
@@ -1570,6 +1599,7 @@ class AgentLifecycleService(OpenClawDBService):
             requested_name=requested_name,
         )
         agent, raw_token = await self.persist_new_agent(data=data)
+        extra_files = _build_extra_files(payload)
         await self.provision_new_agent(
             agent=agent,
             board=board,
@@ -1577,6 +1607,7 @@ class AgentLifecycleService(OpenClawDBService):
             auth_token=raw_token,
             user=actor.user if actor.actor_type == "user" else None,
             force_bootstrap=False,
+            extra_files=extra_files,
         )
         self.logger.info("agent.create.success agent_id=%s board_id=%s", agent.id, board.id)
         return self.to_agent_read(self.with_computed_status(agent))
