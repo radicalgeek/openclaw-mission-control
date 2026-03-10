@@ -1800,6 +1800,7 @@ class AgentLifecycleService(OpenClawDBService):
         gateway: Gateway | None = None
         client_config: GatewayClientConfig | None = None
         workspace_path: str | None = None
+        gateway_cleanup_error: str | None = None
 
         if agent.board_id is None:
             # Gateway-main agents are not tied to a board; resolve via agent.gateway_id.
@@ -1811,20 +1812,12 @@ class AgentLifecycleService(OpenClawDBService):
                         agent=agent,
                         gateway=gateway,
                     )
-                except OpenClawGatewayError as exc:
-                    self.record_instruction_failure(self.session, agent, str(exc), "delete")
+                except (OpenClawGatewayError, OSError, RuntimeError, ValueError) as exc:
+                    # Gateway cleanup failed — log and continue so the DB record is removed.
+                    # The gateway workspace may be orphaned but the agent should be deletable.
+                    gateway_cleanup_error = str(exc)
+                    self.record_instruction_failure(self.session, agent, gateway_cleanup_error, "delete")
                     await self.session.commit()
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=f"Gateway cleanup failed: {exc}",
-                    ) from exc
-                except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
-                    self.record_instruction_failure(self.session, agent, str(exc), "delete")
-                    await self.session.commit()
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Workspace cleanup failed: {exc}",
-                    ) from exc
         else:
             board = await self.require_board(str(agent.board_id))
             gateway, client_config = await self.require_gateway(board)
@@ -1833,20 +1826,11 @@ class AgentLifecycleService(OpenClawDBService):
                     agent=agent,
                     gateway=gateway,
                 )
-            except OpenClawGatewayError as exc:
-                self.record_instruction_failure(self.session, agent, str(exc), "delete")
+            except (OpenClawGatewayError, OSError, RuntimeError, ValueError) as exc:
+                # Gateway cleanup failed — log and continue so the DB record is removed.
+                gateway_cleanup_error = str(exc)
+                self.record_instruction_failure(self.session, agent, gateway_cleanup_error, "delete")
                 await self.session.commit()
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Gateway cleanup failed: {exc}",
-                ) from exc
-            except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
-                self.record_instruction_failure(self.session, agent, str(exc), "delete")
-                await self.session.commit()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Workspace cleanup failed: {exc}",
-                ) from exc
 
         record_activity(
             self.session,
