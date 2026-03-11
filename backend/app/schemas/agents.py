@@ -177,6 +177,14 @@ class AgentCreate(AgentBase):
         ),
         examples=["## Plane\nPLANE_API_URL=https://plane.example.com\nUse the plane-workflow skill for ticket management."],
     )
+    is_board_lead: bool = Field(
+        default=False,
+        description=(
+            "Whether this agent should be created as the board lead. "
+            "When true, the agent will be assigned the board lead session key and role. "
+            "Only one board lead is allowed per board."
+        ),
+    )
 
 
 class AgentUpdate(SQLModel):
