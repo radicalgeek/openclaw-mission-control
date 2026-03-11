@@ -1561,8 +1561,31 @@ class AgentLifecycleService(OpenClawDBService):
         )
         await self.enforce_board_spawn_limit_for_lead(board=board, actor=actor)
         gateway, _client_config = await self.require_gateway(board)
+        
+        # Check if this is a board lead creation request
+        is_board_lead = payload.is_board_lead
+        if is_board_lead:
+            # Ensure no existing board lead for this board
+            existing_lead = (
+                await self.session.exec(
+                    select(Agent)
+                    .where(Agent.board_id == board.id)
+                    .where(col(Agent.is_board_lead).is_(True))
+                )
+            ).first()
+            if existing_lead is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Board already has a lead agent: {existing_lead.name} ({existing_lead.id})",
+                )
+        
         data = payload.model_dump()
         data["gateway_id"] = gateway.id
+        
+        # Set the correct session key for board leads
+        if is_board_lead:
+            data["openclaw_session_id"] = self.lead_session_key(board)
+        
         requested_name = (data.get("name") or "").strip()
         await self.ensure_unique_agent_name(
             board=board,
