@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.core.agent_tokens import generate_agent_token, hash_agent_token
+from app.core.agent_tokens import fast_hash_agent_token, generate_agent_token, hash_agent_token
 from app.core.time import utcnow
 from app.models.agents import Agent
 from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG
@@ -18,10 +18,11 @@ def ensure_heartbeat_config(agent: Agent) -> None:
 
 
 def mint_agent_token(agent: Agent) -> str:
-    """Generate a new raw token and update the agent's token hash."""
+    """Generate a new raw token and update the agent's token hashes."""
 
     raw_token = generate_agent_token()
     agent.agent_token_hash = hash_agent_token(raw_token)
+    agent.agent_token_fast_hash = fast_hash_agent_token(raw_token)
     return raw_token
 
 

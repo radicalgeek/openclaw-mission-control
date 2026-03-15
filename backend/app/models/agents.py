@@ -27,6 +27,10 @@ class Agent(QueryModel, table=True):
     status: str = Field(default="provisioning", index=True)
     openclaw_session_id: str | None = Field(default=None, index=True)
     agent_token_hash: str | None = Field(default=None, index=True)
+    # Fast O(1) lookup key: SHA-256(raw_token). Populated for tokens minted
+    # after this field was introduced. Legacy agents fall back to the slow
+    # full-table PBKDF2 scan until their token is rotated.
+    agent_token_fast_hash: str | None = Field(default=None, index=True)
     heartbeat_config: dict[str, Any] | None = Field(
         default=None,
         sa_column=Column(JSON),

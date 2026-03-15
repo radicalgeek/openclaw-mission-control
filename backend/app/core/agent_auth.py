@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Literal
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlmodel import col, select
 
-from app.core.agent_tokens import verify_agent_token
+from app.core.agent_tokens import fast_hash_agent_token, verify_agent_token
 from app.core.client_ip import get_client_ip
 from app.core.logging import get_logger
 from app.core.rate_limit import agent_auth_limiter
@@ -49,14 +49,41 @@ class AgentAuthContext:
 
 
 async def _find_agent_for_token(session: AsyncSession, token: str) -> Agent | None:
-    agents = list(
+    # Fast path: O(1) indexed lookup via SHA-256 of the raw token.
+    # Agents minted after the agent_token_fast_hash column was introduced will
+    # always hit this branch — one DB round-trip, one PBKDF2 verify.
+    fast_hash = fast_hash_agent_token(token)
+    agent = (
         await session.exec(
-            select(Agent).where(col(Agent.agent_token_hash).is_not(None)),
-        ),
-    )
-    for agent in agents:
+            select(Agent).where(col(Agent.agent_token_fast_hash) == fast_hash),
+        )
+    ).first()
+    if agent is not None:
         if agent.agent_token_hash and verify_agent_token(token, agent.agent_token_hash):
             return agent
+        # Fast hash matched but PBKDF2 failed — hash collision (astronomically
+        # unlikely) or corrupted record. Do not fall through; reject.
+        return None
+
+    # Slow path: legacy agents whose tokens pre-date the fast_hash column.
+    # Loads only agents without a fast hash to bound the scan size over time.
+    agents = list(
+        await session.exec(
+            select(Agent).where(
+                col(Agent.agent_token_hash).is_not(None),
+                col(Agent.agent_token_fast_hash).is_(None),
+            ),
+        ),
+    )
+    for legacy_agent in agents:
+        if legacy_agent.agent_token_hash and verify_agent_token(
+            token, legacy_agent.agent_token_hash
+        ):
+            # Backfill the fast hash so subsequent calls use the fast path.
+            legacy_agent.agent_token_fast_hash = fast_hash
+            session.add(legacy_agent)
+            await session.commit()
+            return legacy_agent
     return None
 
 
