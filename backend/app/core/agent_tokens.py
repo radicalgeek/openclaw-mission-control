@@ -32,6 +32,17 @@ def hash_agent_token(token: str) -> str:
     return f"pbkdf2_sha256${ITERATIONS}${_b64encode(salt)}${_b64encode(digest)}"
 
 
+def fast_hash_agent_token(token: str) -> str:
+    """Compute a fast SHA-256 lookup hash for a token.
+
+    This is used for O(1) DB lookup — NOT as a security-critical password
+    hash. The raw token has 256 bits of entropy so SHA-256 without a salt is
+    safe here. PBKDF2 (``hash_agent_token``) remains the authoritative
+    security hash; this is purely an index key.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def verify_agent_token(token: str, stored_hash: str) -> bool:
     """Verify a plaintext token against a stored PBKDF2 hash representation."""
     try:
