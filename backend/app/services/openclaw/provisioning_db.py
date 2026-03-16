@@ -1832,6 +1832,13 @@ class AgentLifecycleService(OpenClawDBService):
                 self.record_instruction_failure(self.session, agent, gateway_cleanup_error, "delete")
                 await self.session.commit()
 
+        if gateway_cleanup_error:
+            self.logger.warning(
+                "agent.delete.gateway_cleanup_failed agent_id=%s error=%s",
+                agent.id,
+                gateway_cleanup_error,
+            )
+
         record_activity(
             self.session,
             event_type="agent.delete.direct",

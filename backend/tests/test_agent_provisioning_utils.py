@@ -192,6 +192,145 @@ async def test_provision_main_agent_uses_dedicated_openclaw_agent_id(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_provision_writes_extra_files(monkeypatch):
+    gateway = _GatewayStub(
+        id=uuid4(),
+        name="Acme",
+        url="ws://gateway.example/ws",
+        token=None,
+        workspace_root="/tmp/openclaw",
+    )
+    agent = _AgentStub(name="Acme Agent")
+    captured: dict[str, object] = {"files": []}
+
+    async def _fake_ensure_agent_session(self, session_key, *, label=None):
+        return None
+
+    async def _fake_upsert_agent(self, registration):
+        return None
+
+    async def _fake_list_agent_files(self, agent_id):
+        return {}
+
+    def _fake_render_agent_files(*args, **kwargs):
+        return {}
+
+    async def _fake_set_agent_files(self, **kwargs):
+        return None
+
+    async def _fake_set_agent_file(self, *, agent_id, name, content):
+        captured["files"].append((agent_id, name, content))
+
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "ensure_agent_session",
+        _fake_ensure_agent_session,
+    )
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "upsert_agent",
+        _fake_upsert_agent,
+    )
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "list_agent_files",
+        _fake_list_agent_files,
+    )
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "set_agent_file",
+        _fake_set_agent_file,
+    )
+    monkeypatch.setattr(agent_provisioning, "_render_agent_files", _fake_render_agent_files)
+    monkeypatch.setattr(
+        agent_provisioning.BaseAgentLifecycleManager,
+        "_set_agent_files",
+        _fake_set_agent_files,
+    )
+
+    await agent_provisioning.OpenClawGatewayProvisioner().apply_agent_lifecycle(
+        agent=agent,  # type: ignore[arg-type]
+        gateway=gateway,  # type: ignore[arg-type]
+        board=None,
+        auth_token="secret-token",
+        user=None,
+        action="provision",
+        wake=False,
+        extra_files={
+            "auth-profiles.json": "{}",
+            "skills/demo/config.env": "FOO=bar",
+            "TOOLS.md": "BASE_URL=https://example",
+        },
+    )
+
+    file_names = [item[1] for item in captured["files"]]
+    assert "auth-profiles.json" in file_names
+    assert "skills/demo/config.env" in file_names
+    assert "TOOLS.md" in file_names
+
+
+@pytest.mark.asyncio
+async def test_provision_rejects_invalid_extra_files(monkeypatch):
+    gateway = _GatewayStub(
+        id=uuid4(),
+        name="Acme",
+        url="ws://gateway.example/ws",
+        token=None,
+        workspace_root="/tmp/openclaw",
+    )
+    agent = _AgentStub(name="Acme Agent")
+
+    async def _fake_ensure_agent_session(self, session_key, *, label=None):
+        return None
+
+    async def _fake_upsert_agent(self, registration):
+        return None
+
+    async def _fake_list_agent_files(self, agent_id):
+        return {}
+
+    def _fake_render_agent_files(*args, **kwargs):
+        return {}
+
+    async def _fake_set_agent_files(self, **kwargs):
+        return None
+
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "ensure_agent_session",
+        _fake_ensure_agent_session,
+    )
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "upsert_agent",
+        _fake_upsert_agent,
+    )
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "list_agent_files",
+        _fake_list_agent_files,
+    )
+    monkeypatch.setattr(agent_provisioning, "_render_agent_files", _fake_render_agent_files)
+    monkeypatch.setattr(
+        agent_provisioning.BaseAgentLifecycleManager,
+        "_set_agent_files",
+        _fake_set_agent_files,
+    )
+
+    with pytest.raises(ValueError, match="extra_files path not allowed"):
+        await agent_provisioning.OpenClawGatewayProvisioner().apply_agent_lifecycle(
+            agent=agent,  # type: ignore[arg-type]
+            gateway=gateway,  # type: ignore[arg-type]
+            board=None,
+            auth_token="secret-token",
+            user=None,
+            action="provision",
+            wake=False,
+            extra_files={"../secrets.txt": "nope"},
+        )
+
+
+@pytest.mark.asyncio
 async def test_provision_overwrites_user_md_on_first_provision(monkeypatch):
     """Gateway may pre-create USER.md; we still want MC's template on first provision."""
 

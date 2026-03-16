@@ -12,7 +12,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
@@ -212,6 +212,21 @@ def _workspace_path(agent: Agent, workspace_root: str) -> str:
         key = key.removeprefix("mc-")
 
     return f"{root}/workspace-{slugify(key)}"
+
+
+def _validate_extra_file_name(name: str) -> None:
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"Invalid extra file path: {name}")
+
+    allowed_exact = {"auth-profiles.json", "TOOLS.md"}
+    if name in allowed_exact:
+        return
+
+    if name.startswith("skills/") and path.parts[-1] == "config.env" and len(path.parts) >= 3:
+        return
+
+    raise ValueError(f"extra_files path not allowed: {name}")
 
 
 def _email_local_part(email: str) -> str:
@@ -960,6 +975,8 @@ class BaseAgentLifecycleManager(ABC):
         # Write caller-supplied extra files (e.g. auth-profiles.json, skill config.env).
         # These are written after templates so they are never overwritten by template rendering.
         if extra_files:
+            for name in extra_files:
+                _validate_extra_file_name(name)
             for name, content in extra_files.items():
                 await self._control_plane.set_agent_file(
                     agent_id=agent_id,
