@@ -53,16 +53,17 @@ async def _find_agent_for_token(session: AsyncSession, token: str) -> Agent | No
     # Agents minted after the agent_token_fast_hash column was introduced will
     # always hit this branch — one DB round-trip, one PBKDF2 verify.
     fast_hash = fast_hash_agent_token(token)
-    agent = (
+    fast_agents = list(
         await session.exec(
             select(Agent).where(col(Agent.agent_token_fast_hash) == fast_hash),
         )
-    ).first()
-    if agent is not None:
+    )
+    # Check all rows with matching fast_hash (handles rare hash collisions).
+    for agent in fast_agents:
         if agent.agent_token_hash and verify_agent_token(token, agent.agent_token_hash):
             return agent
-        # Fast hash matched but PBKDF2 failed — hash collision (astronomically
-        # unlikely) or corrupted record. Do not fall through; reject.
+    # Fast hash matched but no PBKDF2 match — hash collision or corrupted record.
+    if fast_agents:
         return None
 
     # Slow path: legacy agents whose tokens pre-date the fast_hash column.
@@ -80,9 +81,18 @@ async def _find_agent_for_token(session: AsyncSession, token: str) -> Agent | No
             token, legacy_agent.agent_token_hash
         ):
             # Backfill the fast hash so subsequent calls use the fast path.
+            from sqlalchemy.exc import IntegrityError
+
+            from app.core.time import utcnow
+
             legacy_agent.agent_token_fast_hash = fast_hash
+            legacy_agent.updated_at = utcnow()
             session.add(legacy_agent)
-            await session.commit()
+            try:
+                await session.flush()
+            except IntegrityError:
+                # Hash collision with another concurrent backfill; rollback and continue.
+                await session.rollback()
             return legacy_agent
     return None
 

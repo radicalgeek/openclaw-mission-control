@@ -29,7 +29,7 @@ class Agent(QueryModel, table=True):
     agent_token_hash: str | None = Field(default=None, index=True)
     # Fast O(1) lookup key: SHA-256(raw_token). Populated for tokens minted
     # after this field was introduced. Legacy agents fall back to the slow
-    # full-table PBKDF2 scan until their token is rotated.
+    # full-table PBKDF2 scan, but are automatically backfilled on first auth.
     agent_token_fast_hash: str | None = Field(default=None, index=True)
     heartbeat_config: dict[str, Any] | None = Field(
         default=None,
