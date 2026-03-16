@@ -1,14 +1,4 @@
 ---
-apiVersion: traefik.containo.us/v1alpha1
-kind: Middleware
-metadata:
-  name: mission-control-strip-api
-  namespace: mission-control
-spec:
-  stripPrefix:
-    prefixes:
-      - /api
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -16,7 +6,6 @@ metadata:
   namespace: mission-control
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.middlewares: mission-control-mission-control-strip-api@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
