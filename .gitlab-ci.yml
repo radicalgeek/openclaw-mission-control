@@ -29,6 +29,21 @@ variables:
       done
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
 
+.kubectl_deploy: &kubectl_deploy
+  image: debian:bookworm-slim
+  tags:
+    - k8s
+    - arm64
+    - hoofer
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl gettext-base ca-certificates
+    - |
+      KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+      curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/arm64/kubectl"
+      chmod +x kubectl && mv kubectl /usr/local/bin/
+    - mkdir -p ~/.kube
+    - echo "$KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
+
 build:backend:
   <<: *docker_build
   stage: build
@@ -77,14 +92,11 @@ build:frontend:
       dotenv: build.env
 
 deploy:test:
+  <<: *kubectl_deploy
   stage: deploy-test
-  image: reg.gitlab.radicalgeek.co.uk/radicalgeek/hoofer/kubectl-arm:latest
   dependencies:
     - build:backend
     - build:frontend
-  before_script:
-    - mkdir -p ~/.kube
-    - echo "$KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
   script:
     - |
       export BACKEND_IMAGE="$IMAGE_BACKEND:$BACKEND_TAG"
@@ -107,14 +119,11 @@ deploy:test:
     - main
 
 deploy:prod:
+  <<: *kubectl_deploy
   stage: deploy-prod
-  image: reg.gitlab.radicalgeek.co.uk/radicalgeek/hoofer/kubectl-arm:latest
   dependencies:
     - build:backend
     - build:frontend
-  before_script:
-    - mkdir -p ~/.kube
-    - echo "$KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
   script:
     - |
       export BACKEND_IMAGE="$IMAGE_BACKEND:$BACKEND_TAG"
