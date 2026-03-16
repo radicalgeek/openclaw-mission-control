@@ -176,7 +176,7 @@ class OpenClawProvisioningService(OpenClawDBService):
             if existing.gateway_id != request.gateway.id:
                 existing.gateway_id = request.gateway.id
                 changed = True
-            desired_session_key = self.lead_session_key(board)
+            desired_session_key = AgentLifecycleService.lead_session_key(board)
             if existing.openclaw_session_id != desired_session_key:
                 existing.openclaw_session_id = desired_session_key
                 changed = True
@@ -208,7 +208,7 @@ class OpenClawProvisioningService(OpenClawDBService):
             is_board_lead=True,
             heartbeat_config=DEFAULT_HEARTBEAT_CONFIG.copy(),
             identity_profile=merged_identity_profile,
-            openclaw_session_id=self.lead_session_key(board),
+            openclaw_session_id=AgentLifecycleService.lead_session_key(board),
         )
         raw_token = mint_agent_token(agent)
         await self.add_commit_refresh(agent)
