@@ -1613,7 +1613,7 @@ class AgentLifecycleService(OpenClawDBService):
         
         # Set the correct session key for board leads
         if is_board_lead:
-            data["openclaw_session_id"] = AgentLifecycleService.lead_session_key(board)
+            data["openclaw_session_id"] = OpenClawProvisioningService.lead_session_key(board)
         
         requested_name = (data.get("name") or "").strip()
         await self.ensure_unique_agent_name(
