@@ -11,7 +11,7 @@ WORKDIR /app
 
 # System deps (keep minimal)
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 
 # Install uv via pip (more reliable than curl to astral.sh)
@@ -30,9 +30,15 @@ RUN uv sync --frozen --no-dev
 # --- runtime ---
 FROM base AS runtime
 
+# Reinstall git in runtime stage (multi-stage builds need explicit package installation)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/* \
+  && git --version
+
 # Copy virtual environment from deps stage
 COPY --from=deps /app/.venv /app/.venv
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Copy app source
 COPY backend/migrations ./migrations
