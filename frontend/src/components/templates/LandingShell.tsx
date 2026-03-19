@@ -24,8 +24,8 @@ export function LandingShell({ children }: { children: ReactNode }) {
               OC
             </div>
             <div className="logo-text">
-              <div className="logo-name">OpenClaw</div>
-              <div className="logo-tagline">Mission Control</div>
+              <div className="logo-name">Radical</div>
+              <div className="logo-tagline">Claw</div>
             </div>
           </Link>
 

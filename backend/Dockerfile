@@ -29,6 +29,11 @@ RUN uv sync --frozen --no-dev
 # --- runtime ---
 FROM base AS runtime
 
+# Re-install git in runtime stage (multi-stage builds don't inherit from base automatically)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user before COPY so --chown can reference it.
 # Using COPY --chown avoids a slow recursive chown on overlay2 (docker/for-linux#388).
 RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser \
