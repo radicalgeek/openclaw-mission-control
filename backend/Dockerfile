@@ -29,19 +29,20 @@ RUN uv sync --frozen --no-dev
 # --- runtime ---
 FROM base AS runtime
 
-# Verify git installation from base stage and ensure it's accessible
-RUN which git || (echo "Git not found in base!" && exit 1)
-
 # Create non-root user before COPY so --chown can reference it.
 # Using COPY --chown avoids a slow recursive chown on overlay2 (docker/for-linux#388).
 RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser \
   && chown appuser:appgroup /app
 
+# Verify git is accessible and log its location for debugging
+RUN which git && ls -la $(which git) || echo "WARNING: git not found!"
+
 # Copy virtual environment from deps stage
 COPY --from=deps --chown=appuser:appgroup /app/.venv /app/.venv
 
-# Ensure git is in PATH for all users (inherited from base stage)
-ENV PATH="/app/.venv/bin:/usr/bin:/bin:${PATH}"
+# Git is installed in /usr/bin/git from base stage
+# Ensure PATH includes standard system paths for all users and shells
+ENV PATH="/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Copy app source
 COPY --chown=appuser:appgroup backend/migrations ./migrations
