@@ -10,7 +10,7 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { GlobalLoader } from "@/components/ui/global-loader";
 
 export const metadata: Metadata = {
-  title: "OpenClaw Mission Control",
+  title: "Radical Claw",
   description: "A calm command center for every task.",
 };
 
