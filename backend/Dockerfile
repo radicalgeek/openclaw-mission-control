@@ -29,13 +29,16 @@ RUN uv sync --frozen --no-dev
 # --- runtime ---
 FROM base AS runtime
 
+# Explicitly install git in runtime stage (multi-stage from base doesn't preserve apt packages)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/* \
+  && which git && git --version
+
 # Create non-root user before COPY so --chown can reference it.
 # Using COPY --chown avoids a slow recursive chown on overlay2 (docker/for-linux#388).
 RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser \
   && chown appuser:appgroup /app
-
-# Verify git is accessible and log its location for debugging
-RUN which git && ls -la $(which git) || echo "WARNING: git not found!"
 
 # Copy virtual environment from deps stage
 COPY --from=deps --chown=appuser:appgroup /app/.venv /app/.venv
