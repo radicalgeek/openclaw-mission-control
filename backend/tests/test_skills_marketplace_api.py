@@ -880,3 +880,59 @@ def test_collect_pack_skills_from_repo_streams_large_index(tmp_path: Path) -> No
         skills[0].source_url == "https://github.com/example/oversized-pack/tree/main/skills/ignored"
     )
     assert skills[0].name == "Huge Index Skill"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for clone helpers (_extract_git_stderr_message, _is_branch_not_found_error)
+# ---------------------------------------------------------------------------
+
+from app.api.skills_marketplace import (  # noqa: E402
+    _extract_git_stderr_message,
+    _is_branch_not_found_error,
+)
+
+
+def test_extract_git_stderr_message_returns_fatal_line() -> None:
+    stderr = (
+        "Cloning into '/tmp/skill-pack-sync-abc'...\n"
+        "remote: Enumerating objects: 3, done.\n"
+        "fatal: Remote branch notexist not found in upstream origin\n"
+    )
+    msg = _extract_git_stderr_message(stderr)
+    assert msg.lower().startswith("fatal:")
+    assert "notexist" in msg
+
+
+def test_extract_git_stderr_message_skips_progress_noise() -> None:
+    stderr = (
+        "Cloning into '/tmp/skill-pack-sync-xyz'...\n"
+        "remote: Counting objects: 5, done.\n"
+        "receiving objects:  100% (5/5)\n"
+        "Something went wrong internally\n"
+    )
+    msg = _extract_git_stderr_message(stderr)
+    assert "Something went wrong" in msg
+
+
+def test_extract_git_stderr_message_empty_returns_empty() -> None:
+    assert _extract_git_stderr_message("") == ""
+    assert _extract_git_stderr_message("   ") == ""
+
+
+def test_is_branch_not_found_error_detects_remote_branch() -> None:
+    assert _is_branch_not_found_error(
+        "fatal: Remote branch main not found in upstream origin\n"
+    )
+
+
+def test_is_branch_not_found_error_detects_ref() -> None:
+    assert _is_branch_not_found_error(
+        "error: pathspec 'notexist' did not match\n"
+        "fatal: couldn't find remote ref notexist\n"
+    )
+
+
+def test_is_branch_not_found_error_false_for_other_errors() -> None:
+    assert not _is_branch_not_found_error("fatal: repository not found")
+    assert not _is_branch_not_found_error("fatal: unable to access 'https://...'")
+    assert not _is_branch_not_found_error("")

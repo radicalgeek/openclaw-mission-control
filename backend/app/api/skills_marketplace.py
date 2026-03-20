@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,10 +52,182 @@ ORG_ADMIN_DEP = Depends(require_org_admin)
 GATEWAY_ID_QUERY = Query(...)
 
 ALLOWED_PACK_SOURCE_SCHEMES = {"https"}
-GIT_CLONE_TIMEOUT_SECONDS = 600
+GIT_CLONE_TIMEOUT_SECONDS = 60
+GIT_SPARSE_CHECKOUT_TIMEOUT_SECONDS = 30
 GIT_REV_PARSE_TIMEOUT_SECONDS = 10
 BRANCH_NAME_ALLOWED_RE = r"^[A-Za-z0-9._/\-]+$"
 SKILLS_INDEX_READ_CHUNK_BYTES = 16 * 1024
+
+# Git stderr lines that carry no diagnostic value (progress noise).
+_GIT_NOISE_PREFIXES = (
+    "cloning into",
+    "remote:",
+    "receiving objects",
+    "resolving deltas",
+    "updating files",
+    "enumerating objects",
+    "counting objects",
+    "compressing objects",
+    "total ",
+    "delta ",
+    "from ",
+)
+
+
+def _extract_git_stderr_message(stderr: str) -> str:
+    """Return the most informative line from git's stderr, skipping progress noise."""
+    if not stderr:
+        return ""
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    # Prefer explicit fatal:/error: lines
+    for line in lines:
+        if line.lower().startswith(("fatal:", "error:")):
+            return line[:200]
+    # Skip progress noise and return the last meaningful line
+    for line in reversed(lines):
+        if not any(line.lower().startswith(p) for p in _GIT_NOISE_PREFIXES):
+            return line[:200]
+    return lines[-1][:200] if lines else ""
+
+
+def _is_branch_not_found_error(stderr: str) -> bool:
+    """Return True when git stderr indicates the requested branch does not exist."""
+    low = stderr.lower()
+    return any(
+        p in low
+        for p in (
+            "remote branch",
+            "not found in upstream",
+            "couldn't find remote ref",
+            "invalid branch",
+            "could not find remote",
+        )
+    )
+
+
+def _do_clone(source_url: str, repo_dir: Path, requested_branch: str) -> str:
+    """Clone *source_url* into *repo_dir* and return the branch that was used.
+
+    Strategy
+    --------
+    1.  Sparse blobless clone with the requested branch.
+        Only tree and commit objects are transferred initially; a subsequent
+        ``sparse-checkout set`` step materialises just ``skills_index.json``
+        and every ``**/SKILL.md``.  This makes large repos (e.g. 500 MB+)
+        complete in seconds instead of minutes.
+    2.  Regular depth-1 clone with the requested branch (git < 2.25 compat).
+    3.  Sparse blobless clone using the repo's *default* branch.
+        Handles repos whose default branch is not ``main`` (e.g. ``master``).
+    4.  Regular depth-1 clone using the repo's default branch.
+
+    Each step is only attempted when its predecessor fails for a reason that
+    makes the next attempt worth trying.
+    """
+
+    def _clear(p: Path) -> None:
+        for child in list(p.iterdir()):
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+
+    def _apply_sparse(p: Path) -> None:
+        try:
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(p),
+                    "sparse-checkout",
+                    "set",
+                    "--no-cone",
+                    "skills_index.json",
+                    "**/SKILL.md",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=GIT_SPARSE_CHECKOUT_TIMEOUT_SECONDS,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass  # best-effort; the clone tree may still contain what we need
+
+    def _used_branch(fallback: str) -> str:
+        try:
+            return (
+                subprocess.run(
+                    ["git", "-C", str(repo_dir), "rev-parse", "--abbrev-ref", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=GIT_REV_PARSE_TIMEOUT_SECONDS,
+                ).stdout.strip()
+                or fallback
+            )
+        except Exception:
+            return fallback
+
+    def _run_clone(use_sparse: bool, branch: str | None) -> str | None:
+        """Attempt clone.  Returns stderr string on failure, None on success.
+        Raises RuntimeError on hard errors (git not found, timeout)."""
+        cmd = ["git", "clone", "--depth", "1"]
+        if use_sparse:
+            cmd += ["--filter=blob:none", "--sparse"]
+        if branch:
+            cmd += ["--branch", branch]
+        cmd += [source_url, str(repo_dir)]
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=GIT_CLONE_TIMEOUT_SECONDS,
+            )
+            return None  # success
+        except FileNotFoundError as exc:
+            raise RuntimeError("git binary not available on the server") from exc
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("timed out cloning pack repository")
+        except subprocess.CalledProcessError as exc:
+            return exc.stderr or ""
+
+    last_stderr = ""
+
+    # 1 – sparse + specified branch (fast path for large repos)
+    err = _run_clone(use_sparse=True, branch=requested_branch)
+    if err is None:
+        _apply_sparse(repo_dir)
+        return _used_branch(requested_branch)
+    last_stderr = err
+
+    branch_missing = _is_branch_not_found_error(last_stderr)
+
+    if not branch_missing:
+        # 2 – regular depth-1 + specified branch (sparse not supported by this git build)
+        _clear(repo_dir)
+        err = _run_clone(use_sparse=False, branch=requested_branch)
+        if err is None:
+            return _used_branch(requested_branch)
+        last_stderr = err
+        branch_missing = _is_branch_not_found_error(last_stderr)
+
+    if branch_missing:
+        # 3 – sparse + default branch (repo default may differ from requested, e.g. master vs main)
+        _clear(repo_dir)
+        err = _run_clone(use_sparse=True, branch=None)
+        if err is None:
+            _apply_sparse(repo_dir)
+            return _used_branch("main")
+        last_stderr = err
+
+        # 4 – regular + default branch
+        _clear(repo_dir)
+        err = _run_clone(use_sparse=False, branch=None)
+        if err is None:
+            return _used_branch("main")
+        last_stderr = err
+
+    raise RuntimeError(
+        f"unable to clone pack repository: {_extract_git_stderr_message(last_stderr)}"
+    )
 
 
 def _normalize_pack_branch(raw_branch: str | None) -> str:
@@ -599,7 +773,12 @@ def _collect_pack_skills_with_warnings(
     source_url: str,
     branch: str,
 ) -> tuple[list[PackSkillCandidate], list[str]]:
-    """Clone a pack repository and return discovered skills plus sync warnings."""
+    """Clone a pack repository and return discovered skills plus sync warnings.
+
+    Uses :func:`_do_clone` which attempts a sparse blobless clone first (fast
+    for large repos) before falling back to a regular depth-1 clone, and retries
+    with the repo's default branch when the requested branch is not found.
+    """
     # Defense-in-depth: validate again at point of use before invoking git.
     _validate_pack_source_url(source_url)
 
@@ -608,73 +787,13 @@ def _collect_pack_skills_with_warnings(
 
     with TemporaryDirectory(prefix="skill-pack-sync-") as tmp_dir:
         repo_dir = Path(tmp_dir)
-        used_branch = requested_branch
-        try:
-            subprocess.run(
-                [
-                    "git",
-                    "clone",
-                    "--depth",
-                    "1",
-                    "--single-branch",
-                    "--branch",
-                    requested_branch,
-                    source_url,
-                    str(repo_dir),
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=GIT_CLONE_TIMEOUT_SECONDS,
-            )
-        except FileNotFoundError as exc:
-            raise RuntimeError("git binary not available on the server") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("timed out cloning pack repository") from exc
-        except subprocess.CalledProcessError as exc:
-            if requested_branch != "main":
-                try:
-                    subprocess.run(
-                        ["git", "clone", "--depth", "1", source_url, str(repo_dir)],
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=GIT_CLONE_TIMEOUT_SECONDS,
-                    )
-                    used_branch = "main"
-                except (
-                    FileNotFoundError,
-                    subprocess.TimeoutExpired,
-                    subprocess.CalledProcessError,
-                ):
-                    stderr = (exc.stderr or "").strip()
-                    detail = "unable to clone pack repository"
-                    if stderr:
-                        detail = f"{detail}: {stderr.splitlines()[0][:200]}"
-                    raise RuntimeError(detail) from exc
-            else:
-                stderr = (exc.stderr or "").strip()
-                detail = "unable to clone pack repository"
-                if stderr:
-                    detail = f"{detail}: {stderr.splitlines()[0][:200]}"
-                raise RuntimeError(detail) from exc
-
-        try:
-            discovered_branch = subprocess.run(
-                ["git", "-C", str(repo_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=GIT_REV_PARSE_TIMEOUT_SECONDS,
-            ).stdout.strip()
-        except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
-            discovered_branch = used_branch or "main"
+        used_branch = _do_clone(source_url, repo_dir, requested_branch)
 
         return (
             _collect_pack_skills_from_repo(
                 repo_dir=repo_dir,
                 source_url=source_url,
-                branch=_normalize_pack_branch(discovered_branch),
+                branch=_normalize_pack_branch(used_branch),
                 discovery_warnings=discovery_warnings,
             ),
             discovery_warnings,
@@ -1307,7 +1426,9 @@ async def sync_skill_pack(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
-        discovered = _collect_pack_skills(
+        # Run the blocking git clone in a thread so it doesn't stall the event loop.
+        discovered = await asyncio.to_thread(
+            _collect_pack_skills,
             source_url=pack.source_url,
         )
     except RuntimeError as exc:
