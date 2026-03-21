@@ -85,6 +85,14 @@ import {
   updateTaskApiV1BoardsBoardIdTasksTaskIdPatch,
 } from "@/api/generated/tasks/tasks";
 import {
+  getThread,
+  getThreadMessages,
+  sendMessage as sendThreadMessage,
+  type ThreadMessageRead as ChannelMessageRead,
+  type ThreadRead as ChannelThreadRead,
+} from "@/api/channels";
+import { WebhookEventCard } from "@/components/channels/WebhookEventCard";
+import {
   type listTagsApiV1TagsGetResponse,
   useListTagsApiV1TagsGet,
 } from "@/api/generated/tags/tags";
@@ -149,6 +157,8 @@ type Task = Omit<
   approvals_count: number;
   approvals_pending_count: number;
   custom_field_values?: TaskCustomFieldValues | null;
+  /** Set by the channels backend when a thread has been linked to this task */
+  thread_id?: string | null;
 };
 
 type Agent = AgentRead & { status: string };
@@ -878,6 +888,11 @@ export default function BoardDetailPage() {
   const [commentsError, setCommentsError] = useState<string | null>(null);
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [postCommentError, setPostCommentError] = useState<string | null>(null);
+  // WP-7: Channel thread messages for tasks that have thread_id set
+  const [linkedThread, setLinkedThread] = useState<ChannelThreadRead | null>(null);
+  const [threadMessages, setThreadMessages] = useState<ChannelMessageRead[]>([]);
+  const [isLoadingThreadMessages, setIsLoadingThreadMessages] = useState(false);
+  const [threadMessagesError, setThreadMessagesError] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const tasksRef = useRef<Task[]>([]);
   const approvalsRef = useRef<Approval[]>([]);
@@ -2386,6 +2401,30 @@ export default function BoardDetailPage() {
     [boardId, isSignedIn],
   );
 
+  // WP-7: load thread messages when task has thread_id set
+  const loadThreadMessages = useCallback(async (threadId: string) => {
+    setIsLoadingThreadMessages(true);
+    setThreadMessagesError(null);
+    try {
+      const [threadResult, messagesResult] = await Promise.all([
+        getThread(threadId),
+        getThreadMessages(threadId, { limit: 100 }),
+      ]);
+      if (threadResult.status === 200) {
+        setLinkedThread(threadResult.data);
+      }
+      if (messagesResult.status === 200) {
+        setThreadMessages(Array.isArray(messagesResult.data) ? messagesResult.data : []);
+      }
+    } catch (err) {
+      setThreadMessagesError(
+        err instanceof Error ? err.message : "Unable to load thread messages.",
+      );
+    } finally {
+      setIsLoadingThreadMessages(false);
+    }
+  }, []);
+
   const openComments = useCallback(
     (
       task: { id: string },
@@ -2414,7 +2453,16 @@ export default function BoardDetailPage() {
       selectedTaskIdRef.current = fullTask.id;
       setSelectedTask(fullTask);
       setIsDetailOpen(true);
-      void loadComments(task.id);
+      // WP-7: if task has thread_id, load thread messages; otherwise load legacy comments
+      const taskThreadId = (fullTask as Task).thread_id;
+      if (taskThreadId) {
+        setComments([]);
+        void loadThreadMessages(taskThreadId);
+      } else {
+        setLinkedThread(null);
+        setThreadMessages([]);
+        void loadComments(task.id);
+      }
     },
     [buildUrlWithTaskAndComment, loadComments, router, searchParams],
   );
@@ -2552,6 +2600,10 @@ export default function BoardDetailPage() {
     setCommentsError(null);
     setPostCommentError(null);
     setIsEditDialogOpen(false);
+    // WP-7: clear thread messages
+    setLinkedThread(null);
+    setThreadMessages([]);
+    setThreadMessagesError(null);
   };
 
   const openBoardChat = () => {
@@ -2604,6 +2656,25 @@ export default function BoardDetailPage() {
     }
     setIsPostingComment(true);
     setPostCommentError(null);
+    // WP-7: if task has thread_id, post to thread messages endpoint
+    const taskThreadId = (selectedTask as Task).thread_id;
+    if (taskThreadId) {
+      try {
+        const result = await sendThreadMessage(taskThreadId, {
+          content: trimmed,
+        });
+        if (result.status !== 200) throw new Error("Unable to send message.");
+        setThreadMessages((prev) => [...prev, result.data]);
+        return true;
+      } catch (err) {
+        const errMsg = formatActionError(err, "Unable to send message.");
+        setPostCommentError(errMsg);
+        pushToast(errMsg);
+        return false;
+      } finally {
+        setIsPostingComment(false);
+      }
+    }
     try {
       const result =
         await createTaskCommentApiV1BoardsBoardIdTasksTaskIdCommentsPost(
@@ -2616,9 +2687,9 @@ export default function BoardDetailPage() {
       setComments((prev) => mergeCommentsById([created], prev));
       return true;
     } catch (err) {
-      const message = formatActionError(err, "Unable to send message.");
-      setPostCommentError(message);
-      pushToast(message);
+      const errMsg = formatActionError(err, "Unable to send message.");
+      setPostCommentError(errMsg);
+      pushToast(errMsg);
       return false;
     } finally {
       setIsPostingComment(false);
@@ -3714,6 +3785,22 @@ export default function BoardDetailPage() {
             </div>
           </div>
           <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+            {/* WP-7: Thread context banner */}
+            {selectedTask && (selectedTask as Task).thread_id ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <span>📌</span>
+                <span className="font-medium text-amber-900">
+                  Linked to channel thread
+                  {linkedThread ? `: "${linkedThread.topic}"` : ""}
+                </span>
+                <a
+                  href={`/channels/${selectedTask.board_id ?? boardId}`}
+                  className="ml-auto whitespace-nowrap text-xs font-semibold text-amber-700 hover:underline"
+                >
+                  Open in Channels →
+                </a>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Description
@@ -3939,7 +4026,7 @@ export default function BoardDetailPage() {
             </div>
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Comments
+                {selectedTask && (selectedTask as Task).thread_id ? "Thread messages" : "Comments"}
               </p>
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <BoardChatComposer
@@ -3962,29 +4049,110 @@ export default function BoardDetailPage() {
                   </p>
                 ) : null}
               </div>
-              {isCommentsLoading ? (
-                <p className="text-sm text-slate-500">Loading comments…</p>
-              ) : commentsError ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-                  {commentsError}
-                </div>
-              ) : comments.length === 0 ? (
-                <p className="text-sm text-slate-500">No comments yet.</p>
+              {/* WP-7: thread messages or legacy comments */}
+              {selectedTask && (selectedTask as Task).thread_id ? (
+                <>
+                  {isLoadingThreadMessages ? (
+                    <p className="text-sm text-slate-500">Loading messages…</p>
+                  ) : threadMessagesError ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+                      {threadMessagesError}
+                    </div>
+                  ) : threadMessages.length === 0 ? (
+                    <p className="text-sm text-slate-500">No messages yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {threadMessages.map((msg) => {
+                        if (msg.content_type === "webhook_event") {
+                          return (
+                            <WebhookEventCard key={msg.id} message={msg} />
+                          );
+                        }
+                        if (
+                          msg.sender_type === "system" ||
+                          msg.content_type === "system_notification"
+                        ) {
+                          return (
+                            <div key={msg.id} className="flex justify-center py-1">
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
+                                {msg.content}
+                              </span>
+                            </div>
+                          );
+                        }
+                        const isAgent =
+                          msg.sender_type === "agent" ||
+                          msg.content_type === "agent_response";
+                        const isCurrentUser =
+                          msg.sender_type === "user" &&
+                          (msg.sender_name === currentUserDisplayName ||
+                            msg.sender_name === "");
+                        return (
+                          <div
+                            key={msg.id}
+                            className={cn(
+                              "rounded-xl border p-3",
+                              isCurrentUser
+                                ? "border-blue-200 bg-blue-50"
+                                : isAgent
+                                  ? "border-teal-200 bg-teal-50"
+                                  : "border-slate-200 bg-white",
+                            )}
+                          >
+                            <div className="flex items-center justify-between text-xs text-slate-500">
+                              <span
+                                className={cn(
+                                  "font-semibold",
+                                  isAgent ? "text-teal-700" : "text-slate-700",
+                                )}
+                              >
+                                {msg.sender_name || (isCurrentUser ? currentUserDisplayName : "Unknown")}
+                              </span>
+                              <span>
+                                {new Date(msg.created_at).toLocaleString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm leading-relaxed text-slate-900 break-words">
+                              {msg.content}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="space-y-3">
-                  {comments.map((comment) => (
-                    <TaskCommentCard
-                      key={comment.id}
-                      comment={comment}
-                      isHighlighted={highlightedCommentId === comment.id}
-                      authorLabel={
-                        comment.agent_id
-                          ? (assigneeById.get(comment.agent_id) ?? "Agent")
-                          : currentUserDisplayName
-                      }
-                    />
-                  ))}
-                </div>
+                <>
+                  {isCommentsLoading ? (
+                    <p className="text-sm text-slate-500">Loading comments…</p>
+                  ) : commentsError ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+                      {commentsError}
+                    </div>
+                  ) : comments.length === 0 ? (
+                    <p className="text-sm text-slate-500">No comments yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {comments.map((comment) => (
+                        <TaskCommentCard
+                          key={comment.id}
+                          comment={comment}
+                          isHighlighted={highlightedCommentId === comment.id}
+                          authorLabel={
+                            comment.agent_id
+                              ? (assigneeById.get(comment.agent_id) ?? "Agent")
+                              : currentUserDisplayName
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
