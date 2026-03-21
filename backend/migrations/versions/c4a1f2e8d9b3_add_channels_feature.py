@@ -188,6 +188,57 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_tasks_thread_id"), "tasks", ["thread_id"], unique=False)
 
+    # ── Seed default channels for all existing boards ─────────────────────────
+    import uuid as _uuid
+    import secrets as _secrets
+    from datetime import datetime as _dt
+
+    _now = _dt.utcnow()
+    _conn = op.get_bind()
+
+    _default_channels = [
+        # (name, slug, channel_type, description, is_readonly, webhook_source_filter, position)
+        ("Build Alerts",       "build-alerts",       "alert",      "CI/CD build results and failures",             True,  "build",      0),
+        ("Deployment Alerts",  "deployment-alerts",  "alert",      "Deployment status and rollback notifications", True,  "deployment", 1),
+        ("Test Run Alerts",    "test-run-alerts",    "alert",      "Test suite results and coverage changes",      True,  "test",       2),
+        ("Production Alerts",  "production-alerts",  "alert",      "Production incidents, errors, and health",     True,  "production", 3),
+        ("Development",        "development",        "discussion", "Code discussions, feature planning",           False, None,         4),
+        ("DevOps",             "devops",             "discussion", "Infrastructure, pipelines, operations",        False, None,         5),
+        ("Testing",            "testing",            "discussion", "Test strategy, QA discussions, bug triage",    False, None,         6),
+        ("Architecture",       "architecture",       "discussion", "System design, ADRs, architectural decisions", False, None,         7),
+        ("General",            "general",            "discussion", "Anything that doesn't fit elsewhere",          False, None,         8),
+    ]
+
+    _board_ids = [row[0] for row in _conn.execute(
+        sa.text("SELECT id FROM boards WHERE is_archived = false OR is_archived IS NULL")
+    ).fetchall()]
+
+    for _board_id in _board_ids:
+        for (_name, _slug, _ctype, _desc, _readonly, _wsf, _pos) in _default_channels:
+            _conn.execute(sa.text("""
+                INSERT INTO channels
+                    (id, board_id, name, slug, channel_type, description,
+                     is_archived, is_readonly, webhook_source_filter, webhook_secret, position,
+                     created_at, updated_at)
+                VALUES
+                    (:id, :board_id, :name, :slug, :channel_type, :description,
+                     false, :is_readonly, :webhook_source_filter, :webhook_secret, :position,
+                     :now, :now)
+                ON CONFLICT DO NOTHING
+            """), {
+                "id": str(_uuid.uuid4()),
+                "board_id": str(_board_id),
+                "name": _name,
+                "slug": _slug,
+                "channel_type": _ctype,
+                "description": _desc,
+                "is_readonly": _readonly,
+                "webhook_source_filter": _wsf,
+                "webhook_secret": _secrets.token_urlsafe(32),
+                "position": _pos,
+                "now": _now,
+            })
+
 
 def downgrade() -> None:
     """Remove channels feature tables and task.thread_id column."""
@@ -231,3 +282,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_channels_channel_type"), table_name="channels")
     op.drop_index(op.f("ix_channels_board_id"), table_name="channels")
     op.drop_table("channels")
+
+# ── ALREADY APPENDED BY PATCH ─────────────────────────────────────────────────
+# The block above only creates tables. This block seeds default channels
+# for all EXISTING boards so they have channels on first deploy.
