@@ -1687,6 +1687,22 @@ async def delete_task(
     return OkResponse()
 
 
+def _thread_message_to_task_comment_read(msg: object) -> TaskCommentRead:
+    """Convert a ThreadMessage to the TaskCommentRead schema for proxy compatibility."""
+    # Import here to avoid circular imports at module level
+    from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
+
+    if not isinstance(msg, TM):
+        raise TypeError("Expected ThreadMessage")
+    return TaskCommentRead(
+        id=msg.id,
+        message=msg.content,
+        agent_id=msg.sender_id if msg.sender_type == "agent" else None,
+        task_id=None,
+        created_at=msg.created_at,
+    )
+
+
 @router.get(
     "/{task_id}/comments",
     response_model=DefaultLimitOffsetPage[TaskCommentRead],
@@ -1695,7 +1711,33 @@ async def list_task_comments(
     task: Task = TASK_DEP,
     session: AsyncSession = SESSION_DEP,
 ) -> LimitOffsetPage[TaskCommentRead]:
-    """List comments for a task in chronological order."""
+    """List comments for a task in chronological order.
+
+    When the task has a linked thread (thread_id is set) and channels are enabled,
+    returns messages from that thread rather than legacy ActivityEvent comments.
+    Legacy tasks (no thread_id) are completely unchanged.
+    """
+    # WP-5: proxy to thread messages when task has a linked thread
+    try:
+        from app.core.config import settings as _settings  # noqa: PLC0415
+
+        if _settings.channels_enabled and task.thread_id is not None:
+            from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
+
+            thread_stmt = (
+                select(TM)
+                .where(col(TM.thread_id) == task.thread_id)
+                .order_by(asc(col(TM.created_at)))
+            )
+            return await paginate(
+                session,
+                thread_stmt,
+                transformer=lambda items: [_thread_message_to_task_comment_read(m) for m in items],
+            )
+    except Exception:
+        pass  # Fall through to legacy path on any error
+
+    # Legacy path: return ActivityEvent comments (unchanged)
     statement = (
         select(ActivityEvent)
         .where(col(ActivityEvent.task_id) == task.id)
@@ -1935,6 +1977,27 @@ async def _task_read_response(
     )
     if task.status == "done":
         blocked_ids = []
+
+    # WP-5: include thread_id and channel_info when task is linked to a channel thread
+    channel_info = None
+    try:
+        from app.core.config import settings as _settings  # noqa: PLC0415
+        if _settings.channels_enabled and task.thread_id is not None:
+            from app.models.thread import Thread as _Thread  # noqa: PLC0415
+            from app.models.channel import Channel as _Channel  # noqa: PLC0415
+            from app.schemas.tasks import ChannelInfo  # noqa: PLC0415
+            thread = await session.get(_Thread, task.thread_id)
+            if thread is not None:
+                channel = await session.get(_Channel, thread.channel_id)
+                if channel is not None:
+                    channel_info = ChannelInfo(
+                        channel_id=channel.id,
+                        channel_name=channel.name,
+                        channel_slug=channel.slug,
+                    )
+    except Exception:
+        pass  # channel_info stays None — not critical
+
     return TaskRead.model_validate(task, from_attributes=True).model_copy(
         update={
             "depends_on_task_ids": dep_ids,
@@ -1943,6 +2006,8 @@ async def _task_read_response(
             "blocked_by_task_ids": blocked_ids,
             "is_blocked": bool(blocked_ids),
             "custom_field_values": custom_field_values_by_task_id.get(task.id, {}),
+            "thread_id": task.thread_id,
+            "channel_info": channel_info,
         },
     )
 
@@ -2680,9 +2745,48 @@ async def create_task_comment(
     task: Task = TASK_DEP,
     session: AsyncSession = SESSION_DEP,
     actor: ActorContext = ACTOR_DEP,
-) -> ActivityEvent:
-    """Create a task comment and notify relevant agents."""
+) -> ActivityEvent | object:
+    """Create a task comment and notify relevant agents.
+
+    When the task has a linked thread (thread_id is set) and channels are enabled,
+    creates a ThreadMessage instead of an ActivityEvent.
+    Legacy tasks (no thread_id) are completely unchanged.
+    """
     await _validate_task_comment_access(session, task=task, actor=actor)
+
+    # WP-5: proxy to thread messages when task has a linked thread
+    try:
+        from app.core.config import settings as _settings  # noqa: PLC0415
+
+        if _settings.channels_enabled and task.thread_id is not None:
+            from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
+            from app.models.thread import Thread as Thr  # noqa: PLC0415
+            from app.core.time import utcnow as _utcnow  # noqa: PLC0415
+
+            thread = await session.get(Thr, task.thread_id)
+            if thread is not None:
+                sender_type = "agent" if actor.actor_type == "agent" else "user"
+                sender_id = _comment_actor_id(actor)
+                sender_name = _comment_actor_name(actor)
+                msg = TM(
+                    thread_id=task.thread_id,
+                    sender_type=sender_type,
+                    sender_id=sender_id,
+                    sender_name=sender_name,
+                    content=payload.message,
+                    content_type="text",
+                )
+                session.add(msg)
+                thread.message_count = (thread.message_count or 0) + 1
+                thread.last_message_at = msg.created_at
+                thread.updated_at = _utcnow()
+                await session.commit()
+                await session.refresh(msg)
+                return _thread_message_to_task_comment_read(msg)
+    except Exception:
+        pass  # Fall through to legacy path on any error
+
+    # Legacy path: create an ActivityEvent comment (unchanged)
     event = ActivityEvent(
         event_type="task.comment",
         message=payload.message,

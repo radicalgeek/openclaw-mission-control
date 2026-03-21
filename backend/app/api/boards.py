@@ -487,7 +487,17 @@ async def create_board(
     """Create a board in the active organization."""
     data = payload.model_dump()
     data["organization_id"] = ctx.organization.id
-    return await crud.create(session, Board, **data)
+    board = await crud.create(session, Board, **data)
+
+    # ── Channel lifecycle hook ────────────────────────────────────────────────
+    try:
+        from app.services.channel_lifecycle import on_board_created as _on_board_created
+        await _on_board_created(session, board)
+    except Exception:
+        logger.exception("board.channel_lifecycle.create_failed board_id=%s", board.id)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    return board
 
 
 @router.get("/{board_id}", response_model=BoardRead)
@@ -606,4 +616,11 @@ async def delete_board(
     board: Board = BOARD_USER_WRITE_DEP,
 ) -> OkResponse:
     """Delete a board and all dependent records."""
+    # ── Channel lifecycle hook (before deletion, so FK lookups still work) ───
+    try:
+        from app.services.channel_lifecycle import on_board_deleted as _on_board_deleted
+        await _on_board_deleted(session, board, hard_delete=True)
+    except Exception:
+        logger.exception("board.channel_lifecycle.delete_failed board_id=%s", board.id)
+    # ─────────────────────────────────────────────────────────────────────────
     return await delete_board_service(session, board=board)

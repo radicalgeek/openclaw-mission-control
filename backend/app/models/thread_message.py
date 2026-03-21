@@ -29,9 +29,9 @@ class ThreadMessage(TenantScoped, table=True):
     content_type: str = Field(
         default="text"
     )  # "text", "webhook_event", "agent_response", "system_notification"
-    metadata: dict[str, Any] | None = Field(
+    event_metadata: dict[str, Any] | None = Field(
         default=None,
-        sa_column=Column(JSON),
+        sa_column=Column("metadata", JSON),
     )
     is_edited: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow)
