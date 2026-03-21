@@ -72,6 +72,14 @@ class TaskUpdate(SQLModel):
         return self
 
 
+class ChannelInfo(SQLModel):
+    """Minimal channel info attached to a task when it has a linked thread."""
+
+    channel_id: UUID
+    channel_name: str
+    channel_slug: str
+
+
 class TaskRead(TaskBase):
     """Task payload returned from read endpoints."""
 
@@ -85,6 +93,9 @@ class TaskRead(TaskBase):
     is_blocked: bool = False
     tags: list[TagRef] = Field(default_factory=list)
     custom_field_values: TaskCustomFieldValues | None = None
+    # Channel thread link (None for legacy tasks without a linked thread)
+    thread_id: UUID | None = None
+    channel_info: ChannelInfo | None = None
 
 
 class TaskCommentCreate(SQLModel):

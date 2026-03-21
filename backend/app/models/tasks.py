@@ -42,5 +42,9 @@ class Task(TenantScoped, table=True):
     auto_created: bool = Field(default=False)
     auto_reason: str | None = None
 
+    # Optional link to a channel thread (set by channel_thread_hook after webhook task creation,
+    # or manually by users linking tasks to channel conversations).
+    thread_id: UUID | None = Field(default=None, foreign_key="threads.id", index=True)
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -622,6 +622,35 @@ async def ingest_board_webhook(
             payload=payload,
         )
 
+    # ── NEW: Channel thread hook (fail-safe, does not affect webhook response) ──
+    if settings.channels_enabled:
+        try:
+            from app.services.channel_thread_hook import on_task_created_by_webhook
+            from app.models.tasks import Task as _Task
+            # Create a minimal stub task to satisfy the hook signature.
+            # This is a best-effort channel thread creation for the webhook event;
+            # the real task (if any) will be created later by the agent.
+            # We pass the payload dict and headers so the classifier can route correctly.
+            webhook_payload_dict: dict = {}
+            if isinstance(payload_value, dict):
+                webhook_payload_dict = payload_value  # type: ignore[assignment]
+            elif isinstance(payload_value, list):
+                webhook_payload_dict = {"items": payload_value}
+            await on_task_created_by_webhook(
+                session=session,
+                task=None,  # type: ignore[arg-type]  # no task yet
+                board=board,
+                webhook_payload=webhook_payload_dict,
+                webhook_headers=dict(request.headers),
+            )
+        except Exception:
+            logger.exception(
+                "webhook.channel_hook.failed board_id=%s payload_id=%s",
+                board.id,
+                payload.id,
+            )
+    # ── END channel hook ──────────────────────────────────────────────────────
+
     return BoardWebhookIngestResponse(
         board_id=board.id,
         webhook_id=webhook.id,
