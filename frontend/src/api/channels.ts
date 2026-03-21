@@ -8,12 +8,14 @@ import { customFetch } from "./mutator";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type ChannelType = "alert" | "discussion";
+
 export type ChannelRead = {
   id: string;
   board_id: string;
   name: string;
   slug: string;
-  channel_type: string;
+  channel_type: ChannelType;
   description: string;
   is_archived: boolean;
   is_readonly: boolean;
