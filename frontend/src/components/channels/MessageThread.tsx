@@ -1,0 +1,465 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { CheckCircle, Pin, PinOff, Send } from "lucide-react";
+
+import type { ThreadMessageRead, ThreadRead } from "@/api/channels";
+import { getThreadMessages, sendMessage, updateThread } from "@/api/channels";
+import { cn } from "@/lib/utils";
+import { WebhookEventCard } from "./WebhookEventCard";
+import { LinkedTaskBadge } from "./LinkedTaskBadge";
+import { ApiError } from "@/api/mutator";
+
+type Props = {
+  thread: ThreadRead;
+  boardId: string;
+  currentUserName?: string;
+  agentSuggestions?: string[];
+  onThreadUpdated?: (updated: ThreadRead) => void;
+};
+
+const formatTime = (value: string): string => {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+function SystemMessage({ message }: { message: ThreadMessageRead }) {
+  return (
+    <div className="flex justify-center py-1">
+      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
+        {message.content}
+      </span>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  isCurrentUser,
+}: {
+  message: ThreadMessageRead;
+  isCurrentUser: boolean;
+}) {
+  if (message.content_type === "webhook_event") {
+    return (
+      <div className="w-full">
+        <WebhookEventCard message={message} />
+        <p className="mt-1 text-right text-[10px] text-slate-400">
+          {formatTime(message.created_at)}
+        </p>
+      </div>
+    );
+  }
+
+  if (
+    message.sender_type === "system" ||
+    message.content_type === "system_notification"
+  ) {
+    return <SystemMessage message={message} />;
+  }
+
+  const isAgent =
+    message.sender_type === "agent" ||
+    message.content_type === "agent_response";
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col",
+        isCurrentUser ? "items-end" : "items-start",
+      )}
+      data-testid={`message-bubble-${message.sender_type}`}
+    >
+      {message.sender_name ? (
+        <p
+          className={cn(
+            "mb-1 text-[11px] font-semibold",
+            isAgent ? "text-teal-700" : "text-slate-500",
+          )}
+        >
+          {message.sender_name}
+        </p>
+      ) : null}
+      <div
+        className={cn(
+          "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
+          isCurrentUser
+            ? "bg-slate-900 text-white"
+            : isAgent
+              ? "bg-teal-50 text-teal-900 ring-1 ring-teal-200"
+              : "bg-white text-slate-900 ring-1 ring-slate-200",
+        )}
+      >
+        <p className="whitespace-pre-wrap break-words leading-relaxed">
+          {message.content}
+        </p>
+      </div>
+      <p className="mt-0.5 text-[10px] text-slate-400">
+        {formatTime(message.created_at)}
+      </p>
+    </div>
+  );
+}
+
+type MentionDropdownProps = {
+  suggestions: string[];
+  filter: string;
+  onSelect: (name: string) => void;
+};
+
+function MentionDropdown({ suggestions, filter, onSelect }: MentionDropdownProps) {
+  const matches = suggestions.filter((s) =>
+    s.toLowerCase().startsWith(filter.toLowerCase()),
+  );
+  if (matches.length === 0) return null;
+  return (
+    <div className="absolute bottom-full left-0 mb-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg">
+      {matches.map((name) => (
+        <button
+          key={name}
+          type="button"
+          className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onSelect(name);
+          }}
+        >
+          @{name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function MessageThread({
+  thread,
+  boardId,
+  currentUserName = "You",
+  agentSuggestions = [],
+  onThreadUpdated,
+}: Props) {
+  const [messages, setMessages] = useState<ThreadMessageRead[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [composerText, setComposerText] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isUpdatingThread, setIsUpdatingThread] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const threadIdRef = useRef<string>(thread.id);
+  const [currentThread, setCurrentThread] = useState<ThreadRead>(thread);
+
+  // Sync thread prop changes
+  useEffect(() => {
+    setCurrentThread(thread);
+  }, [thread]);
+
+  const loadMessages = useCallback(async (threadId: string) => {
+    setIsLoadingMessages(true);
+    setMessagesError(null);
+    try {
+      const result = await getThreadMessages(threadId, { limit: 100 });
+      if (result.status === 200) {
+        setMessages(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setMessagesError("Unable to load messages.");
+      }
+    } catch (err) {
+      setMessagesError(
+        err instanceof ApiError ? err.message : "Unable to load messages.",
+      );
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, []);
+
+  // Load on mount / thread change
+  useEffect(() => {
+    threadIdRef.current = thread.id;
+    void loadMessages(thread.id);
+  }, [thread.id, loadMessages]);
+
+  // Scroll to bottom when messages load
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Poll for new messages every 10 seconds
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (threadIdRef.current) {
+        void loadMessages(threadIdRef.current);
+      }
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [loadMessages]);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = composerText.trim();
+    if (!trimmed) return;
+    setIsSending(true);
+    setSendError(null);
+    try {
+      const result = await sendMessage(thread.id, {
+        content: trimmed,
+      });
+      if (result.status === 200) {
+        setMessages((prev) => [...prev, result.data]);
+        setComposerText("");
+      } else {
+        setSendError("Unable to send message.");
+      }
+    } catch (err) {
+      setSendError(
+        err instanceof ApiError ? err.message : "Unable to send message.",
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }, [composerText, thread.id]);
+
+  const handleToggleResolved = useCallback(async () => {
+    setIsUpdatingThread(true);
+    try {
+      const result = await updateThread(currentThread.id, {
+        is_resolved: !currentThread.is_resolved,
+      });
+      if (result.status === 200) {
+        setCurrentThread(result.data);
+        onThreadUpdated?.(result.data);
+      }
+    } catch {
+      // ignore — we'll show stale state
+    } finally {
+      setIsUpdatingThread(false);
+    }
+  }, [currentThread, onThreadUpdated]);
+
+  const handleTogglePinned = useCallback(async () => {
+    setIsUpdatingThread(true);
+    try {
+      const result = await updateThread(currentThread.id, {
+        is_pinned: !currentThread.is_pinned,
+      });
+      if (result.status === 200) {
+        setCurrentThread(result.data);
+        onThreadUpdated?.(result.data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsUpdatingThread(false);
+    }
+  }, [currentThread, onThreadUpdated]);
+
+  const handleComposerKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleSend();
+      return;
+    }
+    // Mention trigger
+    const text = composerText;
+    const pos = composerRef.current?.selectionStart ?? text.length;
+    const before = text.slice(0, pos);
+    const atIdx = before.lastIndexOf("@");
+    if (e.key === "Escape") {
+      setMentionFilter(null);
+      return;
+    }
+    if (atIdx !== -1) {
+      const fragment = before.slice(atIdx + 1);
+      if (!fragment.includes(" ")) {
+        setMentionFilter(fragment);
+        return;
+      }
+    }
+    setMentionFilter(null);
+  };
+
+  const handleComposerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setComposerText(value);
+    const pos = e.target.selectionStart ?? value.length;
+    const before = value.slice(0, pos);
+    const atIdx = before.lastIndexOf("@");
+    if (atIdx !== -1) {
+      const fragment = before.slice(atIdx + 1);
+      if (!fragment.includes(" ")) {
+        setMentionFilter(fragment);
+        return;
+      }
+    }
+    setMentionFilter(null);
+  };
+
+  const handleMentionSelect = (name: string) => {
+    const pos = composerRef.current?.selectionStart ?? composerText.length;
+    const before = composerText.slice(0, pos);
+    const atIdx = before.lastIndexOf("@");
+    if (atIdx !== -1) {
+      const after = composerText.slice(pos);
+      const next = `${before.slice(0, atIdx)}@${name} ${after}`;
+      setComposerText(next);
+    }
+    setMentionFilter(null);
+    composerRef.current?.focus();
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Thread header */}
+      <div className="border-b border-slate-200 px-4 py-3">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900 leading-snug">
+              {currentThread.topic}
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                  currentThread.is_resolved
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-slate-100 text-slate-600",
+                )}
+              >
+                {currentThread.is_resolved ? "resolved" : "active"}
+              </span>
+              {currentThread.is_pinned ? (
+                <span className="flex items-center gap-1 text-[11px] text-amber-600">
+                  <Pin className="h-3 w-3" /> Pinned
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleTogglePinned()}
+              disabled={isUpdatingThread}
+              title={currentThread.is_pinned ? "Unpin thread" : "Pin thread"}
+              className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50"
+            >
+              {currentThread.is_pinned ? (
+                <PinOff className="h-3.5 w-3.5" />
+              ) : (
+                <Pin className="h-3.5 w-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleToggleResolved()}
+              disabled={isUpdatingThread}
+              title={
+                currentThread.is_resolved
+                  ? "Re-open thread"
+                  : "Mark resolved"
+              }
+              className={cn(
+                "rounded-lg border p-1.5 transition",
+                currentThread.is_resolved
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  : "border-slate-200 text-slate-500 hover:bg-slate-50",
+              )}
+            >
+              <CheckCircle className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        {/* Linked task badge */}
+        {currentThread.task_id ? (
+          <div className="mt-2">
+            <LinkedTaskBadge
+              taskId={currentThread.task_id}
+              boardId={boardId}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {/* Message list */}
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {isLoadingMessages && messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-slate-400">Loading messages…</p>
+          </div>
+        ) : messagesError ? (
+          <div className="rounded-lg border border-slate-200 p-3 text-sm text-slate-600">
+            {messagesError}
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-slate-400">No messages yet. Start the conversation.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {messages.map((msg) => {
+              const isCurrentUser =
+                msg.sender_type === "user" &&
+                (msg.sender_name === currentUserName || msg.sender_name === "");
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  isCurrentUser={isCurrentUser}
+                />
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Composer */}
+      <div className="border-t border-slate-200 px-4 py-3">
+        {sendError ? (
+          <p className="mb-2 text-xs text-rose-600">{sendError}</p>
+        ) : null}
+        <div className="relative flex items-end gap-2">
+          {mentionFilter !== null && agentSuggestions.length > 0 ? (
+            <MentionDropdown
+              suggestions={agentSuggestions}
+              filter={mentionFilter}
+              onSelect={handleMentionSelect}
+            />
+          ) : null}
+          <textarea
+            ref={composerRef}
+            value={composerText}
+            onChange={handleComposerChange}
+            onKeyDown={handleComposerKeyDown}
+            placeholder="Write a message… (Enter to send, Shift+Enter for newline, @ to mention)"
+            rows={2}
+            disabled={isSending}
+            className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={isSending || !composerText.trim()}
+            className="flex-shrink-0 rounded-xl bg-slate-900 p-2.5 text-white transition hover:bg-slate-700 disabled:opacity-40"
+            aria-label="Send message"
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
