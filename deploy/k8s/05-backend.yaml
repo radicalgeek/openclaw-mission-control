@@ -54,6 +54,8 @@ spec:
           value: redis://mission-control-redis:6379/0
         - name: CORS_ORIGINS
           value: https://mission-control.radicalgeek.co.uk
+        - name: CHANNELS_ENABLED
+          value: "true"
         - name: AUTH_MODE
           value: local
         - name: LOCAL_AUTH_TOKEN
