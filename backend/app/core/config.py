@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import urlparse
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.auth_mode import AuthMode
@@ -83,6 +83,12 @@ class Settings(BaseSettings):
 
     # OpenClaw gateway runtime compatibility
     gateway_min_version: str = "2026.02.9"
+
+    # Feature flags
+    channels_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("CHANNELS_ENABLED", "channels_enabled"),
+    )
 
     # Logging
     log_level: str = "INFO"

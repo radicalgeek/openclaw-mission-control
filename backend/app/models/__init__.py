@@ -1,5 +1,10 @@
 """Model exports for SQLAlchemy/SQLModel metadata discovery."""
 
+from app.models.channel import Channel
+from app.models.channel_subscription import ChannelSubscription
+from app.models.thread import Thread
+from app.models.thread_message import ThreadMessage
+from app.models.user_channel_state import UserChannelState
 from app.models.activity_events import ActivityEvent
 from app.models.agents import Agent
 from app.models.approval_task_links import ApprovalTaskLink
@@ -31,6 +36,11 @@ from app.models.tasks import Task
 from app.models.users import User
 
 __all__ = [
+    "Channel",
+    "ChannelSubscription",
+    "Thread",
+    "ThreadMessage",
+    "UserChannelState",
     "ActivityEvent",
     "Agent",
     "ApprovalTaskLink",
