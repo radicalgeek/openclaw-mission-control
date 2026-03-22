@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 
 import type { ChannelRead } from "@/api/channels";
-import { ALERT_CHANNEL_TYPES, DISCUSSION_CHANNEL_TYPES } from "@/api/channels";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -88,12 +87,8 @@ export function ChannelList({
   onSelectChannel,
   isLoading = false,
 }: Props) {
-  const alertChannels = channels.filter((c) =>
-    ALERT_CHANNEL_TYPES.includes(c.channel_type),
-  );
-  const discussionChannels = channels.filter((c) =>
-    DISCUSSION_CHANNEL_TYPES.includes(c.channel_type),
-  );
+  const alertChannels = channels.filter((c) => c.channel_type === "alert");
+  const discussionChannels = channels.filter((c) => c.channel_type === "discussion");
 
   if (isLoading) {
     return (
