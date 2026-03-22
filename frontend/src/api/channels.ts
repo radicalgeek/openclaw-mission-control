@@ -94,7 +94,7 @@ export const getBoardChannels = (
   boardId: string,
 ): Promise<ApiResponse<ChannelRead[]>> =>
   customFetch<ApiResponse<ChannelRead[]>>(
-    `/api/boards/${boardId}/channels`,
+    `/api/v1/boards/${boardId}/channels`,
     { method: "GET" },
   );
 
@@ -104,7 +104,7 @@ export const getChannel = (
   channelId: string,
 ): Promise<ApiResponse<ChannelRead>> =>
   customFetch<ApiResponse<ChannelRead>>(
-    `/api/channels/${channelId}`,
+    `/api/v1/channels/${channelId}`,
     { method: "GET" },
   );
 
@@ -112,7 +112,7 @@ export const markChannelRead = (
   channelId: string,
 ): Promise<ApiResponse<{ ok: boolean }>> =>
   customFetch<ApiResponse<{ ok: boolean }>>(
-    `/api/channels/${channelId}/mark-read`,
+    `/api/v1/channels/${channelId}/mark-read`,
     { method: "POST" },
   );
 
@@ -134,7 +134,7 @@ export const getChannelThreads = (
   if (params?.offset != null) qs.set("offset", String(params.offset));
   const query = qs.toString();
   return customFetch<ApiResponse<ThreadRead[]>>(
-    `/api/channels/${channelId}/threads${query ? `?${query}` : ""}`,
+    `/api/v1/channels/${channelId}/threads${query ? `?${query}` : ""}`,
     { method: "GET" },
   );
 };
@@ -144,7 +144,7 @@ export const createThread = (
   payload: ThreadCreate,
 ): Promise<ApiResponse<ThreadRead>> =>
   customFetch<ApiResponse<ThreadRead>>(
-    `/api/channels/${channelId}/threads`,
+    `/api/v1/channels/${channelId}/threads`,
     { method: "POST", body: JSON.stringify(payload) },
   );
 
@@ -152,7 +152,7 @@ export const getThread = (
   threadId: string,
 ): Promise<ApiResponse<ThreadRead>> =>
   customFetch<ApiResponse<ThreadRead>>(
-    `/api/threads/${threadId}`,
+    `/api/v1/threads/${threadId}`,
     { method: "GET" },
   );
 
@@ -161,7 +161,7 @@ export const updateThread = (
   payload: ThreadUpdate,
 ): Promise<ApiResponse<ThreadRead>> =>
   customFetch<ApiResponse<ThreadRead>>(
-    `/api/threads/${threadId}`,
+    `/api/v1/threads/${threadId}`,
     { method: "PATCH", body: JSON.stringify(payload) },
   );
 
@@ -176,7 +176,7 @@ export const getThreadMessages = (
   if (params?.before) qs.set("before", params.before);
   const query = qs.toString();
   return customFetch<ApiResponse<ThreadMessageRead[]>>(
-    `/api/threads/${threadId}/messages${query ? `?${query}` : ""}`,
+    `/api/v1/threads/${threadId}/messages${query ? `?${query}` : ""}`,
     { method: "GET" },
   );
 };
@@ -186,7 +186,7 @@ export const sendMessage = (
   payload: ThreadMessageCreate,
 ): Promise<ApiResponse<ThreadMessageRead>> =>
   customFetch<ApiResponse<ThreadMessageRead>>(
-    `/api/threads/${threadId}/messages`,
+    `/api/v1/threads/${threadId}/messages`,
     { method: "POST", body: JSON.stringify(payload) },
   );
 
