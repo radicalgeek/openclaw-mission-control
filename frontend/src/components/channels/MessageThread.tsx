@@ -216,7 +216,7 @@ export function MessageThread({
       const result = await sendMessage(thread.id, {
         content: trimmed,
       });
-      if (result.status === 200) {
+      if (result.status === 201) {
         setMessages((prev) => [...prev, result.data]);
         setComposerText("");
       } else {
