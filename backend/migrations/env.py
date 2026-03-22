@@ -16,7 +16,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 importlib.import_module("app.models")
-settings = importlib.import_module("app.core.config").settings
+
+# Read DATABASE_URL directly from environment to avoid importing the full
+# Settings object which validates many unrelated env vars (AUTH_MODE, BASE_URL, etc.)
+# that are not needed for migrations.
+import os as _os
+
+_DATABASE_URL = _os.environ.get("DATABASE_URL", "")
 
 config = context.config
 configure_logger = config.attributes.get("configure_logger", True)
@@ -38,7 +44,7 @@ def _normalize_database_url(database_url: str) -> str:
 
 def get_url() -> str:
     """Return the normalized SQLAlchemy database URL for Alembic."""
-    return _normalize_database_url(settings.database_url)
+    return _normalize_database_url(_DATABASE_URL)
 
 
 config.set_main_option("sqlalchemy.url", get_url())
