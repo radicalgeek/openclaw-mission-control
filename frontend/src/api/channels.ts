@@ -8,12 +8,14 @@ import { customFetch } from "./mutator";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type ChannelType = "alert" | "discussion";
+
 export type ChannelRead = {
   id: string;
   board_id: string;
   name: string;
   slug: string;
-  channel_type: string;
+  channel_type: ChannelType;
   description: string;
   is_archived: boolean;
   is_readonly: boolean;
@@ -190,20 +192,9 @@ export const sendMessage = (
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export const ALERT_CHANNEL_TYPES = [
-  "build-alerts",
-  "deployment-alerts",
-  "test-run-alerts",
-  "production-alerts",
-] as const;
+export const ALERT_CHANNEL_TYPES: readonly ChannelType[] = ["alert"] as const;
 
-export const DISCUSSION_CHANNEL_TYPES = [
-  "development",
-  "devops",
-  "testing",
-  "architecture",
-  "general",
-] as const;
+export const DISCUSSION_CHANNEL_TYPES: readonly ChannelType[] = ["discussion"] as const;
 
 export const isAlertChannel = (channel: ChannelRead): boolean =>
   (ALERT_CHANNEL_TYPES as readonly string[]).includes(channel.channel_type);
