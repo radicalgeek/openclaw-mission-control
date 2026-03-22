@@ -172,9 +172,20 @@ async def dispatch_channel_message_to_agents(
                 f"You were mentioned in #{channel.name} > \"{thread.topic}\".\n\n"
             )
 
+        reply_instructions = (
+            f"\n\n---\n"
+            f"To reply in this thread, make an HTTP POST request:\n"
+            f"  URL: {settings.base_url}/api/v1/threads/{thread.id}/messages\n"
+            f"  Header: X-Agent-Token: <your MC agent token from TOOLS.md>\n"
+            f"  Header: Content-Type: application/json\n"
+            f"  Body: {{\"content\": \"your reply here\"}}\n"
+            f"\n"
+            f"You MUST reply in the thread — do not just reply in this session."
+        )
+
         gateway_message = (
             f"CHANNEL MESSAGE\n"
-            f"Channel: {channel.name}\n"
+            f"Channel: #{channel.name}\n"
             f"Thread: {thread.topic}\n"
             f"Thread ID: {thread.id}\n"
             f"Channel ID: {channel.id}\n"
@@ -182,6 +193,7 @@ async def dispatch_channel_message_to_agents(
             f"{preamble}"
             f"Message:\n{message.content}\n\n"
             f"Recent conversation:\n{context_str}"
+            f"{reply_instructions}"
         )
 
         error = await dispatch.try_send_agent_message(
