@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, Hash, Plus, Rss } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -11,7 +12,14 @@ import {
 } from "@/api/channels";
 import { ApiError } from "@/api/mutator";
 import { cn } from "@/lib/utils";
-import { ChannelList } from "./ChannelList";
+import {
+  type listBoardsApiV1BoardsGetResponse,
+  useListBoardsApiV1BoardsGet,
+} from "@/api/generated/boards/boards";
+import {
+  listAgentsApiV1AgentsGet,
+  type listAgentsApiV1AgentsGetResponse,
+} from "@/api/generated/agents/agents";
 import { ThreadList } from "./ThreadList";
 import { MessageThread } from "./MessageThread";
 import { NewThreadModal } from "./NewThreadModal";
@@ -23,57 +31,143 @@ type Props = {
 
 type MobilePanel = "channels" | "threads" | "messages";
 
+// ── Per-board channel cache ──────────────────────────────────────────────────
+type BoardChannels = Record<string, ChannelRead[] | "loading" | "error">;
+
+// ── Local-storage helpers for collapsed state ────────────────────────────────
+const LS_KEY = "mc_channels_collapsed";
+function readCollapsed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+function writeCollapsed(s: Set<string>) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify([...s]));
+  } catch {
+    // ignore
+  }
+}
+
 export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
-  const [channels, setChannels] = useState<ChannelRead[]>([]);
-  const [isLoadingChannels, setIsLoadingChannels] = useState(false);
-  const [channelsError, setChannelsError] = useState<string | null>(null);
+  const router = useRouter();
+
+  // ── Boards ────────────────────────────────────────────────────────────────
+  const boardsQuery = useListBoardsApiV1BoardsGet<listBoardsApiV1BoardsGetResponse, ApiError>(
+    undefined,
+    { query: { refetchOnMount: false } },
+  );
+  const allBoards =
+    boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
+
+  // ── Collapse state (per-board) ────────────────────────────────────────────
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setCollapsed(readCollapsed());
+  }, []);
+
+  const toggleCollapsed = (bid: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(bid)) {
+        next.delete(bid);
+        // When expanding, load channels if not already cached
+        if (!(bid in boardChannels.current)) {
+          void loadBoardChannels(bid);
+        }
+      } else {
+        next.add(bid);
+      }
+      writeCollapsed(next);
+      return next;
+    });
+  };
+
+  // ── Channel cache (all boards, lazy-loaded) ───────────────────────────────
+  const boardChannels = useRef<BoardChannels>({});
+  const [, forceUpdate] = useState(0);
+  const rerender = () => forceUpdate((n) => n + 1);
+
+  const loadBoardChannels = useCallback(async (bid: string) => {
+    if (boardChannels.current[bid] === "loading") return;
+    boardChannels.current[bid] = "loading";
+    rerender();
+    try {
+      const result = await getBoardChannels(bid);
+      if (result.status === 200) {
+        boardChannels.current[bid] = Array.isArray(result.data) ? result.data : [];
+      } else {
+        boardChannels.current[bid] = "error";
+      }
+    } catch {
+      boardChannels.current[bid] = "error";
+    }
+    rerender();
+  }, []);
+
+  // Load channels for the current board immediately, and for other visible
+  // (non-collapsed) boards lazily on mount.
+  useEffect(() => {
+    if (!boardId) return;
+    void loadBoardChannels(boardId);
+  }, [boardId, loadBoardChannels]);
+
+  useEffect(() => {
+    for (const board of allBoards) {
+      if (!collapsed.has(board.id) && !(board.id in boardChannels.current)) {
+        void loadBoardChannels(board.id);
+      }
+    }
+  }, [allBoards, collapsed, loadBoardChannels]);
+
+  // ── Channel/thread/message selection ─────────────────────────────────────
+  const currentBoardChannels: ChannelRead[] =
+    Array.isArray(boardChannels.current[boardId])
+      ? (boardChannels.current[boardId] as ChannelRead[])
+      : [];
 
   const [selectedChannel, setSelectedChannel] = useState<ChannelRead | null>(null);
   const [threads, setThreads] = useState<ThreadRead[]>([]);
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
-
   const [selectedThread, setSelectedThread] = useState<ThreadRead | null>(null);
 
-  const [isNewThreadModalOpen, setIsNewThreadModalOpen] = useState(false);
-  const [isCreatingThread, setIsCreatingThread] = useState(false);
-  const [createThreadError, setCreateThreadError] = useState<string | null>(null);
-
-  // Mobile navigation state
-  const [mobilePanel, setMobilePanel] = useState<MobilePanel>("channels");
-
-  // Load channels for the board
+  // Auto-select first channel when channel list loads
+  const autoSelected = useRef(false);
   useEffect(() => {
-    if (!boardId) return;
-    let cancelled = false;
-    setIsLoadingChannels(true);
-    setChannelsError(null);
-    getBoardChannels(boardId)
-      .then((result) => {
-        if (cancelled) return;
-        if (result.status === 200) {
-          const list = Array.isArray(result.data) ? result.data : [];
-          setChannels(list);
-          // Auto-select first channel
-          if (list.length > 0) {
-            setSelectedChannel(list[0]);
-          }
-        } else {
-          setChannelsError("Unable to load channels.");
-        }
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setChannelsError(
-          err instanceof ApiError ? err.message : "Unable to load channels.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingChannels(false);
-      });
-    return () => { cancelled = true; };
+    if (autoSelected.current) return;
+    if (currentBoardChannels.length > 0) {
+      autoSelected.current = true;
+      setSelectedChannel(currentBoardChannels[0]);
+    }
+  }, [currentBoardChannels]);
+
+  // Reset auto-select on board change
+  useEffect(() => {
+    autoSelected.current = false;
+    setSelectedChannel(null);
+    setThreads([]);
+    setSelectedThread(null);
   }, [boardId]);
 
-  // Load threads when channel changes
+  // ── Agent suggestions (for @mention) ─────────────────────────────────────
+  const [agentNames, setAgentNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (!boardId) return;
+    listAgentsApiV1AgentsGet({ board_id: boardId, limit: 50 })
+      .then((res: listAgentsApiV1AgentsGetResponse) => {
+        if (res.status === 200) {
+          const names = (res.data.items ?? []).map((a) => a.name).filter(Boolean) as string[];
+          setAgentNames(names);
+        }
+      })
+      .catch(() => {/* ignore */});
+  }, [boardId]);
+
+  // ── Thread loading ────────────────────────────────────────────────────────
   const loadThreads = useCallback(async (channelId: string) => {
     setIsLoadingThreads(true);
     setThreads([]);
@@ -95,31 +189,17 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     void loadThreads(selectedChannel.id);
   }, [selectedChannel, loadThreads]);
 
-  const handleSelectChannel = (channel: ChannelRead) => {
-    setSelectedChannel(channel);
-    setSelectedThread(null);
-    setMobilePanel("threads");
-  };
-
-  const handleSelectThread = (thread: ThreadRead) => {
-    setSelectedThread(thread);
-    setMobilePanel("messages");
-  };
-
-  const handleNewThread = () => {
-    setIsNewThreadModalOpen(true);
-    setCreateThreadError(null);
-  };
+  // ── New thread modal ──────────────────────────────────────────────────────
+  const [isNewThreadModalOpen, setIsNewThreadModalOpen] = useState(false);
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [createThreadError, setCreateThreadError] = useState<string | null>(null);
 
   const handleCreateThread = async (topic: string, content: string) => {
     if (!selectedChannel) return;
     setIsCreatingThread(true);
     setCreateThreadError(null);
     try {
-      const result = await createThread(selectedChannel.id, {
-        topic,
-        content,
-      });
+      const result = await createThread(selectedChannel.id, { topic, content });
       if (result.status === 200 || result.status === 201) {
         setThreads((prev) => [result.data, ...prev]);
         setSelectedThread(result.data);
@@ -138,69 +218,167 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   };
 
   const handleThreadUpdated = (updated: ThreadRead) => {
-    setThreads((prev) =>
-      prev.map((t) => (t.id === updated.id ? updated : t)),
-    );
+    setThreads((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     setSelectedThread(updated);
   };
 
-  // Mobile back buttons
-  const mobileBackButton = (label: string, onClick: () => void) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-600 md:hidden"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      {label}
-    </button>
-  );
+  // ── Mobile navigation ─────────────────────────────────────────────────────
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>("channels");
 
+  const handleSelectChannel = (channel: ChannelRead, targetBoardId?: string) => {
+    // If selecting from a different board, navigate first
+    if (targetBoardId && targetBoardId !== boardId) {
+      router.push(`/channels/${targetBoardId}`);
+    }
+    setSelectedChannel(channel);
+    setSelectedThread(null);
+    setMobilePanel("threads");
+  };
+
+  const handleSelectThread = (thread: ThreadRead) => {
+    setSelectedThread(thread);
+    setMobilePanel("messages");
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-h-0 flex-col md:flex-row">
-      {/* ── Left panel: Channel list ────────────────────────────────── */}
+    <div className="flex h-full min-h-0 flex-col md:flex-row overflow-hidden">
+
+      {/* ── Discord-style left sidebar ──────────────────────────────────── */}
       <div
         className={cn(
-          "flex-shrink-0 border-r border-slate-200 bg-white md:w-56",
-          mobilePanel === "channels" ? "flex flex-col" : "hidden md:flex md:flex-col",
+          "flex-shrink-0 w-56 border-r border-slate-200 bg-slate-900 flex-col overflow-hidden",
+          mobilePanel === "channels" ? "flex" : "hidden md:flex",
         )}
       >
-        <div className="border-b border-slate-200 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {/* Sidebar header */}
+        <div className="px-4 py-3 border-b border-slate-700">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
             Channels
           </p>
         </div>
-        {channelsError ? (
-          <div className="p-4 text-sm text-slate-600">{channelsError}</div>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            <ChannelList
-              channels={channels}
-              selectedChannelId={selectedChannel?.id ?? null}
-              onSelectChannel={handleSelectChannel}
-              isLoading={isLoadingChannels}
-            />
-          </div>
-        )}
+
+        {/* Board groups + channels */}
+        <div className="flex-1 overflow-y-auto py-2">
+          {boardsQuery.isLoading ? (
+            <p className="px-4 py-2 text-xs text-slate-500">Loading…</p>
+          ) : (
+            allBoards.map((board) => {
+              const isCurrentBoard = board.id === boardId;
+              const isCollapsed = collapsed.has(board.id);
+              const channelsState = boardChannels.current[board.id];
+              const boardChList: ChannelRead[] = Array.isArray(channelsState)
+                ? channelsState
+                : [];
+              const isLoadingChList = channelsState === "loading";
+
+              return (
+                <div key={board.id} className="mb-1">
+                  {/* Board header (collapsible group) */}
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapsed(board.id)}
+                    className={cn(
+                      "flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors",
+                      isCurrentBoard
+                        ? "text-slate-100 hover:text-white"
+                        : "text-slate-400 hover:text-slate-200",
+                    )}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "h-3 w-3 flex-shrink-0 transition-transform",
+                        isCollapsed && "-rotate-90",
+                      )}
+                    />
+                    <span className="truncate text-xs font-bold uppercase tracking-wider">
+                      {board.name}
+                    </span>
+                    {/* Add channel button */}
+                    {isCurrentBoard && !isCollapsed && (
+                      <Plus
+                        className="ml-auto h-3.5 w-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:text-white"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isCurrentBoard) setIsNewThreadModalOpen(true);
+                        }}
+                      />
+                    )}
+                  </button>
+
+                  {/* Channel list under this board */}
+                  {!isCollapsed && (
+                    <div>
+                      {isLoadingChList ? (
+                        <p className="px-7 py-1 text-xs text-slate-600">Loading…</p>
+                      ) : boardChList.length === 0 ? (
+                        <p className="px-7 py-1 text-xs text-slate-600">No channels</p>
+                      ) : (
+                        boardChList.map((ch) => {
+                          const isSelected =
+                            selectedChannel?.id === ch.id && isCurrentBoard;
+                          return (
+                            <button
+                              key={ch.id}
+                              type="button"
+                              onClick={() => handleSelectChannel(ch, board.id)}
+                              className={cn(
+                                "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
+                                "mx-1 w-[calc(100%-8px)]",
+                                isSelected
+                                  ? "bg-slate-600 text-white"
+                                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200",
+                              )}
+                            >
+                              {ch.channel_type === "alert" ? (
+                                <Rss className="h-3.5 w-3.5 flex-shrink-0" />
+                              ) : (
+                                <Hash className="h-3.5 w-3.5 flex-shrink-0" />
+                              )}
+                              <span className="truncate">{ch.name}</span>
+                              {(ch.unread_count ?? 0) > 0 && (
+                                <span className="ml-auto flex-shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                  {ch.unread_count}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
 
-      {/* ── Middle panel: Thread list ───────────────────────────────── */}
+      {/* ── Middle panel: Thread list ───────────────────────────────────── */}
       <div
         className={cn(
-          "flex-shrink-0 border-r border-slate-200 bg-white md:w-72",
-          mobilePanel === "threads" ? "flex flex-col p-2 md:p-0" : "hidden md:flex md:flex-col",
+          "flex-shrink-0 border-r border-slate-200 bg-white md:w-72 flex-col overflow-hidden",
+          mobilePanel === "threads" ? "flex" : "hidden md:flex",
         )}
       >
-        {mobilePanel === "threads"
-          ? mobileBackButton("Channels", () => setMobilePanel("channels"))
-          : null}
+        {/* Mobile back */}
+        <button
+          type="button"
+          onClick={() => setMobilePanel("channels")}
+          className="mb-2 flex items-center gap-1.5 px-3 pt-3 text-sm font-medium text-blue-600 md:hidden"
+        >
+          ← Channels
+        </button>
         {selectedChannel ? (
           <ThreadList
             channel={selectedChannel}
             threads={threads}
             selectedThreadId={selectedThread?.id ?? null}
             onSelectThread={handleSelectThread}
-            onNewThread={handleNewThread}
+            onNewThread={() => {
+              setIsNewThreadModalOpen(true);
+              setCreateThreadError(null);
+            }}
             isLoading={isLoadingThreads}
           />
         ) : (
@@ -210,24 +388,27 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
         )}
       </div>
 
-      {/* ── Right panel: Message thread ─────────────────────────────── */}
+      {/* ── Right panel: Message thread ─────────────────────────────────── */}
       <div
         className={cn(
-          "min-w-0 flex-1 bg-white",
-          mobilePanel === "messages" ? "flex flex-col p-2 md:p-0" : "hidden md:flex md:flex-col",
+          "min-w-0 flex-1 bg-white flex-col overflow-hidden",
+          mobilePanel === "messages" ? "flex" : "hidden md:flex",
         )}
       >
-        {mobilePanel === "messages"
-          ? mobileBackButton(
-              selectedChannel ? `#${selectedChannel.name}` : "Threads",
-              () => setMobilePanel("threads"),
-            )
-          : null}
+        {/* Mobile back */}
+        <button
+          type="button"
+          onClick={() => setMobilePanel("threads")}
+          className="mb-2 flex items-center gap-1.5 px-3 pt-3 text-sm font-medium text-blue-600 md:hidden"
+        >
+          ← {selectedChannel ? `#${selectedChannel.name}` : "Threads"}
+        </button>
         {selectedThread ? (
           <MessageThread
             thread={selectedThread}
             boardId={boardId}
             currentUserName={currentUserName}
+            agentSuggestions={agentNames}
             onThreadUpdated={handleThreadUpdated}
           />
         ) : (
