@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, ChevronDown, LayoutGrid } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -11,6 +12,10 @@ import {
 } from "@/api/channels";
 import { ApiError } from "@/api/mutator";
 import { cn } from "@/lib/utils";
+import {
+  type listBoardsApiV1BoardsGetResponse,
+  useListBoardsApiV1BoardsGet,
+} from "@/api/generated/boards/boards";
 import { ChannelList } from "./ChannelList";
 import { ThreadList } from "./ThreadList";
 import { MessageThread } from "./MessageThread";
@@ -24,6 +29,18 @@ type Props = {
 type MobilePanel = "channels" | "threads" | "messages";
 
 export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
+  const router = useRouter();
+  const [boardSwitcherOpen, setBoardSwitcherOpen] = useState(false);
+
+  // Fetch all boards for the switcher
+  const boardsQuery = useListBoardsApiV1BoardsGet<listBoardsApiV1BoardsGetResponse, ApiError>(
+    undefined,
+    { query: { refetchOnMount: false } },
+  );
+  const allBoards =
+    boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
+  const currentBoard = allBoards.find((b) => b.id === boardId) ?? null;
+
   const [channels, setChannels] = useState<ChannelRead[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [channelsError, setChannelsError] = useState<string | null>(null);
@@ -165,11 +182,64 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
           mobilePanel === "channels" ? "flex flex-col" : "hidden md:flex md:flex-col",
         )}
       >
-        <div className="border-b border-slate-200 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {/* Board switcher header */}
+        <div className="relative border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setBoardSwitcherOpen((o) => !o)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition"
+          >
+            <LayoutGrid className="h-4 w-4 flex-shrink-0 text-slate-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Project
+              </p>
+              <p className="truncate text-sm font-semibold text-slate-800">
+                {currentBoard?.name ?? "Loading…"}
+              </p>
+            </div>
+            {allBoards.length > 1 && (
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 flex-shrink-0 text-slate-400 transition-transform",
+                  boardSwitcherOpen && "rotate-180",
+                )}
+              />
+            )}
+          </button>
+
+          {/* Dropdown board list */}
+          {boardSwitcherOpen && allBoards.length > 1 && (
+            <div className="absolute left-0 right-0 top-full z-50 max-h-64 overflow-y-auto border-b border-slate-200 bg-white shadow-lg">
+              {allBoards.map((board) => (
+                <button
+                  key={board.id}
+                  type="button"
+                  onClick={() => {
+                    setBoardSwitcherOpen(false);
+                    router.push(`/channels/${board.id}`);
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-slate-50",
+                    board.id === boardId
+                      ? "bg-blue-50 font-semibold text-blue-700"
+                      : "text-slate-700",
+                  )}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5 flex-shrink-0 text-slate-300" />
+                  <span className="truncate">{board.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-b border-slate-100 px-4 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
             Channels
           </p>
         </div>
+
         {channelsError ? (
           <div className="p-4 text-sm text-slate-600">{channelsError}</div>
         ) : (
