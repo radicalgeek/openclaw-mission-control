@@ -13,7 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-import type { ChannelRead, ChannelType } from "@/api/channels";
+import type { ChannelRead } from "@/api/channels";
 import { ALERT_CHANNEL_TYPES, DISCUSSION_CHANNEL_TYPES } from "@/api/channels";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +24,7 @@ type Props = {
   isLoading?: boolean;
 };
 
-const CHANNEL_ICONS: Record<ChannelType, React.ComponentType<{ className?: string }>> = {
+const CHANNEL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   "build-alerts": Box,
   "deployment-alerts": Rocket,
   "test-run-alerts": TestTube,
@@ -47,7 +47,7 @@ function ChannelRow({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const Icon = CHANNEL_ICONS[channel.channel_type] ?? DEFAULT_CHANNEL_ICON;
+  const Icon = CHANNEL_ICONS[channel.slug] ?? DEFAULT_CHANNEL_ICON;
   const unread = channel.unread_count ?? 0;
 
   return (
