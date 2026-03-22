@@ -124,7 +124,13 @@ async def create_thread_message(
             sender_type = "agent"
         elif actor.actor_type == "user" and actor.user:
             sender_id = actor.user.id
-            sender_name = getattr(actor.user, "email", None) or "User"
+            u = actor.user
+            sender_name = (
+                getattr(u, "preferred_name", None)
+                or getattr(u, "name", None)
+                or getattr(u, "email", None)
+                or "User"
+            )
 
     msg = ThreadMessage(
         thread_id=thread_id,

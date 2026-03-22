@@ -146,7 +146,13 @@ async def create_channel_thread(
             sender_id = actor.agent.id
             sender_type = "agent"
         elif actor.actor_type == "user" and actor.user:
-            sender_name = actor.user.email if hasattr(actor.user, "email") else "User"
+            u = actor.user
+            sender_name = (
+                getattr(u, "preferred_name", None)
+                or getattr(u, "name", None)
+                or getattr(u, "email", None)
+                or "User"
+            )
 
     msg = ThreadMessage(
         thread_id=thread.id,
@@ -162,6 +168,16 @@ async def create_channel_thread(
 
     await session.commit()
     await session.refresh(thread)
+
+    # Dispatch first message to subscribed agents (board lead etc.)
+    try:
+        channel_obj = await session.get(Channel, channel_id)
+        if channel_obj:
+            from app.services.channel_agent_routing import dispatch_channel_message_to_agents
+            await dispatch_channel_message_to_agents(session, thread, msg, channel_obj)
+    except Exception:  # noqa: BLE001
+        logger.exception("channel_routing.dispatch_error thread_id=%s", thread.id)
+
     return _to_thread_read(thread)
 
 
