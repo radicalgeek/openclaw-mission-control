@@ -190,6 +190,55 @@ export const sendMessage = (
     { method: "POST", body: JSON.stringify(payload) },
   );
 
+// ─── Channel Management ───────────────────────────────────────────────────────
+
+export type ChannelCreate = {
+  name: string;
+  description?: string;
+  channel_type?: ChannelType;
+  is_readonly?: boolean;
+  position?: number;
+  webhook_source_filter?: string | null;
+};
+
+export const createChannel = (
+  boardId: string,
+  payload: ChannelCreate,
+): Promise<ApiResponse<ChannelRead>> =>
+  customFetch<ApiResponse<ChannelRead>>(
+    `/api/v1/boards/${boardId}/channels`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+
+export const deleteChannel = (
+  channelId: string,
+): Promise<ApiResponse<{ ok: boolean }>> =>
+  customFetch<ApiResponse<{ ok: boolean }>>(
+    `/api/v1/channels/${channelId}`,
+    { method: "DELETE" },
+  );
+
+export type ChannelWebhookInfo = {
+  webhook_url: string | null;
+  webhook_secret: string;
+};
+
+export const getChannelWebhookInfo = (
+  channelId: string,
+): Promise<ApiResponse<ChannelWebhookInfo>> =>
+  customFetch<ApiResponse<ChannelWebhookInfo>>(
+    `/api/v1/channels/${channelId}/webhook-info`,
+    { method: "GET" },
+  );
+
+export const regenerateChannelWebhookSecret = (
+  channelId: string,
+): Promise<ApiResponse<ChannelWebhookInfo>> =>
+  customFetch<ApiResponse<ChannelWebhookInfo>>(
+    `/api/v1/channels/${channelId}/webhook-info/regenerate`,
+    { method: "POST" },
+  );
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export const ALERT_CHANNEL_TYPES: readonly ChannelType[] = ["alert"] as const;
