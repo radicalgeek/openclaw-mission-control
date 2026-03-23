@@ -98,36 +98,6 @@ export const getBoardChannels = (
     { method: "GET" },
   );
 
-export const createChannel = (
-  boardId: string,
-  payload: {
-    name: string;
-    channel_type: ChannelType;
-    description?: string;
-    is_readonly?: boolean;
-    webhook_source_filter?: string | null;
-    position?: number;
-  },
-): Promise<ApiResponse<ChannelRead>> =>
-  customFetch<ApiResponse<ChannelRead>>(
-    `/api/v1/boards/${boardId}/channels`,
-    { method: "POST", body: JSON.stringify(payload) },
-  );
-
-export const archiveChannel = (channelId: string): Promise<ApiResponse<{ ok: boolean }>> =>
-  customFetch<ApiResponse<{ ok: boolean }>>(
-    `/api/v1/channels/${channelId}`,
-    { method: "DELETE" },
-  );
-
-export const getChannelWebhookInfo = (
-  channelId: string,
-): Promise<ApiResponse<{ webhook_url: string | null; webhook_secret: string }>> =>
-  customFetch<ApiResponse<{ webhook_url: string | null; webhook_secret: string }>>(
-    `/api/v1/channels/${channelId}/webhook-info`,
-    { method: "GET" },
-  );
-
 // ─── Channel ──────────────────────────────────────────────────────────────────
 
 export const getChannel = (

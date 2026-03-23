@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Hash, Plus, Rss, Settings, Trash2 } from "lucide-react";
+import { ChevronDown, Hash, Plus, Rss, Trash2 } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -10,7 +10,7 @@ import {
   getChannelThreads,
   createThread,
   createChannel,
-  archiveChannel,
+  deleteChannel,
 } from "@/api/channels";
 import { ApiError } from "@/api/mutator";
 import { cn } from "@/lib/utils";
@@ -235,7 +235,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
 
   const handleArchiveChannel = async (channelId: string) => {
     if (!confirm("Archive this channel? Threads will be preserved but the channel will be hidden.")) return;
-    await archiveChannel(channelId);
+    await deleteChannel(channelId);
     // Reload current board channels
     await loadBoardChannels(boardId);
     if (selectedChannel?.id === channelId) {
