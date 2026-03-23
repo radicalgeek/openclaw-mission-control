@@ -157,10 +157,14 @@ export function MessageThread({
   const [sendError, setSendError] = useState<string | null>(null);
   const [isUpdatingThread, setIsUpdatingThread] = useState(false);
   const [mentionFilter, setMentionFilter] = useState<string | null>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [unreadWhileScrolledUp, setUnreadWhileScrolledUp] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadIdRef = useRef<string>(thread.id);
   const [currentThread, setCurrentThread] = useState<ThreadRead>(thread);
+  const prevMessageCountRef = useRef(0);
 
   // Sync thread prop changes
   useEffect(() => {
@@ -189,13 +193,48 @@ export function MessageThread({
   // Load on mount / thread change
   useEffect(() => {
     threadIdRef.current = thread.id;
+    prevMessageCountRef.current = 0;
+    setUnreadWhileScrolledUp(0);
     void loadMessages(thread.id);
   }, [thread.id, loadMessages]);
 
-  // Scroll to bottom when messages load
+  // Smart scroll: only auto-scroll if user is near bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const newCount = messages.length;
+    const prevCount = prevMessageCountRef.current;
+    prevMessageCountRef.current = newCount;
+
+    if (newCount > prevCount) {
+      // New messages arrived
+      if (isNearBottom) {
+        // User is at bottom → scroll down
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        setUnreadWhileScrolledUp(0);
+      } else {
+        // User scrolled up → increment unread counter
+        setUnreadWhileScrolledUp((prev) => prev + (newCount - prevCount));
+      }
+    }
+  }, [messages, isNearBottom]);
+
+  // Track scroll position
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      setIsNearBottom(distanceFromBottom < 100); // Within 100px of bottom
+      if (distanceFromBottom < 50) {
+        // User scrolled back to bottom
+        setUnreadWhileScrolledUp(0);
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Poll for new messages every 10 seconds
   useEffect(() => {
@@ -219,6 +258,10 @@ export function MessageThread({
       if (result.status === 201) {
         setMessages((prev) => [...prev, result.data]);
         setComposerText("");
+        // Scroll to bottom after sending
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
       } else {
         setSendError("Unable to send message.");
       }
@@ -394,7 +437,7 @@ export function MessageThread({
       </div>
 
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto px-4 py-4">
         {isLoadingMessages && messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-slate-400">Loading messages…</p>
@@ -423,6 +466,20 @@ export function MessageThread({
             })}
             <div ref={messagesEndRef} />
           </div>
+        )}
+
+        {/* New messages pill (floating above bottom when scrolled up) */}
+        {unreadWhileScrolledUp > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              setUnreadWhileScrolledUp(0);
+            }}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-blue-700"
+          >
+            {unreadWhileScrolledUp} new message{unreadWhileScrolledUp > 1 ? "s" : ""}
+          </button>
         )}
       </div>
 
