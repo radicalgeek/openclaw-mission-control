@@ -230,18 +230,24 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     if (result.status === 200 || result.status === 201) {
       // Reload channels for this board
       await loadBoardChannels(bid);
+    } else {
+      throw new Error("Failed to create channel. Please try again.");
     }
   };
 
   const handleArchiveChannel = async (channelId: string) => {
     if (!confirm("Archive this channel? Threads will be preserved but the channel will be hidden.")) return;
-    await deleteChannel(channelId);
-    // Reload current board channels
-    await loadBoardChannels(boardId);
-    if (selectedChannel?.id === channelId) {
-      setSelectedChannel(null);
-      setThreads([]);
-      setSelectedThread(null);
+    try {
+      await deleteChannel(channelId);
+      // Reload current board channels
+      await loadBoardChannels(boardId);
+      if (selectedChannel?.id === channelId) {
+        setSelectedChannel(null);
+        setThreads([]);
+        setSelectedThread(null);
+      }
+    } catch {
+      alert("Failed to archive channel. Please try again.");
     }
   };
 
