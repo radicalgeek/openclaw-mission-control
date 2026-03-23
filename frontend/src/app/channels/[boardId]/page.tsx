@@ -36,7 +36,7 @@ export default function ChannelsBoardPage() {
       </SignedOut>
       <SignedIn>
         <DashboardSidebar />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50 h-full max-h-full">
           {isSignedIn && boardId ? (
             <ChannelsLayout boardId={boardId} />
           ) : null}

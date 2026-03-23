@@ -1,17 +1,6 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Bell,
-  Box,
-  Code2,
-  Flame,
-  MessageCircle,
-  Rocket,
-  Server,
-  TestTube,
-  Wrench,
-} from "lucide-react";
+import { AlertTriangle, Bell, Hash, Rss } from "lucide-react";
 
 import type { ChannelRead } from "@/api/channels";
 import { cn } from "@/lib/utils";
@@ -23,20 +12,6 @@ type Props = {
   isLoading?: boolean;
 };
 
-const CHANNEL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  "build-alerts": Box,
-  "deployment-alerts": Rocket,
-  "test-run-alerts": TestTube,
-  "production-alerts": Flame,
-  development: Code2,
-  devops: Server,
-  testing: TestTube,
-  architecture: Wrench,
-  general: MessageCircle,
-};
-
-const DEFAULT_CHANNEL_ICON = Bell;
-
 function ChannelRow({
   channel,
   isSelected,
@@ -46,7 +21,7 @@ function ChannelRow({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const Icon = CHANNEL_ICONS[channel.slug] ?? DEFAULT_CHANNEL_ICON;
+  const Icon = channel.channel_type === "alert" ? Rss : Hash;
   const unread = channel.unread_count ?? 0;
 
   return (
@@ -95,10 +70,7 @@ export function ChannelList({
       <div className="p-4">
         <div className="space-y-2">
           {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="h-8 animate-pulse rounded-lg bg-slate-200"
-            />
+            <div key={i} className="h-8 animate-pulse rounded-lg bg-slate-200" />
           ))}
         </div>
       </div>
