@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Hash, Plus, Rss } from "lucide-react";
+import { ChevronDown, Hash, Plus, Rss, Settings, Trash2 } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
   getBoardChannels,
   getChannelThreads,
   createThread,
+  createChannel,
+  archiveChannel,
 } from "@/api/channels";
 import { ApiError } from "@/api/mutator";
 import { cn } from "@/lib/utils";
@@ -23,6 +25,7 @@ import {
 import { ThreadList } from "./ThreadList";
 import { MessageThread } from "./MessageThread";
 import { NewThreadModal } from "./NewThreadModal";
+import { CreateChannelModal } from "./CreateChannelModal";
 
 type Props = {
   boardId: string;
@@ -217,6 +220,31 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     }
   };
 
+  // ── Create channel modal ────────────────────────────────────────────────
+  const [isCreateChannelModalOpen, setIsCreateChannelModalOpen] = useState(false);
+  const [targetBoardForChannel, setTargetBoardForChannel] = useState<string | null>(null);
+
+  const handleCreateChannel = async (data: { name: string; channel_type: "discussion" | "alert"; description: string }) => {
+    const bid = targetBoardForChannel || boardId;
+    const result = await createChannel(bid, data);
+    if (result.status === 200 || result.status === 201) {
+      // Reload channels for this board
+      await loadBoardChannels(bid);
+    }
+  };
+
+  const handleArchiveChannel = async (channelId: string) => {
+    if (!confirm("Archive this channel? Threads will be preserved but the channel will be hidden.")) return;
+    await archiveChannel(channelId);
+    // Reload current board channels
+    await loadBoardChannels(boardId);
+    if (selectedChannel?.id === channelId) {
+      setSelectedChannel(null);
+      setThreads([]);
+      setSelectedThread(null);
+    }
+  };
+
   const handleThreadUpdated = (updated: ThreadRead) => {
     setThreads((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     setSelectedThread(updated);
@@ -297,10 +325,11 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                     {/* Add channel button */}
                     {isCurrentBoard && !isCollapsed && (
                       <Plus
-                        className="ml-auto h-3.5 w-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:text-white"
+                        className="ml-auto h-3.5 w-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:text-slate-700"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isCurrentBoard) setIsNewThreadModalOpen(true);
+                          setTargetBoardForChannel(board.id);
+                          setIsCreateChannelModalOpen(true);
                         }}
                       />
                     )}
@@ -318,18 +347,21 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                           const isSelected =
                             selectedChannel?.id === ch.id && isCurrentBoard;
                           return (
-                            <button
+                            <div
                               key={ch.id}
-                              type="button"
-                              onClick={() => handleSelectChannel(ch, board.id)}
                               className={cn(
-                                "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
+                                "group flex w-full items-center gap-2 rounded-md px-3 py-1 text-sm transition-colors",
                                 "mx-1 w-[calc(100%-8px)]",
                                 isSelected
                                   ? "bg-slate-200 text-slate-900 font-medium"
                                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                               )}
                             >
+                              <button
+                                type="button"
+                                onClick={() => handleSelectChannel(ch, board.id)}
+                                className="flex flex-1 items-center gap-2 text-left"
+                              >
                               {ch.channel_type === "alert" ? (
                                 <Rss className="h-3.5 w-3.5 flex-shrink-0" />
                               ) : (
@@ -341,7 +373,21 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                                   {ch.unread_count}
                                 </span>
                               )}
-                            </button>
+                              </button>
+                              {isCurrentBoard && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleArchiveChannel(ch.id);
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 hover:text-rose-600 transition"
+                                  title="Archive channel"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
                           );
                         })
                       )}
@@ -429,6 +475,13 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
           error={createThreadError}
         />
       ) : null}
+
+      {/* Create Channel modal */}
+      <CreateChannelModal
+        isOpen={isCreateChannelModalOpen}
+        onClose={() => setIsCreateChannelModalOpen(false)}
+        onSubmit={handleCreateChannel}
+      />
     </div>
   );
 }
