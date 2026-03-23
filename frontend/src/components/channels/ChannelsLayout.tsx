@@ -247,13 +247,13 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
       {/* ── Discord-style left sidebar ──────────────────────────────────── */}
       <div
         className={cn(
-          "flex-shrink-0 w-56 border-r border-slate-200 bg-slate-900 flex-col overflow-hidden",
+          "flex-shrink-0 w-56 border-r border-slate-200 bg-white flex-col overflow-hidden",
           mobilePanel === "channels" ? "flex" : "hidden md:flex",
         )}
       >
         {/* Sidebar header */}
-        <div className="px-4 py-3 border-b border-slate-700">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+        <div className="px-4 py-3 border-b border-slate-200">
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-600">
             Channels
           </p>
         </div>
@@ -281,8 +281,8 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                     className={cn(
                       "flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors",
                       isCurrentBoard
-                        ? "text-slate-100 hover:text-white"
-                        : "text-slate-400 hover:text-slate-200",
+                        ? "text-slate-900 hover:text-black"
+                        : "text-slate-600 hover:text-slate-900",
                     )}
                   >
                     <ChevronDown
@@ -310,9 +310,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                   {!isCollapsed && (
                     <div>
                       {isLoadingChList ? (
-                        <p className="px-7 py-1 text-xs text-slate-600">Loading…</p>
+                        <p className="px-7 py-1 text-xs text-slate-400">Loading…</p>
                       ) : boardChList.length === 0 ? (
-                        <p className="px-7 py-1 text-xs text-slate-600">No channels</p>
+                        <p className="px-7 py-1 text-xs text-slate-400">No channels</p>
                       ) : (
                         boardChList.map((ch) => {
                           const isSelected =
@@ -326,8 +326,8 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                                 "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
                                 "mx-1 w-[calc(100%-8px)]",
                                 isSelected
-                                  ? "bg-slate-600 text-white"
-                                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200",
+                                  ? "bg-slate-200 text-slate-900 font-medium"
+                                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                               )}
                             >
                               {ch.channel_type === "alert" ? (
