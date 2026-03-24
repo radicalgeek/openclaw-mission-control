@@ -21,28 +21,26 @@ import {
 import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
-import {
-  type healthzHealthzGetResponse,
-  useHealthzHealthzGet,
-} from "@/api/generated/default/default";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
   const { isSignedIn } = useAuth();
   const { isAdmin } = useOrganizationMembership(isSignedIn);
-  const healthQuery = useHealthzHealthzGet<healthzHealthzGetResponse, ApiError>(
-    {
-      query: {
-        refetchInterval: 30_000,
-        refetchOnMount: "always",
-        retry: false,
-      },
-      request: { cache: "no-store" },
+  const healthQuery = useQuery({
+    queryKey: ["health"],
+    queryFn: async () => {
+      const res = await fetch("/healthz", { cache: "no-store" });
+      if (!res.ok) throw new Error("Health check failed");
+      return res.json() as Promise<{ ok: boolean }>;
     },
-  );
+    refetchInterval: 30_000,
+    refetchOnMount: "always",
+    retry: false,
+  });
 
-  const okValue = healthQuery.data?.data?.ok;
+  const okValue = healthQuery.data?.ok;
   const systemStatus: "unknown" | "operational" | "degraded" =
     okValue === true
       ? "operational"
