@@ -6,7 +6,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { CheckCircle, Pin, PinOff, Send } from "lucide-react";
+import { CheckCircle, Pin, PinOff, Send, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 
 import type { ThreadMessageRead, ThreadRead } from "@/api/channels";
 import { getThreadMessages, sendMessage, updateThread } from "@/api/channels";
@@ -21,6 +24,7 @@ type Props = {
   currentUserName?: string;
   agentSuggestions?: string[];
   onThreadUpdated?: (updated: ThreadRead) => void;
+  onClose?: () => void;
 };
 
 const formatTime = (value: string): string => {
@@ -101,9 +105,22 @@ function MessageBubble({
               : "bg-white text-slate-900 ring-1 ring-slate-200",
         )}
       >
-        <p className="whitespace-pre-wrap break-words leading-relaxed">
-          {message.content}
-        </p>
+        <div
+          className={cn(
+            "prose prose-sm max-w-none break-words leading-relaxed",
+            isCurrentUser
+              ? "prose-invert"
+              : isAgent
+                ? "prose-teal"
+                : "prose-slate",
+          )}
+        >
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkBreaks]}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </div>
       </div>
       <p className="mt-0.5 text-[10px] text-slate-400">
         {formatTime(message.created_at)}
@@ -148,6 +165,7 @@ export function MessageThread({
   currentUserName = "You",
   agentSuggestions = [],
   onThreadUpdated,
+  onClose,
 }: Props) {
   const [messages, setMessages] = useState<ThreadMessageRead[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -423,6 +441,16 @@ export function MessageThread({
             >
               <CheckCircle className="h-3.5 w-3.5" />
             </button>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Close"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
         </div>
         {/* Linked task badge */}

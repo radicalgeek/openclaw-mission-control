@@ -22,9 +22,8 @@ import {
   type listAgentsApiV1AgentsGetResponse,
 } from "@/api/generated/agents/agents";
 import type { AgentRead } from "@/api/generated/model/agentRead";
-import { ThreadList } from "./ThreadList";
+import { ChannelFeed } from "./ChannelFeed";
 import { MessageThread } from "./MessageThread";
-import { NewThreadModal } from "./NewThreadModal";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { EditChannelModal } from "./EditChannelModal";
 import { ChannelWebhookModal } from "./ChannelWebhookModal";
@@ -217,31 +216,16 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     void loadThreads(selectedChannel.id);
   }, [selectedChannel, loadThreads]);
 
-  // ── New thread modal ──────────────────────────────────────────────────────
-  const [isNewThreadModalOpen, setIsNewThreadModalOpen] = useState(false);
-  const [isCreatingThread, setIsCreatingThread] = useState(false);
-  const [createThreadError, setCreateThreadError] = useState<string | null>(null);
-
+  // ── New thread (inline composer in ChannelFeed) ──────────────────────────
   const handleCreateThread = async (topic: string, content: string) => {
     if (!selectedChannel) return;
-    setIsCreatingThread(true);
-    setCreateThreadError(null);
-    try {
-      const result = await createThread(selectedChannel.id, { topic, content });
-      if (result.status === 200 || result.status === 201) {
-        setThreads((prev) => [result.data, ...prev]);
-        setSelectedThread(result.data);
-        setIsNewThreadModalOpen(false);
-        setMobilePanel("messages");
-      } else {
-        setCreateThreadError("Unable to create thread.");
-      }
-    } catch (err) {
-      setCreateThreadError(
-        err instanceof ApiError ? err.message : "Unable to create thread.",
-      );
-    } finally {
-      setIsCreatingThread(false);
+    const result = await createThread(selectedChannel.id, { topic, content });
+    if (result.status === 200 || result.status === 201) {
+      setThreads((prev) => [result.data, ...prev]);
+      setSelectedThread(result.data);
+      setMobilePanel("messages");
+    } else {
+      throw new Error("Unable to create thread.");
     }
   };
 
@@ -596,10 +580,11 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
         </div>
       </div>
 
-      {/* ── Middle panel: Thread list ───────────────────────────────────── */}
+      {/* ── Center: Channel post feed ────────────────────────────────────── */}
       <div
         className={cn(
-          "flex-shrink-0 border-r border-slate-200 bg-white md:w-72 flex-col overflow-hidden",
+          "min-w-0 flex-1 bg-slate-50 flex-col overflow-hidden",
+          selectedThread ? "border-r border-slate-200" : "",
           mobilePanel === "threads" ? "flex" : "hidden md:flex",
         )}
       >
@@ -612,39 +597,37 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
           ← Channels
         </button>
         {selectedChannel ? (
-          <ThreadList
+          <ChannelFeed
             channel={selectedChannel}
             threads={threads}
             selectedThreadId={selectedThread?.id ?? null}
             onSelectThread={handleSelectThread}
-            onNewThread={() => {
-              setIsNewThreadModalOpen(true);
-              setCreateThreadError(null);
-            }}
+            onCreateThread={handleCreateThread}
             isLoading={isLoadingThreads}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center p-4 text-sm text-slate-500">
-            Select a channel to see threads.
+            Select a channel to see conversations.
           </div>
         )}
       </div>
 
-      {/* ── Right panel: Message thread ─────────────────────────────────── */}
-      <div
-        className={cn(
-          "min-w-0 flex-1 bg-white flex-col overflow-hidden",
-          mobilePanel === "messages" ? "flex" : "hidden md:flex",
-        )}
-      >
-        {/* Mobile back */}
-        <button
-          type="button"
-          onClick={() => setMobilePanel("threads")}
-          className="mb-2 flex items-center gap-1.5 px-3 pt-3 text-sm font-medium text-blue-600 md:hidden"
+      {/* ── Right panel: Thread reply view ──────────────────────────────── */}
+      {selectedThread ? (
+        <div
+          className={cn(
+            "flex-shrink-0 w-96 bg-white flex-col overflow-hidden",
+            mobilePanel === "messages" ? "flex" : "hidden md:flex",
+          )}
         >
-          ← {selectedChannel ? `#${selectedChannel.name}` : "Threads"}
-        </button>
+          {/* Mobile back */}
+          <button
+            type="button"
+            onClick={() => setMobilePanel("threads")}
+            className="mb-2 flex items-center gap-1.5 px-3 pt-3 text-sm font-medium text-blue-600 md:hidden"
+          >
+            ← {selectedChannel ? `#${selectedChannel.name}` : "Conversations"}
+          </button>
         {selectedThread ? (
           <MessageThread
             thread={selectedThread}
@@ -652,24 +635,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
             currentUserName={currentUserName}
             agentSuggestions={agentNames}
             onThreadUpdated={handleThreadUpdated}
+            onClose={() => setSelectedThread(null)}
           />
-        ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
-            Select a thread to view messages.
-          </div>
-        )}
-      </div>
-
-      {/* New Thread modal */}
-      {selectedChannel ? (
-        <NewThreadModal
-          channel={selectedChannel}
-          open={isNewThreadModalOpen}
-          onOpenChange={setIsNewThreadModalOpen}
-          onCreate={handleCreateThread}
-          isCreating={isCreatingThread}
-          error={createThreadError}
-        />
+        </div>
       ) : null}
 
       {/* Create Channel modal */}
