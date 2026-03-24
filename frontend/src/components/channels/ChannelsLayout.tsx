@@ -167,6 +167,33 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [selectedThread, setSelectedThread] = useState<ThreadRead | null>(null);
 
+  // ── Thread panel resize ────────────────────────────────────────────────
+  const [threadPanelWidth, setThreadPanelWidth] = useState(520);
+  const isDraggingPanel = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingPanel.current) return;
+      const delta = dragStartX.current - e.clientX;
+      const next = Math.max(320, Math.min(900, dragStartWidth.current + delta));
+      setThreadPanelWidth(next);
+    };
+    const onMouseUp = () => {
+      if (!isDraggingPanel.current) return;
+      isDraggingPanel.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
   // Auto-select first *regular* channel when channel list loads
   const autoSelected = useRef(false);
   useEffect(() => {
@@ -616,10 +643,25 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
       {selectedThread ? (
         <div
           className={cn(
-            "flex-shrink-0 w-96 bg-white flex-col overflow-hidden",
+            "relative flex-shrink-0 bg-white flex-col overflow-hidden border-l border-slate-200",
             mobilePanel === "messages" ? "flex" : "hidden md:flex",
           )}
+          style={{ width: threadPanelWidth }}
         >
+          {/* Drag-to-resize handle */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 group"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isDraggingPanel.current = true;
+              dragStartX.current = e.clientX;
+              dragStartWidth.current = threadPanelWidth;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+          >
+            <div className="h-full w-0.5 ml-0.5 bg-slate-200 group-hover:bg-blue-400 transition-colors" />
+          </div>
           {/* Mobile back */}
           <button
             type="button"
