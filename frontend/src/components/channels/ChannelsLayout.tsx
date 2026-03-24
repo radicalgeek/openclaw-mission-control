@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Hash, Plus, Rss, Trash2 } from "lucide-react";
+import { ChevronDown, Hash, Link2, Pencil, Plus, Rss, Trash2 } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -26,6 +26,8 @@ import { ThreadList } from "./ThreadList";
 import { MessageThread } from "./MessageThread";
 import { NewThreadModal } from "./NewThreadModal";
 import { CreateChannelModal } from "./CreateChannelModal";
+import { EditChannelModal } from "./EditChannelModal";
+import { ChannelWebhookModal } from "./ChannelWebhookModal";
 
 type Props = {
   boardId: string;
@@ -235,8 +237,8 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     }
   };
 
-  const handleArchiveChannel = async (channelId: string) => {
-    if (!confirm("Archive this channel? Threads will be preserved but the channel will be hidden.")) return;
+  const handleDeleteChannel = async (channelId: string) => {
+    if (!confirm("Delete this channel? This action cannot be undone.")) return;
     try {
       await deleteChannel(channelId);
       // Reload current board channels
@@ -247,9 +249,29 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
         setSelectedThread(null);
       }
     } catch {
-      alert("Failed to archive channel. Please try again.");
+      alert("Failed to delete channel. Please try again.");
     }
   };
+
+  // ── Edit channel modal ──────────────────────────────────────────────────
+  const [editingChannel, setEditingChannel] = useState<ChannelRead | null>(null);
+
+  const handleChannelUpdated = (updated: ChannelRead) => {
+    // Update the channel in the cache
+    const cached = boardChannels.current[boardId];
+    if (Array.isArray(cached)) {
+      boardChannels.current[boardId] = cached.map((c) =>
+        c.id === updated.id ? updated : c,
+      );
+      rerender();
+    }
+    if (selectedChannel?.id === updated.id) {
+      setSelectedChannel(updated);
+    }
+  };
+
+  // ── Channel webhook modal ───────────────────────────────────────────────
+  const [webhookChannel, setWebhookChannel] = useState<ChannelRead | null>(null);
 
   const handleThreadUpdated = (updated: ThreadRead) => {
     setThreads((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
@@ -381,17 +403,43 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                               )}
                               </button>
                               {isCurrentBoard && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleArchiveChannel(ch.id);
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 hover:text-rose-600 transition"
-                                  title="Archive channel"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
+                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                                  {ch.channel_type === "alert" && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setWebhookChannel(ch);
+                                      }}
+                                      className="rounded p-0.5 hover:text-blue-600"
+                                      title="Configure webhook"
+                                    >
+                                      <Link2 className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingChannel(ch);
+                                    }}
+                                    className="rounded p-0.5 hover:text-slate-700"
+                                    title="Edit channel"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleDeleteChannel(ch.id);
+                                    }}
+                                    className="rounded p-0.5 hover:text-rose-600"
+                                    title="Delete channel"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           );
@@ -488,6 +536,28 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
         onClose={() => setIsCreateChannelModalOpen(false)}
         onSubmit={handleCreateChannel}
       />
+
+      {/* Edit Channel modal */}
+      {editingChannel && (
+        <EditChannelModal
+          channel={editingChannel}
+          isOpen={!!editingChannel}
+          onClose={() => setEditingChannel(null)}
+          onUpdated={(updated) => {
+            handleChannelUpdated(updated);
+            setEditingChannel(null);
+          }}
+        />
+      )}
+
+      {/* Webhook Configuration modal */}
+      {webhookChannel && (
+        <ChannelWebhookModal
+          channel={webhookChannel}
+          isOpen={!!webhookChannel}
+          onClose={() => setWebhookChannel(null)}
+        />
+      )}
     </div>
   );
 }

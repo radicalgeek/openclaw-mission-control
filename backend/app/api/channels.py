@@ -148,6 +148,12 @@ async def create_board_channel(
         position=payload.position,
     )
     await crud.save(session, channel)
+    # Auto-subscribe all existing board agents to the new channel
+    try:
+        from app.services.channel_lifecycle import on_channel_created as _on_channel_created
+        await _on_channel_created(session, channel)
+    except Exception:
+        logger.exception("channel_lifecycle.channel_created_failed channel_id=%s", channel.id)
     return _to_channel_read(channel)
 
 

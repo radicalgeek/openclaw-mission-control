@@ -1404,6 +1404,12 @@ class AgentLifecycleService(OpenClawDBService):
             user=actor.user,
             force_bootstrap=False,
         )
+        # Subscribe the new agent to all board channels
+        try:
+            from app.services.channel_lifecycle import on_agent_added_to_board as _on_agent_added
+            await _on_agent_added(self.session, board, agent.id)
+        except Exception:
+            self.logger.exception("channel_lifecycle.agent_added_failed agent_id=%s", agent.id)
         return agent
 
     async def handle_existing_user_heartbeat_agent(
@@ -1632,6 +1638,12 @@ class AgentLifecycleService(OpenClawDBService):
             force_bootstrap=False,
             extra_files=extra_files,
         )
+        # Subscribe the new agent to all board channels
+        try:
+            from app.services.channel_lifecycle import on_agent_added_to_board as _on_agent_added
+            await _on_agent_added(self.session, board, agent.id)
+        except Exception:
+            self.logger.exception("channel_lifecycle.agent_added_failed agent_id=%s", agent.id)
         self.logger.info("agent.create.success agent_id=%s board_id=%s", agent.id, board.id)
         return self.to_agent_read(self.with_computed_status(agent))
 
@@ -1855,6 +1867,14 @@ class AgentLifecycleService(OpenClawDBService):
                 self.record_instruction_failure(self.session, agent, gateway_cleanup_error, "delete")
                 await self.session.commit()
 
+        # Remove all channel subscriptions for this agent
+        if agent.board_id is not None:
+            try:
+                from app.services.channel_lifecycle import on_agent_removed_from_board as _on_agent_removed
+                _board = await self.require_board(str(agent.board_id))
+                await _on_agent_removed(self.session, _board, agent.id)
+            except Exception:
+                self.logger.exception("channel_lifecycle.agent_removed_failed agent_id=%s", agent.id)
         record_activity(
             self.session,
             event_type="agent.delete.direct",
