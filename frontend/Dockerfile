@@ -3,6 +3,8 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
+# Skip Cypress binary download — not needed for Next.js builds
+ENV CYPRESS_INSTALL_BINARY=0
 COPY package.json package-lock.json ./
 RUN npm ci
 
