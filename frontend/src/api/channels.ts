@@ -241,8 +241,24 @@ export const regenerateChannelWebhookSecret = (
   channelId: string,
 ): Promise<ApiResponse<ChannelWebhookInfo>> =>
   customFetch<ApiResponse<ChannelWebhookInfo>>(
-    `/api/v1/channels/${channelId}/webhook-info/regenerate`,
+    `/api/v1/channels/${channelId}/regenerate-webhook-secret`,
     { method: "POST" },
+  );
+
+export type ChannelUpdate = {
+  name?: string;
+  description?: string;
+  is_readonly?: boolean;
+  position?: number;
+};
+
+export const updateChannel = (
+  channelId: string,
+  payload: ChannelUpdate,
+): Promise<ApiResponse<ChannelRead>> =>
+  customFetch<ApiResponse<ChannelRead>>(
+    `/api/v1/channels/${channelId}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
   );
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

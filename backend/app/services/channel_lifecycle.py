@@ -13,6 +13,7 @@ from sqlmodel import col, delete, select
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.models.agents import Agent
 from app.models.channel import Channel
 from app.models.channel_subscription import ChannelSubscription
 from app.models.thread import Thread
@@ -187,6 +188,53 @@ async def on_board_created(
     )
 
 
+async def on_channel_created(
+    session: AsyncSession,
+    channel: Channel,
+) -> None:
+    """Subscribe all existing agents on the channel's board to a newly created channel.
+
+    Called after a custom channel is manually created via the API.
+    Wrapped in try/except at the call site.
+    """
+    if not settings.channels_enabled:
+        return
+
+    agents = (
+        await session.exec(
+            select(Agent).where(
+                col(Agent.board_id) == channel.board_id,
+            )
+        )
+    ).all()
+
+    for agent in agents:
+        existing = (
+            await session.exec(
+                select(ChannelSubscription).where(
+                    col(ChannelSubscription.channel_id) == channel.id,
+                    col(ChannelSubscription.agent_id) == agent.id,
+                )
+            )
+        ).first()
+        if existing is None:
+            session.add(
+                ChannelSubscription(
+                    channel_id=channel.id,
+                    agent_id=agent.id,
+                    notify_on="all",
+                )
+            )
+
+    await session.commit()
+    logger.info(
+        "channel_lifecycle.channel_created channel_id=%s board_id=%s agents_subscribed=%s",
+        channel.id,
+        channel.board_id,
+        len(agents),
+    )
+
+
 async def on_board_deleted(
     session: AsyncSession,
     board: Board,
@@ -302,21 +350,24 @@ async def on_agent_added_to_board(
     board: Board,
     agent_id: UUID,
 ) -> None:
-    """Subscribe a newly added agent to all discussion channels with mentions-only notify."""
+    """Subscribe a newly added agent to all channels on the board.
+
+    Alert channels use notify_on="all" so agents react to every webhook event.
+    Discussion channels use notify_on="all" so agents see every message.
+    """
     if not settings.channels_enabled:
         return
 
-    discussion_channels = (
+    all_channels = (
         await session.exec(
             select(Channel).where(
                 col(Channel.board_id) == board.id,
-                col(Channel.channel_type) == "discussion",
                 col(Channel.is_archived).is_(False),
             )
         )
     ).all()
 
-    for channel in discussion_channels:
+    for channel in all_channels:
         existing = (
             await session.exec(
                 select(ChannelSubscription).where(
@@ -330,15 +381,16 @@ async def on_agent_added_to_board(
                 ChannelSubscription(
                     channel_id=channel.id,
                     agent_id=agent_id,
-                    notify_on="mentions",
+                    notify_on="all",
                 )
             )
 
     await session.commit()
     logger.info(
-        "channel_lifecycle.agent_added board_id=%s agent_id=%s",
+        "channel_lifecycle.agent_added board_id=%s agent_id=%s channels=%s",
         board.id,
         agent_id,
+        len(all_channels),
     )
 
 
