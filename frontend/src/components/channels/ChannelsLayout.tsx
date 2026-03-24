@@ -628,7 +628,6 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
           >
             ← {selectedChannel ? `#${selectedChannel.name}` : "Conversations"}
           </button>
-        {selectedThread ? (
           <MessageThread
             thread={selectedThread}
             boardId={selectedChannel?.board_id ?? boardId}
