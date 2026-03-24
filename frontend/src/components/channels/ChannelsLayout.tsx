@@ -374,37 +374,44 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
               return (
                 <div key={board.id} className="mb-1">
                   {/* Board header (collapsible group) */}
-                  <button
-                    type="button"
-                    onClick={() => toggleCollapsed(board.id)}
+                  <div
                     className={cn(
-                      "flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors",
+                      "group flex w-full items-center gap-1.5 px-3 py-1.5 transition-colors",
                       isCurrentBoard
-                        ? "text-slate-900 hover:text-black"
-                        : "text-slate-600 hover:text-slate-900",
+                        ? "text-slate-900"
+                        : "text-slate-600",
                     )}
                   >
-                    <ChevronDown
-                      className={cn(
-                        "h-3 w-3 flex-shrink-0 transition-transform",
-                        isCollapsed && "-rotate-90",
-                      )}
-                    />
-                    <span className="truncate text-xs font-bold uppercase tracking-wider">
-                      {board.name}
-                    </span>
-                    {/* Add thread button */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCollapsed(board.id)}
+                      className="flex flex-1 items-center gap-1.5 text-left hover:text-black min-w-0"
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-3 w-3 flex-shrink-0 transition-transform",
+                          isCollapsed && "-rotate-90",
+                        )}
+                      />
+                      <span className="truncate text-xs font-bold uppercase tracking-wider">
+                        {board.name}
+                      </span>
+                    </button>
+                    {/* Add channel button */}
                     {isCurrentBoard && !isCollapsed && (
-                      <Plus
-                        className="ml-auto h-3.5 w-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:text-slate-700"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                      <button
+                        type="button"
+                        onClick={() => {
                           setTargetBoardForChannel(board.id);
                           setIsCreateChannelModalOpen(true);
                         }}
-                      />
+                        className="ml-auto flex-shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                        title="Add channel"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
                     )}
-                  </button>
+                  </div>
 
                   {/* Expanded board content */}
                   {!isCollapsed && (
