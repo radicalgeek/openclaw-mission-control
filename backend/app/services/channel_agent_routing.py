@@ -162,7 +162,7 @@ async def dispatch_channel_message_to_agents(
 
     context_lines = []
     for m in recent_msgs:
-        context_lines.append(f"[{m.sender_name}]: {m.content[:300]}")
+        context_lines.append(f"[{m.sender_name}]: {m.content}")
     context_str = "\n".join(context_lines)
 
     for notification in notifications:
