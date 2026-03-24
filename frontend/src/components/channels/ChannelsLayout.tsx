@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronDown, Hash, Link2, MessageCircle, Pencil, Plus, Rss, Trash2, User } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
@@ -63,8 +62,6 @@ function writeCollapsed(s: Set<string>) {
 }
 
 export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
-  const router = useRouter();
-
   // ── Boards ────────────────────────────────────────────────────────────────
   const boardsQuery = useListBoardsApiV1BoardsGet<listBoardsApiV1BoardsGetResponse, ApiError>(
     undefined,
@@ -190,10 +187,11 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     setSelectedThread(null);
   }, [boardId]);
 
-  // ── @mention suggestions (derived from current board agents) ───────────────────
+  // ── @mention suggestions (derived from the selected channel's board agents) ─────
+  const agentBoardId = selectedChannel?.board_id ?? boardId;
   const agentNames: string[] = (
-    Array.isArray(boardAgents.current[boardId])
-      ? (boardAgents.current[boardId] as AgentRead[])
+    Array.isArray(boardAgents.current[agentBoardId])
+      ? (boardAgents.current[agentBoardId] as AgentRead[])
       : []
   ).map((a) => a.name).filter(Boolean) as string[];
 
@@ -262,12 +260,12 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     }
   };
 
-  const handleDeleteChannel = async (channelId: string) => {
+  const handleDeleteChannel = async (channelId: string, channelBoardId: string) => {
     if (!confirm("Delete this channel? This action cannot be undone.")) return;
     try {
       await deleteChannel(channelId);
-      // Reload current board channels
-      await loadBoardChannels(boardId);
+      // Reload the board this channel belongs to
+      await loadBoardChannels(channelBoardId);
       if (selectedChannel?.id === channelId) {
         setSelectedChannel(null);
         setThreads([]);
@@ -282,10 +280,11 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   const [editingChannel, setEditingChannel] = useState<ChannelRead | null>(null);
 
   const handleChannelUpdated = (updated: ChannelRead) => {
-    // Update the channel in the cache
-    const cached = boardChannels.current[boardId];
+    // Update the channel in the cache using the channel's own board_id
+    const bid = updated.board_id;
+    const cached = boardChannels.current[bid];
     if (Array.isArray(cached)) {
-      boardChannels.current[boardId] = cached.map((c) =>
+      boardChannels.current[bid] = cached.map((c) =>
         c.id === updated.id ? updated : c,
       );
       rerender();
@@ -342,11 +341,8 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   // ── Mobile navigation ─────────────────────────────────────────────────────
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("channels");
 
-  const handleSelectChannel = (channel: ChannelRead, targetBoardId?: string) => {
-    // If selecting from a different board, navigate first
-    if (targetBoardId && targetBoardId !== boardId) {
-      router.push(`/channels/${targetBoardId}`);
-    }
+  const handleSelectChannel = (channel: ChannelRead, _targetBoardId?: string) => {
+    // Select channel in-place without navigating to a different URL
     setSelectedChannel(channel);
     setSelectedThread(null);
     setMobilePanel("threads");
@@ -419,8 +415,8 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                         {board.name}
                       </span>
                     </button>
-                    {/* Add channel button */}
-                    {isCurrentBoard && !isCollapsed && (
+                    {/* Add channel button – always visible for non-collapsed boards */}
+                    {!isCollapsed && (
                       <button
                         type="button"
                         onClick={() => {
@@ -445,8 +441,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                         <p className="px-7 py-1 text-xs text-slate-400">No channels</p>
                       ) : (
                         regularChannels.map((ch) => {
-                          const isSelected =
-                            selectedChannel?.id === ch.id && isCurrentBoard;
+                          const isSelected = selectedChannel?.id === ch.id;
                           return (
                             <div
                               key={ch.id}
@@ -475,45 +470,43 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                                 </span>
                               )}
                               </button>
-                              {isCurrentBoard && (
-                                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
-                                  {ch.channel_type === "alert" && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setWebhookChannel(ch);
-                                      }}
-                                      className="rounded p-0.5 hover:text-blue-600"
-                                      title="Configure webhook"
-                                    >
-                                      <Link2 className="h-3 w-3" />
-                                    </button>
-                                  )}
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                                {ch.channel_type === "alert" && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setEditingChannel(ch);
+                                      setWebhookChannel(ch);
                                     }}
-                                    className="rounded p-0.5 hover:text-slate-700"
-                                    title="Edit channel"
+                                    className="rounded p-0.5 hover:text-blue-600"
+                                    title="Configure webhook"
                                   >
-                                    <Pencil className="h-3 w-3" />
+                                    <Link2 className="h-3 w-3" />
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void handleDeleteChannel(ch.id);
-                                    }}
-                                    className="rounded p-0.5 hover:text-rose-600"
-                                    title="Delete channel"
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              )}
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingChannel(ch);
+                                  }}
+                                  className="rounded p-0.5 hover:text-slate-700"
+                                  title="Edit channel"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleDeleteChannel(ch.id, board.id);
+                                  }}
+                                  className="rounded p-0.5 hover:text-rose-600"
+                                  title="Delete channel"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
                           );
                         })
@@ -568,7 +561,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                           </p>
                           {directChannels.map((ch) => {
                             const isSelected =
-                              selectedChannel?.id === ch.id && isCurrentBoard;
+                              selectedChannel?.id === ch.id;
                             return (
                               <button
                                 key={ch.id}
@@ -655,7 +648,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
         {selectedThread ? (
           <MessageThread
             thread={selectedThread}
-            boardId={boardId}
+            boardId={selectedChannel?.board_id ?? boardId}
             currentUserName={currentUserName}
             agentSuggestions={agentNames}
             onThreadUpdated={handleThreadUpdated}
