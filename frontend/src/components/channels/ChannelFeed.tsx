@@ -6,6 +6,7 @@ import { Hash, MessageCircle, Pin, Rss, Send } from "lucide-react";
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import { isAlertChannel } from "@/api/channels";
 import { cn } from "@/lib/utils";
+import { MarkdownEditor } from "./MarkdownEditor";
 
 type FilterTab = "active" | "resolved" | "pinned";
 
@@ -180,10 +181,10 @@ function InlineComposer({
           placeholder="Subject"
           className="w-full border-0 text-sm font-semibold text-slate-900 placeholder-slate-400 outline-none"
         />
-        <div className="mt-2 border-t border-slate-100 pt-3">
-          <textarea
+        <div className="mt-2 border-t border-slate-100">
+          <MarkdownEditor
             value={body}
-            onChange={(e) => setBody(e.target.value)}
+            onChange={setBody}
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.ctrlKey) {
                 e.preventDefault();
@@ -191,9 +192,8 @@ function InlineComposer({
               }
               if (e.key === "Escape") handleCancel();
             }}
-            placeholder="Write a message… (markdown supported, Ctrl+Enter to post)"
-            rows={4}
-            className="w-full resize-none border-0 text-sm text-slate-700 placeholder-slate-400 outline-none focus:outline-none"
+            placeholder="Write your message… (Ctrl+Enter to post)"
+            rows={6}
           />
         </div>
       </div>

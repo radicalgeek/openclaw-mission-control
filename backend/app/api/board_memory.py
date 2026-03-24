@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from app.models.boards import Board
 
 router = APIRouter(prefix="/boards/{board_id}/memory", tags=["board-memory"])
-MAX_SNIPPET_LENGTH = 800
+MAX_SNIPPET_LENGTH = 8000
 STREAM_POLL_SECONDS = 2
 IS_CHAT_QUERY = Query(default=None)
 SINCE_QUERY = Query(default=None)

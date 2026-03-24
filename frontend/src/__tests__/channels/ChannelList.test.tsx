@@ -11,7 +11,7 @@ const buildChannel = (
   board_id: "board-1",
   name: "general",
   slug: "general",
-  channel_type: "general",
+  channel_type: "discussion",
   description: "",
   is_archived: false,
   is_readonly: false,
@@ -27,8 +27,8 @@ const buildChannel = (
 describe("ChannelList", () => {
   it("renders channels grouped into alert and discussion sections", () => {
     const channels: ChannelRead[] = [
-      buildChannel({ name: "build-alerts", channel_type: "build-alerts" }),
-      buildChannel({ name: "general", channel_type: "general" }),
+      buildChannel({ name: "build-alerts", channel_type: "alert" }),
+      buildChannel({ name: "general", channel_type: "discussion" }),
     ];
 
     render(
@@ -52,7 +52,7 @@ describe("ChannelList", () => {
     const channels: ChannelRead[] = [
       buildChannel({
         name: "build-alerts",
-        channel_type: "build-alerts",
+        channel_type: "alert",
         unread_count: 5,
       }),
     ];
@@ -71,7 +71,7 @@ describe("ChannelList", () => {
 
   it("does not show unread badge when unread_count is 0", () => {
     const channels: ChannelRead[] = [
-      buildChannel({ name: "general", channel_type: "general", unread_count: 0 }),
+      buildChannel({ name: "general", channel_type: "discussion", unread_count: 0 }),
     ];
 
     render(
@@ -89,7 +89,7 @@ describe("ChannelList", () => {
     const channels: ChannelRead[] = [
       buildChannel({
         name: "production-alerts",
-        channel_type: "production-alerts",
+        channel_type: "alert",
         unread_count: 150,
       }),
     ];
@@ -106,7 +106,7 @@ describe("ChannelList", () => {
   });
 
   it("marks the selected channel with aria-current=page", () => {
-    const channel = buildChannel({ name: "devops", channel_type: "devops" });
+    const channel = buildChannel({ name: "devops", channel_type: "discussion" });
 
     render(
       <ChannelList
@@ -148,7 +148,7 @@ describe("ChannelList", () => {
   });
 
   it("calls onSelectChannel when a channel is clicked", async () => {
-    const channel = buildChannel({ name: "general", channel_type: "general" });
+    const channel = buildChannel({ name: "general", channel_type: "discussion" });
     const onSelect = vi.fn();
 
     render(
