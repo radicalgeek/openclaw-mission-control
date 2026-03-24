@@ -16,6 +16,20 @@ spec:
   - host: mission-control.radicalgeek.co.uk
     http:
       paths:
+      - path: /healthz
+        pathType: Exact
+        backend:
+          service:
+            name: mission-control-backend
+            port:
+              number: 8000
+      - path: /readyz
+        pathType: Exact
+        backend:
+          service:
+            name: mission-control-backend
+            port:
+              number: 8000
       - path: /api
         pathType: Prefix
         backend:
