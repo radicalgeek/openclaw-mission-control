@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Hash, Link2, Pencil, Plus, Rss, Trash2 } from "lucide-react";
+import { ChevronDown, Hash, Link2, MessageCircle, Pencil, Plus, Rss, Trash2, User } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -22,6 +22,7 @@ import {
   listAgentsApiV1AgentsGet,
   type listAgentsApiV1AgentsGetResponse,
 } from "@/api/generated/agents/agents";
+import type { AgentRead } from "@/api/generated/model/agentRead";
 import { ThreadList } from "./ThreadList";
 import { MessageThread } from "./MessageThread";
 import { NewThreadModal } from "./NewThreadModal";
@@ -38,6 +39,9 @@ type MobilePanel = "channels" | "threads" | "messages";
 
 // ── Per-board channel cache ──────────────────────────────────────────────────
 type BoardChannels = Record<string, ChannelRead[] | "loading" | "error">;
+
+// ── Per-board agent cache ──────────────────────────────────────────────────
+type BoardAgents = Record<string, AgentRead[] | "loading" | "error">;
 
 // ── Local-storage helpers for collapsed state ────────────────────────────────
 const LS_KEY = "mc_channels_collapsed";
@@ -114,20 +118,47 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     rerender();
   }, []);
 
-  // Load channels for the current board immediately, and for other visible
-  // (non-collapsed) boards lazily on mount.
+  // ── Agent cache (all boards, lazy-loaded) ─────────────────────────────────
+  const boardAgents = useRef<BoardAgents>({});
+
+  const loadBoardAgents = useCallback(async (bid: string) => {
+    if (boardAgents.current[bid] === "loading") return;
+    boardAgents.current[bid] = "loading";
+    rerender();
+    try {
+      const res: listAgentsApiV1AgentsGetResponse = await listAgentsApiV1AgentsGet({
+        board_id: bid,
+        limit: 100,
+      });
+      if (res.status === 200) {
+        boardAgents.current[bid] = (res.data.items ?? []) as AgentRead[];
+      } else {
+        boardAgents.current[bid] = "error";
+      }
+    } catch {
+      boardAgents.current[bid] = "error";
+    }
+    rerender();
+  }, []);
+
+  // Load channels + agents for the current board immediately, and for other
+  // visible (non-collapsed) boards lazily on mount.
   useEffect(() => {
     if (!boardId) return;
     void loadBoardChannels(boardId);
-  }, [boardId, loadBoardChannels]);
+    void loadBoardAgents(boardId);
+  }, [boardId, loadBoardChannels, loadBoardAgents]);
 
   useEffect(() => {
     for (const board of allBoards) {
       if (!collapsed.has(board.id) && !(board.id in boardChannels.current)) {
         void loadBoardChannels(board.id);
       }
+      if (!collapsed.has(board.id) && !(board.id in boardAgents.current)) {
+        void loadBoardAgents(board.id);
+      }
     }
-  }, [allBoards, collapsed, loadBoardChannels]);
+  }, [allBoards, collapsed, loadBoardChannels, loadBoardAgents]);
 
   // ── Channel/thread/message selection ─────────────────────────────────────
   const currentBoardChannels: ChannelRead[] =
@@ -140,13 +171,14 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [selectedThread, setSelectedThread] = useState<ThreadRead | null>(null);
 
-  // Auto-select first channel when channel list loads
+  // Auto-select first *regular* channel when channel list loads
   const autoSelected = useRef(false);
   useEffect(() => {
     if (autoSelected.current) return;
-    if (currentBoardChannels.length > 0) {
+    const regularChannels = currentBoardChannels.filter((c) => c.channel_type !== "direct");
+    if (regularChannels.length > 0) {
       autoSelected.current = true;
-      setSelectedChannel(currentBoardChannels[0]);
+      setSelectedChannel(regularChannels[0]);
     }
   }, [currentBoardChannels]);
 
@@ -158,19 +190,12 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     setSelectedThread(null);
   }, [boardId]);
 
-  // ── Agent suggestions (for @mention) ─────────────────────────────────────
-  const [agentNames, setAgentNames] = useState<string[]>([]);
-  useEffect(() => {
-    if (!boardId) return;
-    listAgentsApiV1AgentsGet({ board_id: boardId, limit: 50 })
-      .then((res: listAgentsApiV1AgentsGetResponse) => {
-        if (res.status === 200) {
-          const names = (res.data.items ?? []).map((a) => a.name).filter(Boolean) as string[];
-          setAgentNames(names);
-        }
-      })
-      .catch(() => {/* ignore */});
-  }, [boardId]);
+  // ── @mention suggestions (derived from current board agents) ───────────────────
+  const agentNames: string[] = (
+    Array.isArray(boardAgents.current[boardId])
+      ? (boardAgents.current[boardId] as AgentRead[])
+      : []
+  ).map((a) => a.name).filter(Boolean) as string[];
 
   // ── Thread loading ────────────────────────────────────────────────────────
   const loadThreads = useCallback(async (channelId: string) => {
@@ -278,6 +303,42 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     setSelectedThread(updated);
   };
 
+  // ── Direct messages ───────────────────────────────────────────────────────
+  const [isDmLoading, setIsDmLoading] = useState<string | null>(null); // agentId being opened
+
+  const handleOpenDM = async (agent: AgentRead, targetBoardId: string) => {
+    setIsDmLoading(agent.id);
+    try {
+      // Check cache for an existing DM channel with this agent
+      const cached = boardChannels.current[targetBoardId];
+      const existing = Array.isArray(cached)
+        ? cached.find(
+            (c) => c.channel_type === "direct" && c.webhook_source_filter === agent.id,
+          )
+        : undefined;
+
+      if (existing) {
+        handleSelectChannel(existing, targetBoardId);
+        return;
+      }
+
+      // Create a new DM channel (webhook_source_filter stores the agent UUID)
+      const result = await createChannel(targetBoardId, {
+        name: agent.name,
+        channel_type: "direct",
+        webhook_source_filter: agent.id,
+        description: `Direct messages with ${agent.name}`,
+      });
+
+      if (result.status === 200 || result.status === 201) {
+        await loadBoardChannels(targetBoardId);
+        handleSelectChannel(result.data, targetBoardId);
+      }
+    } finally {
+      setIsDmLoading(null);
+    }
+  };
+
   // ── Mobile navigation ─────────────────────────────────────────────────────
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("channels");
 
@@ -327,6 +388,10 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                 ? channelsState
                 : [];
               const isLoadingChList = channelsState === "loading";
+              const regularChannels = boardChList.filter((c) => c.channel_type !== "direct");
+              const directChannels = boardChList.filter((c) => c.channel_type === "direct");
+              const agentsState = boardAgents.current[board.id];
+              const boardAgentList: AgentRead[] = Array.isArray(agentsState) ? agentsState : [];
 
               return (
                 <div key={board.id} className="mb-1">
@@ -350,7 +415,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                     <span className="truncate text-xs font-bold uppercase tracking-wider">
                       {board.name}
                     </span>
-                    {/* Add channel button */}
+                    {/* Add thread button */}
                     {isCurrentBoard && !isCollapsed && (
                       <Plus
                         className="ml-auto h-3.5 w-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:text-slate-700"
@@ -363,15 +428,16 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                     )}
                   </button>
 
-                  {/* Channel list under this board */}
+                  {/* Expanded board content */}
                   {!isCollapsed && (
                     <div>
+                      {/* Regular channels (discussion / alert) */}
                       {isLoadingChList ? (
                         <p className="px-7 py-1 text-xs text-slate-400">Loading…</p>
-                      ) : boardChList.length === 0 ? (
+                      ) : regularChannels.length === 0 ? (
                         <p className="px-7 py-1 text-xs text-slate-400">No channels</p>
                       ) : (
-                        boardChList.map((ch) => {
+                        regularChannels.map((ch) => {
                           const isSelected =
                             selectedChannel?.id === ch.id && isCurrentBoard;
                           return (
@@ -444,6 +510,82 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                             </div>
                           );
                         })
+                      )}
+
+                      {/* Members section */}
+                      {boardAgentList.length > 0 && (
+                        <div className="mt-2 mb-1">
+                          <p className="px-3 pb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            Members
+                          </p>
+                          {boardAgentList.map((agent) => {
+                            const isActive = agent.status === "active";
+                            return (
+                              <button
+                                key={agent.id}
+                                type="button"
+                                onClick={() => void handleOpenDM(agent, board.id)}
+                                disabled={isDmLoading === agent.id}
+                                title={`DM ${agent.name}`}
+                                className={cn(
+                                  "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
+                                  "mx-1 w-[calc(100%-8px)]",
+                                  "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                                  isDmLoading === agent.id && "opacity-50 cursor-wait",
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "h-2 w-2 flex-shrink-0 rounded-full",
+                                    isActive ? "bg-green-400" : "bg-slate-300",
+                                  )}
+                                />
+                                <User className="h-3 w-3 flex-shrink-0 text-slate-400" />
+                                <span className="truncate">{agent.name}</span>
+                                {agent.is_board_lead && (
+                                  <span className="ml-auto flex-shrink-0 text-[9px] font-bold uppercase text-slate-400">
+                                    Lead
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Direct Messages section */}
+                      {directChannels.length > 0 && (
+                        <div className="mt-2 mb-1">
+                          <p className="px-3 pb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            Direct Messages
+                          </p>
+                          {directChannels.map((ch) => {
+                            const isSelected =
+                              selectedChannel?.id === ch.id && isCurrentBoard;
+                            return (
+                              <button
+                                key={ch.id}
+                                type="button"
+                                onClick={() => handleSelectChannel(ch, board.id)}
+                                className={cn(
+                                  "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
+                                  "mx-1 w-[calc(100%-8px)]",
+                                  isSelected
+                                    ? "bg-slate-200 text-slate-900 font-medium"
+                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                                )}
+                              >
+                                <MessageCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span className="truncate">{ch.name}</span>
+                                {(ch.unread_count ?? 0) > 0 && (
+                                  <span className="ml-auto flex-shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                    {ch.unread_count}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   )}

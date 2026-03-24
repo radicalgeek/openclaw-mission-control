@@ -8,7 +8,13 @@ import { customFetch } from "./mutator";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type ChannelType = "alert" | "discussion";
+export type ChannelType = "alert" | "discussion" | "direct";
+
+/**
+ * Direct channels use webhook_source_filter to store the target agent's UUID.
+ * This is intentional – direct channels never receive webhook events.
+ */
+export type DirectChannelAgentId = string; // UUID
 
 export type ChannelRead = {
   id: string;
@@ -86,6 +92,15 @@ export type ThreadUpdate = {
   topic?: string;
 };
 
+export type ChannelCreate = {
+  name: string;
+  description?: string;
+  channel_type?: ChannelType;
+  is_readonly?: boolean;
+  position?: number;
+  webhook_source_filter?: string | null;
+};
+
 type ApiResponse<T> = { data: T; status: number; headers: Headers };
 
 // ─── Board Channels ───────────────────────────────────────────────────────────
@@ -96,6 +111,23 @@ export const getBoardChannels = (
   customFetch<ApiResponse<ChannelRead[]>>(
     `/api/v1/boards/${boardId}/channels`,
     { method: "GET" },
+  );
+
+export const createChannel = (
+  boardId: string,
+  payload: ChannelCreate,
+): Promise<ApiResponse<ChannelRead>> =>
+  customFetch<ApiResponse<ChannelRead>>(
+    `/api/v1/boards/${boardId}/channels`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+
+export const deleteChannel = (
+  channelId: string,
+): Promise<ApiResponse<{ ok: boolean }>> =>
+  customFetch<ApiResponse<{ ok: boolean }>>(
+    `/api/v1/channels/${channelId}`,
+    { method: "DELETE" },
   );
 
 // ─── Channel ──────────────────────────────────────────────────────────────────
@@ -190,33 +222,7 @@ export const sendMessage = (
     { method: "POST", body: JSON.stringify(payload) },
   );
 
-// ─── Channel Management ───────────────────────────────────────────────────────
-
-export type ChannelCreate = {
-  name: string;
-  description?: string;
-  channel_type?: ChannelType;
-  is_readonly?: boolean;
-  position?: number;
-  webhook_source_filter?: string | null;
-};
-
-export const createChannel = (
-  boardId: string,
-  payload: ChannelCreate,
-): Promise<ApiResponse<ChannelRead>> =>
-  customFetch<ApiResponse<ChannelRead>>(
-    `/api/v1/boards/${boardId}/channels`,
-    { method: "POST", body: JSON.stringify(payload) },
-  );
-
-export const deleteChannel = (
-  channelId: string,
-): Promise<ApiResponse<{ ok: boolean }>> =>
-  customFetch<ApiResponse<{ ok: boolean }>>(
-    `/api/v1/channels/${channelId}`,
-    { method: "DELETE" },
-  );
+// ─── Webhook info ─────────────────────────────────────────────────────────────
 
 export type ChannelWebhookInfo = {
   webhook_url: string | null;
