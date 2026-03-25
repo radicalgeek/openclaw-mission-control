@@ -6,13 +6,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { CheckCircle, Pin, PinOff, Send, X } from "lucide-react";
+import { CheckCircle, Pin, PinOff, Send, TicketPlus, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 
 import type { ThreadMessageRead, ThreadRead } from "@/api/channels";
-import { getThreadMessages, sendMessage, updateThread } from "@/api/channels";
+import { createTaskFromThread, getThreadMessages, sendMessage, updateThread } from "@/api/channels";
 import { cn } from "@/lib/utils";
 import { WebhookEventCard } from "./WebhookEventCard";
 import { LinkedTaskBadge } from "./LinkedTaskBadge";
@@ -174,6 +174,8 @@ export function MessageThread({
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isUpdatingThread, setIsUpdatingThread] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [createTaskError, setCreateTaskError] = useState<string | null>(null);
   const [mentionFilter, setMentionFilter] = useState<string | null>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [unreadWhileScrolledUp, setUnreadWhileScrolledUp] = useState(0);
@@ -309,6 +311,26 @@ export function MessageThread({
     }
   }, [currentThread, onThreadUpdated]);
 
+  const handleCreateTask = useCallback(async () => {
+    setIsCreatingTask(true);
+    setCreateTaskError(null);
+    try {
+      const result = await createTaskFromThread(currentThread.id);
+      if (result.status === 200) {
+        setCurrentThread(result.data);
+        onThreadUpdated?.(result.data);
+        // Reload messages so the system notification appears
+        void loadMessages(currentThread.id);
+      } else {
+        setCreateTaskError("Unable to create task. Please try again.");
+      }
+    } catch {
+      setCreateTaskError("Unable to create task. Please try again.");
+    } finally {
+      setIsCreatingTask(false);
+    }
+  }, [currentThread.id, onThreadUpdated, loadMessages]);
+
   const handleTogglePinned = useCallback(async () => {
     setIsUpdatingThread(true);
     try {
@@ -410,6 +432,18 @@ export function MessageThread({
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5">
+            {!currentThread.task_id ? (
+              <button
+                type="button"
+                onClick={() => void handleCreateTask()}
+                disabled={isCreatingTask}
+                title="Create a task from this conversation"
+                className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+              >
+                <TicketPlus className="h-3.5 w-3.5" />
+                {isCreatingTask ? "Creating…" : "Create issue"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleTogglePinned()}
@@ -461,6 +495,9 @@ export function MessageThread({
               boardId={boardId}
             />
           </div>
+        ) : null}
+        {createTaskError ? (
+          <p className="mt-1 text-xs text-rose-600">{createTaskError}</p>
         ) : null}
       </div>
 

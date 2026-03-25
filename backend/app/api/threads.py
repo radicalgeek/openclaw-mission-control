@@ -8,12 +8,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import asc, col, desc, select
 
-from app.api.deps import require_org_member, require_user_or_agent
+from app.api.deps import require_org_member, require_user_auth, require_user_or_agent
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db import crud
 from app.db.session import get_session
+from app.models.boards import Board
 from app.models.channel import Channel
 from app.models.tasks import Task
 from app.models.thread import Thread
@@ -21,6 +22,10 @@ from app.models.thread_message import ThreadMessage
 from app.schemas.threads import ThreadCreate, ThreadLinkTask, ThreadRead, ThreadUpdate
 
 if TYPE_CHECKING:
+    from app.schemas.auth import AuthContext
+
+if TYPE_CHECKING:
+    from app.core.auth import AuthContext
     from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(tags=["channels"])
@@ -28,6 +33,7 @@ logger = get_logger(__name__)
 
 SESSION_DEP = Depends(get_session)
 ORG_MEMBER_DEP = Depends(require_org_member)
+USER_AUTH_DEP = Depends(require_user_auth)
 ACTOR_DEP = Depends(require_user_or_agent)
 
 
@@ -267,6 +273,71 @@ async def unlink_thread_from_task(
             task.updated_at = utcnow()
     thread.task_id = None
     thread.updated_at = utcnow()
+    await session.commit()
+    await session.refresh(thread)
+    return _to_thread_read(thread)
+
+
+@router.post("/threads/{thread_id}/create-task", response_model=ThreadRead, tags=["channels"])
+async def create_task_from_thread(
+    thread_id: UUID,
+    session: AsyncSession = SESSION_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
+) -> ThreadRead:
+    """Create a new board task from this thread and link them bidirectionally.
+
+    The thread topic becomes the task title. The thread is marked active (not resolved)
+    and will show a LinkedTaskBadge linking to the created task.
+    """
+    _channels_enabled_check()
+    thread = await _require_thread(session, thread_id)
+
+    if thread.task_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Thread already has a linked task.",
+        )
+
+    channel = await session.get(Channel, thread.channel_id)
+    if channel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    board = await session.get(Board, channel.board_id)
+    if board is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    created_by_user_id = None
+    if auth.user is not None:
+        created_by_user_id = auth.user.id
+
+    task = Task(
+        board_id=board.id,
+        title=thread.topic,
+        status="inbox",
+        priority="medium",
+        thread_id=thread.id,
+        created_by_user_id=created_by_user_id,
+    )
+    session.add(task)
+    await session.flush()  # obtain task.id
+
+    # Link bidirectionally
+    thread.task_id = task.id
+    thread.is_resolved = False
+    thread.updated_at = utcnow()
+
+    # Add a system message noting the task was created
+    system_msg = ThreadMessage(
+        thread_id=thread.id,
+        sender_type="system",
+        sender_name="System",
+        content=f"Task created from this conversation: #{task.id}",
+        content_type="system_notification",
+    )
+    session.add(system_msg)
+    thread.message_count = (thread.message_count or 0) + 1
+    thread.last_message_at = system_msg.created_at
+
     await session.commit()
     await session.refresh(thread)
     return _to_thread_read(thread)

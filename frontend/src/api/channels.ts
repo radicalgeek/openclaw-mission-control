@@ -197,6 +197,18 @@ export const updateThread = (
     { method: "PATCH", body: JSON.stringify(payload) },
   );
 
+/**
+ * Create a new board task from this thread and link them bidirectionally.
+ * The thread topic becomes the task title. Returns the updated thread with task_id set.
+ */
+export const createTaskFromThread = (
+  threadId: string,
+): Promise<ApiResponse<ThreadRead>> =>
+  customFetch<ApiResponse<ThreadRead>>(
+    `/api/v1/threads/${threadId}/create-task`,
+    { method: "POST" },
+  );
+
 // ─── Messages ─────────────────────────────────────────────────────────────────
 
 export const getThreadMessages = (
