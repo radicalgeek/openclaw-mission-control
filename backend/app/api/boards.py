@@ -205,6 +205,12 @@ async def _apply_board_update(
             updates["board_group_id"],
             organization_id=board.organization_id,
         )
+    if "is_platform" in updates and updates["is_platform"] is True:
+        await _require_no_existing_platform_board(
+            session,
+            board.organization_id,
+            exclude_board_id=board.id,
+        )
     crud.apply_updates(board, updates)
     if updates.get("board_type") == "goal" and (not board.objective or not board.success_metrics):
         # Validate only when explicitly switching to goal boards.
@@ -476,6 +482,35 @@ async def list_boards(
     return await paginate(session, statement)
 
 
+async def _require_no_existing_platform_board(
+    session: AsyncSession,
+    organization_id: UUID,
+    *,
+    exclude_board_id: UUID | None = None,
+) -> None:
+    """Validate that no other board in the organization is marked as platform.
+
+    Raises:
+        HTTPException: 409 if another platform board already exists.
+    """
+    statement = (
+        select(Board)
+        .where(col(Board.organization_id) == organization_id)
+        .where(col(Board.is_platform).is_(True))
+    )
+    if exclude_board_id is not None:
+        statement = statement.where(col(Board.id) != exclude_board_id)
+    existing_platform_board = (await session.scalars(statement)).first()
+    if existing_platform_board is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Only one platform board is allowed per organization. "
+                f"Board '{existing_platform_board.name}' is currently the platform board."
+            ),
+        )
+
+
 @router.post("", response_model=BoardRead)
 async def create_board(
     payload: BoardCreate,
@@ -485,6 +520,8 @@ async def create_board(
     ctx: OrganizationContext = ORG_ADMIN_DEP,
 ) -> Board:
     """Create a board in the active organization."""
+    if payload.is_platform:
+        await _require_no_existing_platform_board(session, ctx.organization.id)
     data = payload.model_dump()
     data["organization_id"] = ctx.organization.id
     board = await crud.create(session, Board, **data)
@@ -492,6 +529,7 @@ async def create_board(
     # ── Channel lifecycle hook ────────────────────────────────────────────────
     try:
         from app.services.channel_lifecycle import on_board_created as _on_board_created
+
         await _on_board_created(session, board)
     except Exception:
         logger.exception("board.channel_lifecycle.create_failed board_id=%s", board.id)
@@ -619,6 +657,7 @@ async def delete_board(
     # ── Channel lifecycle hook (before deletion, so FK lookups still work) ───
     try:
         from app.services.channel_lifecycle import on_board_deleted as _on_board_deleted
+
         await _on_board_deleted(session, board, hard_delete=True)
     except Exception:
         logger.exception("board.channel_lifecycle.delete_failed board_id=%s", board.id)
