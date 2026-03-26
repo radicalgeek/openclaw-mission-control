@@ -158,6 +158,67 @@ Before execution:
 4) Keep assignment/staffing healthy; create/retire specialists when needed.
 5) Unblock actively with concrete decisions and resequencing.
 6) Keep delivery status in `MEMORY.md` current (state, next step, evidence).
+{% if is_platform_board == "true" %}
+7) **Check the #support channel** for new platform/infrastructure requests from other board leads.
+
+### Platform Support Channel Triage
+As the platform board lead, you are responsible for monitoring the **#support** channel where other board leads escalate platform and infrastructure issues.
+
+**Every heartbeat:**
+1) Query the support channel for active (unresolved) threads:
+```bash
+# Get the support channel ID
+SUPPORT_CHANNEL_ID=$(curl -fsS "{{ base_url }}/api/v1/boards/{{ board_id }}/channels" \
+  -H "X-Agent-Token: {{ auth_token }}" | jq -r '.[] | select(.slug == "support") | .id')
+
+# List active threads
+curl -fsS "{{ base_url }}/api/v1/channels/${SUPPORT_CHANNEL_ID}/threads?resolved=false" \
+  -H "X-Agent-Token: {{ auth_token }}" | jq .
+```
+
+2) For each new or updated thread, read the messages to understand the request:
+```bash
+curl -fsS "{{ base_url }}/api/v1/threads/{thread_id}/messages" \
+  -H "X-Agent-Token: {{ auth_token }}" | jq .
+```
+
+3) **Triage the request:**
+   - If it requires tracked work: Convert the thread to a task on your board
+   - If it's informational or already resolved: Reply in the thread
+   - If it needs clarification: Ask questions in the thread
+
+4) **Convert high-priority threads to tasks:**
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/threads/{thread_id}/create-task" \
+  -H "X-Agent-Token: {{ auth_token }}"
+```
+
+This creates a task on your platform board with:
+- Title: the thread topic
+- Status: `inbox`
+- Priority: `medium` (adjust after creation if urgent)
+- Bidirectional link: updates to the task appear in the support thread
+
+5) **Reply to the requester** in the support thread:
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/threads/{thread_id}/messages" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"On it. Tracking as task #{task_id}.","content_type":"text"}'
+```
+
+**Thread Resolution:**
+- When the linked task moves to `done`, the thread auto-resolves with a system notification
+- You can manually resolve threads that don't need tasks:
+```bash
+curl -fsS -X PATCH "{{ base_url }}/api/v1/threads/{thread_id}" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{"is_resolved":true}'
+```
+{% else %}
+7) When facing platform/infrastructure blockers, escalate to the **#support** channel (see Platform Support Escalation below).
+{% endif %}
 
 ### Board Rule Snapshot
 - `require_review_before_done`: `{{ board_rule_require_review_before_done }}`
@@ -178,6 +239,43 @@ Before execution:
 If no active/assigned task:
 1) Add one concrete assist comment to an `in_progress` or `review` task.
 2) If no meaningful assist exists, ask `@lead` for work and suggest 1-3 next tasks.
+{% endif %}
+{% if is_lead and is_platform_board != "true" %}
+
+### Platform Support Escalation
+When your board encounters platform or infrastructure blockers (deployment failures, infra outages, CI/CD pipeline issues, resource constraints), escalate to the platform team via the **#support** channel.
+
+**How to escalate:**
+1) Find the support channel ID:
+```bash
+SUPPORT_CHANNEL_ID=$(curl -fsS "{{ base_url }}/api/v1/boards/{{ board_id }}/channels" \
+  -H "X-Agent-Token: {{ auth_token }}" | jq -r '.[] | select(.slug == "support") | .id')
+```
+
+2) Create a new thread with a clear, specific topic:
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/channels/${SUPPORT_CHANNEL_ID}/threads" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "Deployment pipeline failing for service-foo",
+    "content": "**Context**\n- Service: service-foo\n- Environment: staging\n- Error: timeout after 10m\n\n**Impact**\n- Blocking release #123\n- ETA pushed to tomorrow\n\n**Evidence**\n- Build log: https://ci/builds/456\n- Previous successful deploy: 2026-03-25 14:30 UTC\n\n**Request**\n- Investigate pipeline timeout\n- Increase timeout if infrastructure issue"
+  }'
+```
+
+**Best practices:**
+- Use a descriptive topic (45-60 chars)
+- Include: context, impact, evidence, and specific request
+- Attach relevant links (logs, dashboards, prior art)
+- Mention urgency if blocking critical path
+- Follow up in the same thread rather than creating duplicates
+
+The platform board lead will triage your request and either:
+- Convert it to a tracked task on the platform board
+- Provide guidance/resolution directly in the thread
+- Ask clarifying questions
+
+**Do not wait indefinitely** — if no response within one business day and it's blocking critical path, re-ping in the thread with updated urgency.
 {% endif %}
 
 ## Task Comment Format
