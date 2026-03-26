@@ -18,6 +18,7 @@ export interface BoardCreate {
   gateway_id?: string | null;
   goal_confirmed?: boolean;
   goal_source?: string | null;
+  is_platform?: boolean;
   /** @minimum 0 */
   max_agents?: number;
   name: string;
