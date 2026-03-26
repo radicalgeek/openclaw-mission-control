@@ -8,7 +8,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import asc, col, desc, select
 
-from app.api.deps import require_org_member, require_user_auth, require_user_or_agent
+from app.api.deps import (
+    ActorContext,
+    require_org_member,
+    require_user_auth,
+    require_user_or_agent,
+)
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
@@ -282,12 +287,14 @@ async def unlink_thread_from_task(
 async def create_task_from_thread(
     thread_id: UUID,
     session: AsyncSession = SESSION_DEP,
-    auth: AuthContext = USER_AUTH_DEP,
+    actor: ActorContext = ACTOR_DEP,
 ) -> ThreadRead:
     """Create a new board task from this thread and link them bidirectionally.
 
     The thread topic becomes the task title. The thread is marked active (not resolved)
     and will show a LinkedTaskBadge linking to the created task.
+
+    Accessible by both users and agents.
     """
     _channels_enabled_check()
     thread = await _require_thread(session, thread_id)
@@ -306,9 +313,10 @@ async def create_task_from_thread(
     if board is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
+    # Set created_by_user_id only when a user creates the task
     created_by_user_id = None
-    if auth.user is not None:
-        created_by_user_id = auth.user.id
+    if actor.actor_type == "user" and actor.user is not None:
+        created_by_user_id = actor.user.id
 
     task = Task(
         board_id=board.id,
