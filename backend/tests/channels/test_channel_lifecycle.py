@@ -214,9 +214,9 @@ async def test_on_agent_added_subscribes_to_discussion_channels() -> None:
             )
         ).all()
 
-        # Should only be subscribed to 5 discussion channels
-        assert len(subs) == 5
-        assert all(s.notify_on == "mentions" for s in subs)
+        # Should be subscribed to all 9 default channels (4 alert + 5 discussion)
+        assert len(subs) == 9
+        assert all(s.notify_on == "all" for s in subs)
 
     await engine.dispose()
 
@@ -237,7 +237,7 @@ async def test_on_agent_removed_removes_all_subscriptions() -> None:
                 select(ChannelSubscription).where(col(ChannelSubscription.agent_id) == agent.id)
             )
         ).all()
-        assert len(subs_before) == 5
+        assert len(subs_before) == 9  # All channels (4 alert + 5 discussion)
 
         await on_agent_removed_from_board(session, board, agent.id)
 

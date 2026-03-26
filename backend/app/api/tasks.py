@@ -23,6 +23,7 @@ from app.api.deps import (
     require_user_auth,
     require_user_or_agent,
 )
+from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db import crud
 from app.db.pagination import paginate
@@ -87,6 +88,7 @@ if TYPE_CHECKING:
     from app.models.users import User
 
 router = APIRouter(prefix="/boards/{board_id}/tasks", tags=["tasks"])
+logger = get_logger(__name__)
 
 ALLOWED_STATUSES = {"inbox", "in_progress", "review", "done"}
 TASK_EVENT_TYPES = {
@@ -1983,8 +1985,8 @@ async def _task_read_response(
     try:
         from app.core.config import settings as _settings  # noqa: PLC0415
         if _settings.channels_enabled and task.thread_id is not None:
-            from app.models.thread import Thread as _Thread  # noqa: PLC0415
             from app.models.channel import Channel as _Channel  # noqa: PLC0415
+            from app.models.thread import Thread as _Thread  # noqa: PLC0415
             from app.schemas.tasks import ChannelInfo  # noqa: PLC0415
             thread = await session.get(_Thread, task.thread_id)
             if thread is not None:
@@ -2350,6 +2352,23 @@ async def _apply_lead_task_update(
     await session.commit()
     await session.refresh(update.task)
     await _lead_notify_new_assignee(session, update=update)
+
+    # Auto-resolve thread when task moves to done
+    from app.core.config import settings
+
+    if (
+        settings.channels_enabled
+        and update.previous_status != "done"
+        and update.task.status == "done"
+        and update.task.thread_id is not None
+    ):
+        try:
+            from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+            await auto_resolve_thread_for_completed_task(session, update.task)
+        except Exception:
+            logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
+
     return await _task_read_response(
         session,
         task=update.task,
@@ -2732,6 +2751,22 @@ async def _finalize_updated_task(
     await _record_task_update_activity(session, update=update)
     await _notify_task_update_assignment_changes(session, update=update)
 
+    # Auto-resolve thread when task moves to done
+    from app.core.config import settings
+
+    if (
+        settings.channels_enabled
+        and update.previous_status != "done"
+        and update.task.status == "done"
+        and update.task.thread_id is not None
+    ):
+        try:
+            from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+            await auto_resolve_thread_for_completed_task(session, update.task)
+        except Exception:
+            logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
+
     return await _task_read_response(
         session,
         task=update.task,
@@ -2759,9 +2794,9 @@ async def create_task_comment(
         from app.core.config import settings as _settings  # noqa: PLC0415
 
         if _settings.channels_enabled and task.thread_id is not None:
-            from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
-            from app.models.thread import Thread as Thr  # noqa: PLC0415
             from app.core.time import utcnow as _utcnow  # noqa: PLC0415
+            from app.models.thread import Thread as Thr  # noqa: PLC0415
+            from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
 
             thread = await session.get(Thr, task.thread_id)
             if thread is not None:

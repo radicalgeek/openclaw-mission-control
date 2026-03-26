@@ -205,6 +205,12 @@ async def _apply_board_update(
             updates["board_group_id"],
             organization_id=board.organization_id,
         )
+    if "is_platform" in updates and updates["is_platform"] is True:
+        await _require_no_existing_platform_board(
+            session,
+            board.organization_id,
+            exclude_board_id=board.id,
+        )
     crud.apply_updates(board, updates)
     if updates.get("board_type") == "goal" and (not board.objective or not board.success_metrics):
         # Validate only when explicitly switching to goal boards.
@@ -476,6 +482,35 @@ async def list_boards(
     return await paginate(session, statement)
 
 
+async def _require_no_existing_platform_board(
+    session: AsyncSession,
+    organization_id: UUID,
+    *,
+    exclude_board_id: UUID | None = None,
+) -> None:
+    """Validate that no other board in the organization is marked as platform.
+
+    Raises:
+        HTTPException: 409 if another platform board already exists.
+    """
+    statement = (
+        select(Board)
+        .where(col(Board.organization_id) == organization_id)
+        .where(col(Board.is_platform).is_(True))
+    )
+    if exclude_board_id is not None:
+        statement = statement.where(col(Board.id) != exclude_board_id)
+    existing_platform_board = (await session.scalars(statement)).first()
+    if existing_platform_board is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Only one platform board is allowed per organization. "
+                f"Board '{existing_platform_board.name}' is currently the platform board."
+            ),
+        )
+
+
 @router.post("", response_model=BoardRead)
 async def create_board(
     payload: BoardCreate,
@@ -485,6 +520,8 @@ async def create_board(
     ctx: OrganizationContext = ORG_ADMIN_DEP,
 ) -> Board:
     """Create a board in the active organization."""
+    if payload.is_platform:
+        await _require_no_existing_platform_board(session, ctx.organization.id)
     data = payload.model_dump()
     data["organization_id"] = ctx.organization.id
     board = await crud.create(session, Board, **data)
@@ -492,6 +529,7 @@ async def create_board(
     # ── Channel lifecycle hook ────────────────────────────────────────────────
     try:
         from app.services.channel_lifecycle import on_board_created as _on_board_created
+
         await _on_board_created(session, board)
     except Exception:
         logger.exception("board.channel_lifecycle.create_failed board_id=%s", board.id)
@@ -557,6 +595,7 @@ async def update_board(
         if hasattr(board, field_name)
     }
     previous_group_id = board.board_group_id
+    previous_is_platform = board.is_platform
     updated = await _apply_board_update(payload=payload, session=session, board=board)
     changed_fields = {
         field_name: (previous_value, getattr(updated, field_name))
@@ -564,6 +603,7 @@ async def update_board(
         if previous_value != getattr(updated, field_name)
     }
     new_group_id = updated.board_group_id
+    new_is_platform = updated.is_platform
     if previous_group_id is not None and previous_group_id != new_group_id:
         previous_group = await crud.get_by_id(session, BoardGroup, previous_group_id)
         if previous_group is not None:
@@ -594,6 +634,51 @@ async def update_board(
                     updated.id,
                     new_group_id,
                 )
+    # ── Channel lifecycle: platform status change ────────────────────────────
+    if previous_is_platform != new_is_platform:
+        try:
+            if new_is_platform:
+                from app.services.channel_lifecycle import on_board_marked_platform
+
+                await on_board_marked_platform(session, updated)
+            else:
+                from app.services.channel_lifecycle import on_board_unmarked_platform
+
+                await on_board_unmarked_platform(session, updated)
+        except Exception:
+            logger.exception(
+                "board.channel_lifecycle.platform_status_change_failed board_id=%s new_is_platform=%s",
+                updated.id,
+                new_is_platform,
+            )
+    # ──────────────────────────────────────────────────────────────────────────
+    # Trigger template sync when is_platform status changes
+    if "is_platform" in changed_fields:
+        try:
+            from app.services.openclaw.provisioning_db import (
+                GatewayTemplateSyncOptions,
+                OpenClawProvisioningService,
+            )
+
+            gateway = await crud.get_by_id(session, Gateway, updated.gateway_id)
+            if gateway:
+                await OpenClawProvisioningService(session).sync_gateway_templates(
+                    gateway,
+                    GatewayTemplateSyncOptions(
+                        user=None,
+                        include_main=False,
+                        lead_only=True,
+                        reset_sessions=False,
+                        rotate_tokens=False,
+                        force_bootstrap=False,
+                        overwrite=False,
+                    ),
+                )
+        except Exception:
+            logger.exception(
+                "board.platform_toggle.template_sync_failed board_id=%s",
+                updated.id,
+            )
     if changed_fields:
         try:
             await _notify_lead_on_board_update(
@@ -619,6 +704,7 @@ async def delete_board(
     # ── Channel lifecycle hook (before deletion, so FK lookups still work) ───
     try:
         from app.services.channel_lifecycle import on_board_deleted as _on_board_deleted
+
         await _on_board_deleted(session, board, hard_delete=True)
     except Exception:
         logger.exception("board.channel_lifecycle.delete_failed board_id=%s", board.id)

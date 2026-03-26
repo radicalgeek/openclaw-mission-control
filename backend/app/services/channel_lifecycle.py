@@ -13,6 +13,7 @@ from sqlmodel import col, delete, select
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.time import utcnow
 from app.models.agents import Agent
 from app.models.channel import Channel
 from app.models.channel_subscription import ChannelSubscription
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
     from app.models.boards import Board
+    from app.models.tasks import Task
 
 logger = get_logger(__name__)
 
@@ -135,6 +137,17 @@ def get_default_channel_definitions() -> list[_ChannelDef]:
     ]
 
 
+_PLATFORM_SUPPORT_CHANNEL = _ChannelDef(
+    name="Support",
+    slug="support",
+    channel_type="discussion",
+    description="Cross-board support requests for the platform/infrastructure team",
+    is_readonly=False,
+    webhook_source_filter=None,
+    position=9,
+)
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle hooks
 # ---------------------------------------------------------------------------
@@ -180,11 +193,40 @@ async def on_board_created(
             )
             session.add(sub)
 
+    # If this is a platform board, create the Support channel
+    if board.is_platform:
+        support_channel = Channel(
+            board_id=board.id,
+            name=_PLATFORM_SUPPORT_CHANNEL.name,
+            slug=_PLATFORM_SUPPORT_CHANNEL.slug,
+            channel_type=_PLATFORM_SUPPORT_CHANNEL.channel_type,
+            description=_PLATFORM_SUPPORT_CHANNEL.description,
+            is_readonly=_PLATFORM_SUPPORT_CHANNEL.is_readonly,
+            webhook_source_filter=_PLATFORM_SUPPORT_CHANNEL.webhook_source_filter,
+            position=_PLATFORM_SUPPORT_CHANNEL.position,
+        )
+        session.add(support_channel)
+        await session.flush()
+
+        # Subscribe the lead to Support channel
+        if lead_agent_id is not None:
+            sub = ChannelSubscription(
+                channel_id=support_channel.id,
+                agent_id=lead_agent_id,
+                notify_on="all",
+            )
+            session.add(sub)
+
     await session.commit()
+
+    # Subscribe this board's lead to existing platform Support channel (if any)
+    await sync_platform_support_subscribers(session, board.gateway_id)
+
     logger.info(
-        "channel_lifecycle.board_created board_id=%s channels_created=%s",
+        "channel_lifecycle.board_created board_id=%s channels_created=%s is_platform=%s",
         board.id,
         len(channels),
+        board.is_platform,
     )
 
 
@@ -337,6 +379,10 @@ async def on_board_lead_changed(
             )
 
     await session.commit()
+
+    # Sync platform Support channel subscriptions for the new lead
+    await sync_platform_support_subscribers(session, board.gateway_id)
+
     logger.info(
         "channel_lifecycle.lead_changed board_id=%s old=%s new=%s",
         board.id,
@@ -430,3 +476,285 @@ async def on_agent_removed_from_board(
         agent_id,
         len(subs),
     )
+
+
+async def on_board_marked_platform(
+    session: AsyncSession,
+    board: Board,
+) -> None:
+    """Create Support channel and sync cross-board subscriptions when board becomes platform."""
+    if not settings.channels_enabled:
+        return
+
+    # Check if Support channel already exists
+    existing = (
+        await session.exec(
+            select(Channel).where(
+                col(Channel.board_id) == board.id,
+                col(Channel.slug) == "support",
+            )
+        )
+    ).first()
+
+    if existing is None:
+        # Create Support channel
+        support_channel = Channel(
+            board_id=board.id,
+            name=_PLATFORM_SUPPORT_CHANNEL.name,
+            slug=_PLATFORM_SUPPORT_CHANNEL.slug,
+            channel_type=_PLATFORM_SUPPORT_CHANNEL.channel_type,
+            description=_PLATFORM_SUPPORT_CHANNEL.description,
+            is_readonly=_PLATFORM_SUPPORT_CHANNEL.is_readonly,
+            webhook_source_filter=_PLATFORM_SUPPORT_CHANNEL.webhook_source_filter,
+            position=_PLATFORM_SUPPORT_CHANNEL.position,
+        )
+        session.add(support_channel)
+        await session.flush()
+
+        # Subscribe board's lead
+        lead = (
+            await session.exec(
+                select(Agent).where(
+                    col(Agent.board_id) == board.id,
+                    col(Agent.is_board_lead).is_(True),
+                )
+            )
+        ).first()
+        if lead is not None:
+            session.add(
+                ChannelSubscription(
+                    channel_id=support_channel.id,
+                    agent_id=lead.id,
+                    notify_on="all",
+                )
+            )
+
+        await session.commit()
+        logger.info(
+            "channel_lifecycle.board_marked_platform board_id=%s support_channel_created=True",
+            board.id,
+        )
+
+    # Sync all board leads to this Support channel
+    await sync_platform_support_subscribers(session, board.gateway_id)
+
+
+async def on_board_unmarked_platform(
+    session: AsyncSession,
+    board: Board,
+) -> None:
+    """Archive Support channel and remove cross-board subscriptions when board loses platform status."""
+    if not settings.channels_enabled:
+        return
+
+    # Find and archive Support channel
+    support_channel = (
+        await session.exec(
+            select(Channel).where(
+                col(Channel.board_id) == board.id,
+                col(Channel.slug) == "support",
+            )
+        )
+    ).first()
+
+    if support_channel is not None:
+        support_channel.is_archived = True
+
+        # Remove cross-board subscriptions (agents not on this board)
+        board_agent_ids_rows = (
+            await session.exec(
+                select(Agent.id).where(col(Agent.board_id) == board.id)
+            )
+        ).all()
+        board_agent_ids = set(board_agent_ids_rows)
+
+        cross_board_subs = (
+            await session.exec(
+                select(ChannelSubscription).where(
+                    col(ChannelSubscription.channel_id) == support_channel.id,
+                    col(ChannelSubscription.agent_id).notin_(board_agent_ids),
+                )
+            )
+        ).all()
+
+        for sub in cross_board_subs:
+            await session.delete(sub)
+
+        await session.commit()
+        logger.info(
+            "channel_lifecycle.board_unmarked_platform board_id=%s support_archived=True cross_board_subs_removed=%s",
+            board.id,
+            len(cross_board_subs),
+        )
+
+
+async def sync_platform_support_subscribers(
+    session: AsyncSession,
+    gateway_id: UUID,
+) -> None:
+    """Subscribe all board leads in gateway to platform Support channel.
+    
+    Called after board creation, lead changes, or platform status changes.
+    """
+    if not settings.channels_enabled:
+        return
+
+    # Find platform board for this gateway
+    from app.models.boards import Board
+
+    platform_board = (
+        await session.exec(
+            select(Board).where(
+                col(Board.gateway_id) == gateway_id,
+                col(Board.is_platform).is_(True),
+            )
+        )
+    ).first()
+
+    if platform_board is None:
+        return
+
+    # Find Support channel on platform board
+    support_channel = (
+        await session.exec(
+            select(Channel).where(
+                col(Channel.board_id) == platform_board.id,
+                col(Channel.slug) == "support",
+                col(Channel.is_archived).is_(False),
+            )
+        )
+    ).first()
+
+    if support_channel is None:
+        return
+
+    # Find all board leads in this gateway
+    board_leads = (
+        await session.exec(
+            select(Agent)
+            .join(Board, col(Agent.board_id) == col(Board.id))
+            .where(
+                col(Board.gateway_id) == gateway_id,
+                col(Agent.is_board_lead).is_(True),
+            )
+        )
+    ).all()
+
+    subscribed_count = 0
+    for lead in board_leads:
+        # Check if already subscribed
+        existing = (
+            await session.exec(
+                select(ChannelSubscription).where(
+                    col(ChannelSubscription.channel_id) == support_channel.id,
+                    col(ChannelSubscription.agent_id) == lead.id,
+                )
+            )
+        ).first()
+
+        if existing is None:
+            session.add(
+                ChannelSubscription(
+                    channel_id=support_channel.id,
+                    agent_id=lead.id,
+                    notify_on="all",
+                )
+            )
+            subscribed_count += 1
+
+    if subscribed_count > 0:
+        await session.commit()
+        logger.info(
+            "channel_lifecycle.sync_platform_support gateway_id=%s channel_id=%s leads_subscribed=%s",
+            gateway_id,
+            support_channel.id,
+            subscribed_count,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Thread resolution sync
+# ---------------------------------------------------------------------------
+
+
+async def auto_resolve_thread_for_completed_task(
+    session: AsyncSession,
+    task: "Task",
+) -> None:
+    """When a task moves to done, auto-resolve its linked thread and notify.
+
+    This function:
+    1. Loads the thread via task.thread_id
+    2. If thread is already resolved, returns (idempotent)
+    3. Sets thread.is_resolved = True
+    4. Creates a system ThreadMessage
+    5. Dispatches the system message to all subscribers
+    6. Commits the changes
+    """
+    if task.thread_id is None:
+        return
+
+    thread = await session.get(Thread, task.thread_id)
+    if thread is None:
+        logger.warning(
+            "channel_lifecycle.auto_resolve_missing_thread task_id=%s thread_id=%s",
+            task.id,
+            task.thread_id,
+        )
+        return
+
+    if thread.is_resolved:
+        # Already resolved, idempotent
+        logger.debug(
+            "channel_lifecycle.auto_resolve_already_resolved thread_id=%s task_id=%s",
+            thread.id,
+            task.id,
+        )
+        return
+
+    # Mark thread as resolved
+    thread.is_resolved = True
+    thread.updated_at = utcnow()
+    session.add(thread)
+
+    # Create system message
+    system_message = ThreadMessage(
+        thread_id=thread.id,
+        sender_type="system",
+        sender_id=None,
+        sender_name="System",
+        content=f"Task completed — thread auto-resolved. Task: #{task.id} ({task.title})",
+        content_type="system_notification",
+    )
+    session.add(system_message)
+
+    # Update thread message count
+    thread.message_count += 1
+    thread.last_message_at = system_message.created_at
+
+    await session.commit()
+    await session.refresh(thread)
+    await session.refresh(system_message)
+
+    logger.info(
+        "channel_lifecycle.auto_resolve_thread thread_id=%s task_id=%s",
+        thread.id,
+        task.id,
+    )
+
+    # Load channel and dispatch message to subscribers
+    channel = await session.get(Channel, thread.channel_id)
+    if channel is not None and settings.channels_enabled:
+        try:
+            from app.services.channel_agent_routing import dispatch_channel_message_to_agents
+
+            await dispatch_channel_message_to_agents(session, thread, system_message, channel)
+            logger.debug(
+                "channel_lifecycle.auto_resolve_dispatched thread_id=%s",
+                thread.id,
+            )
+        except Exception:
+            logger.exception(
+                "channel_lifecycle.auto_resolve_dispatch_failed thread_id=%s",
+                thread.id,
+            )

@@ -20,6 +20,7 @@ export interface BoardRead {
   goal_confirmed?: boolean;
   goal_source?: string | null;
   id: string;
+  is_platform?: boolean;
   /** @minimum 0 */
   max_agents?: number;
   name: string;

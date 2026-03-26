@@ -166,3 +166,144 @@ async def test_unlinking_clears_thread_id() -> None:
         assert task.thread_id is None
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_thread_auto_resolved_when_task_moves_to_done() -> None:
+    """Test that a thread is auto-resolved when its linked task moves to 'done'."""
+    from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        board = await _seed_board(session)
+        channel, thread = await _seed_channel_and_thread(session, board)
+
+        # Create a task linked to the thread
+        task = Task(
+            board_id=board.id,
+            title="Task to complete",
+            thread_id=thread.id,
+            status="in_progress",
+        )
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+
+        # Verify thread is not resolved initially
+        assert thread.is_resolved is False
+
+        # Move task to done
+        task.status = "done"
+        await session.commit()
+        await session.refresh(task)
+
+        # Call the auto-resolve function
+        await auto_resolve_thread_for_completed_task(session, task)
+
+        # Verify thread is now resolved
+        await session.refresh(thread)
+        assert thread.is_resolved is True
+
+        # Verify system message was created
+        from sqlmodel import select
+
+        messages = (await session.exec(select(ThreadMessage).where(ThreadMessage.thread_id == thread.id))).all()
+        assert len(messages) == 1
+        system_msg = messages[0]
+        assert system_msg.sender_type == "system"
+        assert system_msg.sender_name == "System"
+        assert f"Task: #{task.id}" in system_msg.content
+        assert task.title in system_msg.content
+        assert "auto-resolved" in system_msg.content
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_thread_auto_resolve_idempotent() -> None:
+    """Test that calling auto-resolve twice doesn't create duplicate messages."""
+    from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        board = await _seed_board(session)
+        channel, thread = await _seed_channel_and_thread(session, board)
+
+        task = Task(
+            board_id=board.id,
+            title="Task to complete",
+            thread_id=thread.id,
+            status="done",
+        )
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+
+        # Call auto-resolve twice
+        await auto_resolve_thread_for_completed_task(session, task)
+        await auto_resolve_thread_for_completed_task(session, task)
+
+        # Verify thread is resolved
+        await session.refresh(thread)
+        assert thread.is_resolved is True
+
+        # Verify only one system message was created
+        from sqlmodel import select
+
+        messages = (await session.exec(select(ThreadMessage).where(ThreadMessage.thread_id == thread.id))).all()
+        assert len(messages) == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_thread_auto_resolve_skips_if_no_thread() -> None:
+    """Test that auto-resolve handles tasks with no thread_id gracefully."""
+    from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        board = await _seed_board(session)
+
+        # Create task with no thread_id
+        task = Task(
+            board_id=board.id,
+            title="Task without thread",
+            status="done",
+            thread_id=None,
+        )
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+
+        # Should not raise an exception
+        await auto_resolve_thread_for_completed_task(session, task)
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_thread_auto_resolve_handles_missing_thread() -> None:
+    """Test that auto-resolve handles dangling thread_id references gracefully."""
+    from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        board = await _seed_board(session)
+
+        # Create task with a thread_id that doesn't exist
+        fake_thread_id = uuid4()
+        task = Task(
+            board_id=board.id,
+            title="Task with dangling thread_id",
+            status="done",
+            thread_id=fake_thread_id,
+        )
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+
+        # Should not raise an exception
+        await auto_resolve_thread_for_completed_task(session, task)
+
+    await engine.dispose()

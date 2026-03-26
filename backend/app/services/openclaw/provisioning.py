@@ -393,6 +393,7 @@ def _build_context(
         "board_rule_only_lead_can_change_status": str(board.only_lead_can_change_status).lower(),
         "board_rule_max_agents": str(board.max_agents),
         "is_board_lead": str(agent.is_board_lead).lower(),
+        "is_platform_board": str(board.is_platform).lower(),
         "is_main_agent": "false",
         "session_key": session_key,
         "workspace_path": workspace_path,
@@ -997,6 +998,31 @@ class BoardAgentLifecycleManager(BaseAgentLifecycleManager):
         if agent.is_board_lead:
             context["directory_role_soul_markdown"] = ""
             context["directory_role_soul_source_url"] = ""
+            # Query for platform board in the gateway
+            from app.db.session import async_session_maker
+
+            gateway_id = self._gateway.id
+            try:
+                async with async_session_maker() as session:
+                    from sqlmodel import col, select
+
+                    platform_board = await session.exec(
+                        select(Board)
+                        .where(col(Board.gateway_id) == gateway_id)
+                        .where(col(Board.is_platform).is_(True))
+                    )
+                    platform_board_obj = platform_board.first()
+
+                    if platform_board_obj:
+                        context["has_platform_board"] = "true"
+                        context["platform_board_name"] = platform_board_obj.name
+                    else:
+                        context["has_platform_board"] = "false"
+                        context["platform_board_name"] = ""
+            except Exception:
+                # Best effort only. Provisioning must remain robust.
+                context["has_platform_board"] = "false"
+                context["platform_board_name"] = ""
             return context
 
         role = (context.get("identity_role") or "").strip()

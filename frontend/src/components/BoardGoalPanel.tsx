@@ -1,5 +1,6 @@
 "use client";
 
+import { Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,6 +13,7 @@ type BoardGoal = {
   success_metrics?: Record<string, unknown> | null;
   target_date?: string | null;
   goal_confirmed?: boolean;
+  is_platform?: boolean;
 };
 
 type BoardGoalPanelProps = {
@@ -71,6 +73,12 @@ export function BoardGoalPanel({
                 <Badge variant={isGoalBoard ? "accent" : "outline"}>
                   {isGoalBoard ? "Goal board" : "General board"}
                 </Badge>
+                {board.is_platform ? (
+                  <Badge className="bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/20">
+                    <Shield className="mr-1 h-3 w-3" />
+                    Platform
+                  </Badge>
+                ) : null}
                 {isGoalBoard ? (
                   <Badge variant={isConfirmed ? "success" : "warning"}>
                     {isConfirmed ? "Confirmed" : "Needs confirmation"}

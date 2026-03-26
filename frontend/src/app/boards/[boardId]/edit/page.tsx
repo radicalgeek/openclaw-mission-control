@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/auth/clerk";
-import { X } from "lucide-react";
+import { Shield, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/mutator";
@@ -301,6 +301,7 @@ export default function EditBoardPage() {
   const [onlyLeadCanChangeStatus, setOnlyLeadCanChangeStatus] = useState<
     boolean | undefined
   >(undefined);
+  const [isPlatform, setIsPlatform] = useState<boolean | undefined>(undefined);
   const [maxAgents, setMaxAgents] = useState<number | undefined>(undefined);
   const [successMetrics, setSuccessMetrics] = useState<string | undefined>(
     undefined,
@@ -430,7 +431,12 @@ export default function EditBoardPage() {
         }
       },
       onError: (err) => {
-        setError(err.message || "Something went wrong.");
+        const errorMessage = err.message || "Something went wrong.";
+        if (err.status === 409 && errorMessage.toLowerCase().includes("platform")) {
+          setError("Only one board can be designated as the platform board. Please unset the current platform board first.");
+        } else {
+          setError(errorMessage);
+        }
       },
     },
   });
@@ -515,6 +521,8 @@ export default function EditBoardPage() {
     false;
   const resolvedOnlyLeadCanChangeStatus =
     onlyLeadCanChangeStatus ?? baseBoard?.only_lead_can_change_status ?? false;
+  const resolvedIsPlatform =
+    isPlatform ?? (baseBoard as BoardRead & { is_platform?: boolean })?.is_platform ?? false;
   const resolvedMaxAgents = maxAgents ?? baseBoard?.max_agents ?? 1;
   const resolvedSuccessMetrics =
     successMetrics ??
@@ -598,6 +606,7 @@ export default function EditBoardPage() {
       updated.block_status_changes_with_pending_approval ?? false,
     );
     setOnlyLeadCanChangeStatus(updated.only_lead_can_change_status ?? false);
+    setIsPlatform((updated as BoardRead & { is_platform?: boolean }).is_platform ?? false);
     setMaxAgents(updated.max_agents ?? 1);
     setSuccessMetrics(
       updated.success_metrics
@@ -666,6 +675,7 @@ export default function EditBoardPage() {
       block_status_changes_with_pending_approval:
         resolvedBlockStatusChangesWithPendingApproval,
       only_lead_can_change_status: resolvedOnlyLeadCanChangeStatus,
+      is_platform: resolvedIsPlatform,
       max_agents: resolvedMaxAgents,
       success_metrics: resolvedBoardType === "general" ? null : parsedMetrics,
       target_date:
@@ -1125,6 +1135,40 @@ export default function EditBoardPage() {
                   </span>
                   <span className="block text-xs text-slate-600">
                     Restrict status changes to the board lead.
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={resolvedIsPlatform}
+                  aria-label="Platform board"
+                  onClick={() =>
+                    setIsPlatform(!resolvedIsPlatform)
+                  }
+                  disabled={isLoading}
+                  className={`mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+                    resolvedIsPlatform
+                      ? "border-purple-600 bg-purple-600"
+                      : "border-slate-300 bg-slate-200"
+                  } ${isLoading ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                      resolvedIsPlatform
+                        ? "translate-x-5"
+                        : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+                <span className="space-y-1">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+                    <Shield className="h-4 w-4" />
+                    Platform board
+                  </span>
+                  <span className="block text-xs text-slate-600">
+                    Designate this as the organization's platform/infrastructure board. Only one board can be the platform board. Adds a cross-board Support channel.
                   </span>
                 </span>
               </div>

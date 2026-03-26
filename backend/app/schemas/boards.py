@@ -35,6 +35,7 @@ class BoardBase(SQLModel):
     block_status_changes_with_pending_approval: bool = False
     only_lead_can_change_status: bool = False
     max_agents: int = Field(default=1, ge=0)
+    is_platform: bool = False
 
 
 class BoardCreate(BoardBase):
@@ -80,6 +81,7 @@ class BoardUpdate(SQLModel):
     block_status_changes_with_pending_approval: bool | None = None
     only_lead_can_change_status: bool | None = None
     max_agents: int | None = Field(default=None, ge=0)
+    is_platform: bool | None = None
 
     @model_validator(mode="after")
     def validate_gateway_id(self) -> Self:

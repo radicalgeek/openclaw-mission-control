@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Hash, Link2, MessageCircle, Pencil, Plus, Rss, Trash2, User } from "lucide-react";
+import { ChevronDown, Hash, Link2, MessageCircle, Pencil, Plus, Rss, Shield, Trash2, User } from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -453,6 +453,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                       ) : (
                         regularChannels.map((ch) => {
                           const isSelected = selectedChannel?.id === ch.id;
+                          const isPlatformBoard = (board as typeof board & { is_platform?: boolean }).is_platform;
+                          const isSupportChannel = ch.slug === "support";
+                          const showPlatformIndicator = isPlatformBoard && isSupportChannel;
                           return (
                             <div
                               key={ch.id}
@@ -475,6 +478,12 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                                 <Hash className="h-3.5 w-3.5 flex-shrink-0" />
                               )}
                               <span className="truncate">{ch.name}</span>
+                              {showPlatformIndicator && (
+                                <span className="flex items-center gap-1 rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700" title="Cross-board platform support channel">
+                                  <Shield className="h-2.5 w-2.5" />
+                                  cross-board
+                                </span>
+                              )}
                               {(ch.unread_count ?? 0) > 0 && (
                                 <span className="ml-auto flex-shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                                   {ch.unread_count}
