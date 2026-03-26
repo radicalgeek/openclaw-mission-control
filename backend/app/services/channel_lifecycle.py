@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
     from app.models.boards import Board
+    from app.models.tasks import Task
 
 logger = get_logger(__name__)
 
@@ -690,8 +691,6 @@ async def auto_resolve_thread_for_completed_task(
     5. Dispatches the system message to all subscribers
     6. Commits the changes
     """
-    from app.models.tasks import Task
-
     if task.thread_id is None:
         return
 

@@ -1985,8 +1985,8 @@ async def _task_read_response(
     try:
         from app.core.config import settings as _settings  # noqa: PLC0415
         if _settings.channels_enabled and task.thread_id is not None:
-            from app.models.thread import Thread as _Thread  # noqa: PLC0415
             from app.models.channel import Channel as _Channel  # noqa: PLC0415
+            from app.models.thread import Thread as _Thread  # noqa: PLC0415
             from app.schemas.tasks import ChannelInfo  # noqa: PLC0415
             thread = await session.get(_Thread, task.thread_id)
             if thread is not None:
@@ -2794,9 +2794,9 @@ async def create_task_comment(
         from app.core.config import settings as _settings  # noqa: PLC0415
 
         if _settings.channels_enabled and task.thread_id is not None:
-            from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
-            from app.models.thread import Thread as Thr  # noqa: PLC0415
             from app.core.time import utcnow as _utcnow  # noqa: PLC0415
+            from app.models.thread import Thread as Thr  # noqa: PLC0415
+            from app.models.thread_message import ThreadMessage as TM  # noqa: PLC0415
 
             thread = await session.get(Thr, task.thread_id)
             if thread is not None:
