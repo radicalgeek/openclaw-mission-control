@@ -13,6 +13,7 @@ from sqlmodel import col, delete, select
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.time import utcnow
 from app.models.agents import Agent
 from app.models.channel import Channel
 from app.models.channel_subscription import ChannelSubscription
@@ -668,3 +669,93 @@ async def sync_platform_support_subscribers(
             support_channel.id,
             subscribed_count,
         )
+
+
+# ---------------------------------------------------------------------------
+# Thread resolution sync
+# ---------------------------------------------------------------------------
+
+
+async def auto_resolve_thread_for_completed_task(
+    session: AsyncSession,
+    task: "Task",
+) -> None:
+    """When a task moves to done, auto-resolve its linked thread and notify.
+
+    This function:
+    1. Loads the thread via task.thread_id
+    2. If thread is already resolved, returns (idempotent)
+    3. Sets thread.is_resolved = True
+    4. Creates a system ThreadMessage
+    5. Dispatches the system message to all subscribers
+    6. Commits the changes
+    """
+    from app.models.tasks import Task
+
+    if task.thread_id is None:
+        return
+
+    thread = await session.get(Thread, task.thread_id)
+    if thread is None:
+        logger.warning(
+            "channel_lifecycle.auto_resolve_missing_thread task_id=%s thread_id=%s",
+            task.id,
+            task.thread_id,
+        )
+        return
+
+    if thread.is_resolved:
+        # Already resolved, idempotent
+        logger.debug(
+            "channel_lifecycle.auto_resolve_already_resolved thread_id=%s task_id=%s",
+            thread.id,
+            task.id,
+        )
+        return
+
+    # Mark thread as resolved
+    thread.is_resolved = True
+    thread.updated_at = utcnow()
+    session.add(thread)
+
+    # Create system message
+    system_message = ThreadMessage(
+        thread_id=thread.id,
+        sender_type="system",
+        sender_id=None,
+        sender_name="System",
+        content=f"Task completed — thread auto-resolved. Task: #{task.id} ({task.title})",
+        content_type="system_notification",
+    )
+    session.add(system_message)
+
+    # Update thread message count
+    thread.message_count += 1
+    thread.last_message_at = system_message.created_at
+
+    await session.commit()
+    await session.refresh(thread)
+    await session.refresh(system_message)
+
+    logger.info(
+        "channel_lifecycle.auto_resolve_thread thread_id=%s task_id=%s",
+        thread.id,
+        task.id,
+    )
+
+    # Load channel and dispatch message to subscribers
+    channel = await session.get(Channel, thread.channel_id)
+    if channel is not None and settings.channels_enabled:
+        try:
+            from app.services.channel_agent_routing import dispatch_channel_message_to_agents
+
+            await dispatch_channel_message_to_agents(session, thread, system_message, channel)
+            logger.debug(
+                "channel_lifecycle.auto_resolve_dispatched thread_id=%s",
+                thread.id,
+            )
+        except Exception:
+            logger.exception(
+                "channel_lifecycle.auto_resolve_dispatch_failed thread_id=%s",
+                thread.id,
+            )

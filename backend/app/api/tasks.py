@@ -23,6 +23,7 @@ from app.api.deps import (
     require_user_auth,
     require_user_or_agent,
 )
+from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db import crud
 from app.db.pagination import paginate
@@ -87,6 +88,7 @@ if TYPE_CHECKING:
     from app.models.users import User
 
 router = APIRouter(prefix="/boards/{board_id}/tasks", tags=["tasks"])
+logger = get_logger(__name__)
 
 ALLOWED_STATUSES = {"inbox", "in_progress", "review", "done"}
 TASK_EVENT_TYPES = {
@@ -2350,6 +2352,23 @@ async def _apply_lead_task_update(
     await session.commit()
     await session.refresh(update.task)
     await _lead_notify_new_assignee(session, update=update)
+
+    # Auto-resolve thread when task moves to done
+    from app.core.config import settings
+
+    if (
+        settings.channels_enabled
+        and update.previous_status != "done"
+        and update.task.status == "done"
+        and update.task.thread_id is not None
+    ):
+        try:
+            from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+            await auto_resolve_thread_for_completed_task(session, update.task)
+        except Exception:
+            logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
+
     return await _task_read_response(
         session,
         task=update.task,
@@ -2731,6 +2750,22 @@ async def _finalize_updated_task(
     await _record_task_comment_from_update(session, update=update)
     await _record_task_update_activity(session, update=update)
     await _notify_task_update_assignment_changes(session, update=update)
+
+    # Auto-resolve thread when task moves to done
+    from app.core.config import settings
+
+    if (
+        settings.channels_enabled
+        and update.previous_status != "done"
+        and update.task.status == "done"
+        and update.task.thread_id is not None
+    ):
+        try:
+            from app.services.channel_lifecycle import auto_resolve_thread_for_completed_task
+
+            await auto_resolve_thread_for_completed_task(session, update.task)
+        except Exception:
+            logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
 
     return await _task_read_response(
         session,
