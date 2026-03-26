@@ -55,6 +55,30 @@ async def get_agents_to_notify(
     if board is None:
         return []
 
+    # For direct channels, only notify the specific agent in webhook_source_filter
+    if channel.channel_type == "direct" and channel.webhook_source_filter:
+        from uuid import UUID
+        try:
+            target_agent_id = UUID(channel.webhook_source_filter)
+            agent = (await session.exec(select(Agent).where(col(Agent.id) == target_agent_id))).first()
+            if agent and agent.openclaw_session_id:
+                return [
+                    _AgentNotification(
+                        agent_id=agent.id,
+                        agent_name=agent.name,
+                        is_lead=agent.is_board_lead,
+                        is_mentioned=_is_agent_mentioned(message.content, agent.name),
+                        session_key=agent.openclaw_session_id,
+                    )
+                ]
+        except (ValueError, AttributeError):
+            logger.warning(
+                "channel_routing.invalid_direct_channel channel_id=%s filter=%s",
+                channel.id,
+                channel.webhook_source_filter,
+            )
+        return []
+
     # Get board lead agent
     lead_agent = (
         await session.exec(

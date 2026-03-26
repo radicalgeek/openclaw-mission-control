@@ -58,11 +58,13 @@ async def on_task_created_by_webhook(
         event = classify_webhook_event(webhook_payload, webhook_headers)
 
         # 2. Find the matching alert channel on this board
+        # IMPORTANT: Exclude direct channels - they use webhook_source_filter for agent UUIDs
         channel = (
             await session.exec(
                 select(Channel).where(
                     col(Channel.board_id) == board.id,
                     col(Channel.webhook_source_filter) == event.source_category,
+                    col(Channel.channel_type) != "direct",
                     col(Channel.is_archived).is_(False),
                 )
             )
