@@ -652,6 +652,33 @@ async def update_board(
                 new_is_platform,
             )
     # ──────────────────────────────────────────────────────────────────────────
+    # Trigger template sync when is_platform status changes
+    if "is_platform" in changed_fields:
+        try:
+            from app.services.openclaw.provisioning_db import (
+                GatewayTemplateSyncOptions,
+                OpenClawProvisioningService,
+            )
+
+            gateway = await crud.get_by_id(session, Gateway, updated.gateway_id)
+            if gateway:
+                await OpenClawProvisioningService(session).sync_gateway_templates(
+                    gateway,
+                    GatewayTemplateSyncOptions(
+                        user=None,
+                        include_main=False,
+                        lead_only=True,
+                        reset_sessions=False,
+                        rotate_tokens=False,
+                        force_bootstrap=False,
+                        overwrite=False,
+                    ),
+                )
+        except Exception:
+            logger.exception(
+                "board.platform_toggle.template_sync_failed board_id=%s",
+                updated.id,
+            )
     if changed_fields:
         try:
             await _notify_lead_on_board_update(
