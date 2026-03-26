@@ -595,6 +595,7 @@ async def update_board(
         if hasattr(board, field_name)
     }
     previous_group_id = board.board_group_id
+    previous_is_platform = board.is_platform
     updated = await _apply_board_update(payload=payload, session=session, board=board)
     changed_fields = {
         field_name: (previous_value, getattr(updated, field_name))
@@ -602,6 +603,7 @@ async def update_board(
         if previous_value != getattr(updated, field_name)
     }
     new_group_id = updated.board_group_id
+    new_is_platform = updated.is_platform
     if previous_group_id is not None and previous_group_id != new_group_id:
         previous_group = await crud.get_by_id(session, BoardGroup, previous_group_id)
         if previous_group is not None:
@@ -632,6 +634,24 @@ async def update_board(
                     updated.id,
                     new_group_id,
                 )
+    # ── Channel lifecycle: platform status change ────────────────────────────
+    if previous_is_platform != new_is_platform:
+        try:
+            if new_is_platform:
+                from app.services.channel_lifecycle import on_board_marked_platform
+
+                await on_board_marked_platform(session, updated)
+            else:
+                from app.services.channel_lifecycle import on_board_unmarked_platform
+
+                await on_board_unmarked_platform(session, updated)
+        except Exception:
+            logger.exception(
+                "board.channel_lifecycle.platform_status_change_failed board_id=%s new_is_platform=%s",
+                updated.id,
+                new_is_platform,
+            )
+    # ──────────────────────────────────────────────────────────────────────────
     if changed_fields:
         try:
             await _notify_lead_on_board_update(
