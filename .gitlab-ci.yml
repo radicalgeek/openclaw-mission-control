@@ -134,7 +134,7 @@ update:argocd-manifests:
     - apt-get update -qq && apt-get install -y -qq git
   script:
     - |
-      git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.radicalgeek.co.uk/radicalgeek/hoofer/argocd.git
+      git clone https://gitlab-ci-token:${ARGOCD_REPO_TOKEN}@gitlab.radicalgeek.co.uk/radicalgeek/hoofer/argocd.git
       cd argocd
     - |
       echo "Updating backend image to: backend:${BACKEND_TAG}"
