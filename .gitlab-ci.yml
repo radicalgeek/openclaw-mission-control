@@ -1,12 +1,14 @@
 stages:
   - build
   - deploy-test
+  - update-argocd
   - deploy-prod
 
 variables:
   REGISTRY: reg.gitlab.radicalgeek.co.uk
   IMAGE_BACKEND: $REGISTRY/radicalgeek/openclaw-mission-control/backend
   IMAGE_FRONTEND: $REGISTRY/radicalgeek/openclaw-mission-control/frontend
+  ARGOCD_REPO: https://gitlab.radicalgeek.co.uk/radicalgeek/hoofer/argocd.git
 
 .docker_build: &docker_build
   image: docker:24
@@ -114,6 +116,40 @@ deploy:test:
   environment:
     name: test
     url: https://mission-control.radicalgeek.co.uk
+  only:
+    - master
+    - main
+
+update:argocd-manifests:
+  image: debian:bookworm-slim
+  stage: update-argocd
+  tags:
+    - k8s
+    - arm64
+    - hoofer
+  dependencies:
+    - build:backend
+    - build:frontend
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git
+  script:
+    - |
+      git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.radicalgeek.co.uk/radicalgeek/hoofer/argocd.git
+      cd argocd
+    - |
+      echo "Updating backend image to: backend:${BACKEND_TAG}"
+      sed -i "s|image: reg.gitlab.radicalgeek.co.uk/radicalgeek/openclaw-mission-control/backend:.*|image: reg.gitlab.radicalgeek.co.uk/radicalgeek/openclaw-mission-control/backend:${BACKEND_TAG}|g" apps/mission-control/backend.yaml
+    - |
+      echo "Updating frontend image to: frontend:${FRONTEND_TAG}"
+      sed -i "s|image: reg.gitlab.radicalgeek.co.uk/radicalgeek/openclaw-mission-control/frontend:.*|image: reg.gitlab.radicalgeek.co.uk/radicalgeek/openclaw-mission-control/frontend:${FRONTEND_TAG}|g" apps/mission-control/frontend.yaml
+    - |
+      git config user.email "ci@gitlab.radicalgeek.co.uk"
+      git config user.name "GitLab CI"
+      git add apps/mission-control/backend.yaml apps/mission-control/frontend.yaml
+      git diff --staged --quiet || git commit -m "chore(mission-control): update images to ${BACKEND_TAG}/${FRONTEND_TAG}
+
+      Automated update from pipeline ${CI_PIPELINE_ID} (commit ${CI_COMMIT_SHORT_SHA})"
+      git push origin main
   only:
     - master
     - main
