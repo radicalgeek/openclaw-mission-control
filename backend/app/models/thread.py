@@ -31,6 +31,9 @@ class Thread(TenantScoped, table=True):
     channel_id: UUID = Field(foreign_key="channels.id", index=True)
     topic: str
     task_id: UUID | None = Field(default=None, foreign_key="tasks.id", index=True)
+    # Tracks the board that "owns" this thread (set for cross-board threads in the
+    # platform Support channel so the originating board lead is notified of replies).
+    owner_board_id: UUID | None = Field(default=None, foreign_key="boards.id", index=True)
     source_type: str = Field(default="user", index=True)  # "user", "webhook", "agent", "system"
     source_ref: str | None = Field(default=None, index=True)
     is_resolved: bool = Field(default=False, index=True)

@@ -147,6 +147,22 @@ async def create_channel_thread(
     session.add(thread)
     await session.flush()
 
+    # Identify the actor's board so we can track thread ownership for the
+    # platform Support channel (cross-board thread isolation).
+    actor_board_id = None
+    if isinstance(actor, ActorContext) and actor.actor_type == "agent" and actor.agent:
+        actor_board_id = actor.agent.board_id
+
+    # For the platform Support channel: record which board started this thread
+    # so routing can isolate replies to only the originating board lead.
+    if actor_board_id is not None and channel.slug == "support":
+        from app.models.boards import Board as BoardModel
+        channel_board = await session.get(BoardModel, channel.board_id)
+        if channel_board is not None and channel_board.is_platform:
+            # Only set if this actor is from a *different* board (cross-board thread)
+            if actor_board_id != channel.board_id:
+                thread.owner_board_id = actor_board_id
+
     # Create the first message
     sender_name = "User"
     sender_id = None

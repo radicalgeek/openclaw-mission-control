@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import re
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlmodel import col, select
 
@@ -36,6 +37,7 @@ class _AgentNotification:
     is_lead: bool
     is_mentioned: bool
     session_key: str
+    board_id: UUID  # agent's own board — used for per-agent gateway config lookup
 
 
 def _is_agent_mentioned(content: str, agent_name: str) -> bool:
@@ -50,18 +52,39 @@ async def get_agents_to_notify(
     message: "ThreadMessage",
     channel: "Channel",
 ) -> list["_AgentNotification"]:
-    """Determine which agents should receive this channel message."""
+    """Determine which agents should receive this channel message.
+
+    Routing rules:
+    - The message sender (if an agent) is never dispatched back to themselves.
+    - For direct channels: only the target agent is notified.
+    - For regular channels: the board lead always responds; other subscribed
+      agents only respond when @mentioned.
+    - For the platform Support channel: the platform lead always responds;
+      cross-board leads only receive dispatches for threads their board started
+      (identified by thread.owner_board_id) or when @mentioned.
+    """
     board = (await session.exec(select(Board).where(col(Board.id) == channel.board_id))).first()
     if board is None:
         return []
 
+    sender_agent_id: UUID | None
+    if message.sender_type == "agent" and message.sender_id is not None:
+        try:
+            sender_agent_id = UUID(str(message.sender_id))
+        except (ValueError, AttributeError):
+            sender_agent_id = None
+    else:
+        sender_agent_id = None
+
     # For direct channels, only notify the specific agent in webhook_source_filter
     if channel.channel_type == "direct" and channel.webhook_source_filter:
-        from uuid import UUID
         try:
             target_agent_id = UUID(channel.webhook_source_filter)
+            if sender_agent_id is not None and target_agent_id == sender_agent_id:
+                # Don't dispatch back to the agent who just sent a message
+                return []
             agent = (await session.exec(select(Agent).where(col(Agent.id) == target_agent_id))).first()
-            if agent and agent.openclaw_session_id:
+            if agent and agent.openclaw_session_id and agent.board_id is not None:
                 return [
                     _AgentNotification(
                         agent_id=agent.id,
@@ -69,6 +92,7 @@ async def get_agents_to_notify(
                         is_lead=agent.is_board_lead,
                         is_mentioned=_is_agent_mentioned(message.content, agent.name),
                         session_key=agent.openclaw_session_id,
+                        board_id=agent.board_id,
                     )
                 ]
         except (ValueError, AttributeError):
@@ -79,7 +103,12 @@ async def get_agents_to_notify(
             )
         return []
 
-    # Get board lead agent
+    # Determine if this is the platform Support channel.
+    # In Support: platform lead always responds; cross-board leads only receive
+    # dispatches for threads their board owns OR when @mentioned.
+    is_support_channel = (channel.slug == "support" and board.is_platform)
+
+    # Get board lead agent (the channel's own board lead)
     lead_agent = (
         await session.exec(
             select(Agent).where(
@@ -99,15 +128,14 @@ async def get_agents_to_notify(
         )
     ).all()
 
-    sub_by_agent: dict = {s.agent_id: s for s in subscriptions}
+    sub_by_agent: dict[object, ChannelSubscription] = {s.agent_id: s for s in subscriptions}
 
-    # Ensure board lead is always considered
+    # Ensure the board lead is always considered even if not explicitly subscribed
     if lead_agent and lead_agent.id not in sub_by_agent:
-        # Create a virtual "all" subscription for the board lead
+        from uuid import uuid4
         from app.models.channel_subscription import ChannelSubscription as CS
-        import uuid
         virtual = CS(
-            id=uuid.uuid4(),
+            id=uuid4(),
             channel_id=channel.id,
             agent_id=lead_agent.id,
             notify_on="all",
@@ -121,24 +149,49 @@ async def get_agents_to_notify(
         if agent is None or not agent.openclaw_session_id:
             continue
 
+        # Never dispatch back to the agent who sent this message (prevents reply loops)
+        if sender_agent_id is not None and agent.id == sender_agent_id:
+            continue
+
+        # Agent must have a valid board to resolve gateway config
+        agent_board_id = agent.board_id
+        if agent_board_id is None:
+            continue
+
         is_mentioned = _is_agent_mentioned(message.content, agent.name)
+        is_platform_lead = agent.id == lead_agent_id
+        is_cross_board_agent = agent_board_id != board.id
         should_notify = False
 
-        if agent.id == lead_agent_id:
+        if sub.notify_on == "none":
+            # Explicitly opted out
+            should_notify = False
+        elif is_support_channel and is_cross_board_agent:
+            # Cross-board subscriber in the platform Support channel:
+            # only dispatch when the thread belongs to their board OR they're @mentioned.
+            if is_mentioned:
+                should_notify = True
+            elif thread.owner_board_id is not None and thread.owner_board_id == agent_board_id:
+                should_notify = True
+        elif is_platform_lead:
+            # The channel's own board lead always responds
             should_notify = True
-        elif sub.notify_on == "all":
+        elif is_mentioned:
+            # Non-lead agents only respond when explicitly @mentioned
             should_notify = True
-        elif sub.notify_on == "mentions" and is_mentioned:
-            should_notify = True
+        # Note: notify_on="all" for non-lead, non-mentioned agents is intentionally
+        # ignored here — dispatch should only trigger responses, not broadcast to
+        # every subscriber. Subscriptions track membership; routing controls responses.
 
         if should_notify:
             notifications.append(
                 _AgentNotification(
                     agent_id=agent.id,
                     agent_name=agent.name,
-                    is_lead=(agent.id == lead_agent_id),
+                    is_lead=is_platform_lead,
                     is_mentioned=is_mentioned,
                     session_key=agent.openclaw_session_id,
+                    board_id=agent_board_id,
                 )
             )
 
@@ -155,22 +208,11 @@ async def dispatch_channel_message_to_agents(
     if not settings.channels_enabled:
         return
 
-    board = (await session.exec(select(Board).where(col(Board.id) == channel.board_id))).first()
-    if board is None:
-        return
-
     notifications = await get_agents_to_notify(session, thread, message, channel)
     if not notifications:
         return
 
     dispatch = GatewayDispatchService(session)
-    config = await dispatch.optional_gateway_config_for_board(board)
-    if config is None:
-        logger.debug(
-            "channel_routing.no_gateway_config board_id=%s",
-            board.id,
-        )
-        return
 
     # Build context: last 20 messages for context window
     from sqlmodel import asc
@@ -189,7 +231,29 @@ async def dispatch_channel_message_to_agents(
         context_lines.append(f"[{m.sender_name}]: {m.content}")
     context_str = "\n".join(context_lines)
 
+    # Cache gateway configs per board to avoid redundant DB lookups
+    _config_cache: dict[UUID, object] = {}
+
+    async def _get_config_for_board(b_id: UUID) -> object:
+        if b_id in _config_cache:
+            return _config_cache[b_id]
+        agent_board = await session.get(Board, b_id)
+        cfg = await dispatch.optional_gateway_config_for_board(agent_board) if agent_board else None
+        _config_cache[b_id] = cfg
+        return cfg
+
     for notification in notifications:
+        # Use each agent's own board's gateway config — important for cross-board
+        # subscriptions where agents may live on different gateway configurations.
+        config = await _get_config_for_board(notification.board_id)
+        if config is None:
+            logger.debug(
+                "channel_routing.no_gateway_config agent_id=%s board_id=%s",
+                notification.agent_id,
+                notification.board_id,
+            )
+            continue
+
         preamble = ""
         if not notification.is_lead and notification.is_mentioned:
             preamble = (
@@ -222,10 +286,10 @@ async def dispatch_channel_message_to_agents(
 
         error = await dispatch.try_send_agent_message(
             session_key=notification.session_key,
-            config=config,
+            config=config,  # type: ignore[arg-type]
             agent_name=notification.agent_name,
             message=gateway_message,
-            deliver=False,
+            deliver=True,  # trigger the LLM so the agent actually generates a reply
         )
         if error is not None:
             logger.warning(
