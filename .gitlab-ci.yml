@@ -111,8 +111,8 @@ deploy:test:
       for f in deploy/k8s/*.yaml; do
         envsubst < "$f" | kubectl apply -f - --insecure-skip-tls-verify
       done
-    - kubectl rollout status deployment/mission-control-backend -n $NAMESPACE --insecure-skip-tls-verify --timeout=5m
-    - kubectl rollout status deployment/mission-control-frontend -n $NAMESPACE --insecure-skip-tls-verify --timeout=5m
+    - kubectl rollout status deployment/mission-control-backend -n $NAMESPACE --insecure-skip-tls-verify --timeout=8m
+    - kubectl rollout status deployment/mission-control-frontend -n $NAMESPACE --insecure-skip-tls-verify --timeout=10m
   environment:
     name: test
     url: https://mission-control.radicalgeek.co.uk
@@ -172,8 +172,8 @@ deploy:prod:
       for f in deploy/k8s/*.yaml; do
         envsubst < "$f" | kubectl apply -f - --insecure-skip-tls-verify
       done
-    - kubectl rollout status deployment/mission-control-backend -n $NAMESPACE --insecure-skip-tls-verify --timeout=5m
-    - kubectl rollout status deployment/mission-control-frontend -n $NAMESPACE --insecure-skip-tls-verify --timeout=5m
+    - kubectl rollout status deployment/mission-control-backend -n $NAMESPACE --insecure-skip-tls-verify --timeout=8m
+    - kubectl rollout status deployment/mission-control-frontend -n $NAMESPACE --insecure-skip-tls-verify --timeout=10m
   environment:
     name: production
     url: https://mission-control.radicalgeek.co.uk
