@@ -269,28 +269,34 @@ export function MessageThread({
   const handleSend = useCallback(async () => {
     const trimmed = composerText.trim();
     if (!trimmed) return;
-    setIsSending(true);
+    // Optimistically clear and re-focus so the user can start the next message
+    // immediately without waiting for the round-trip.
+    setComposerText("");
     setSendError(null);
+    setIsSending(true);
     try {
       const result = await sendMessage(thread.id, {
         content: trimmed,
       });
       if (result.status === 201) {
         setMessages((prev) => [...prev, result.data]);
-        setComposerText("");
-        // Scroll to bottom after sending
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 100);
       } else {
+        // Restore text so the user can try again
+        setComposerText(trimmed);
         setSendError("Unable to send message.");
       }
     } catch (err) {
+      // Restore text so the user can try again
+      setComposerText(trimmed);
       setSendError(
         err instanceof ApiError ? err.message : "Unable to send message.",
       );
     } finally {
       setIsSending(false);
+      composerRef.current?.focus();
     }
   }, [composerText, thread.id]);
 
