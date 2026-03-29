@@ -576,3 +576,56 @@ async def test_direct_channel_skips_sender() -> None:
         assert result == [], "Direct channel sender must not receive their own message"
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_mention_by_first_name_matches_multi_word_agent() -> None:
+    """@mentioning only the first word of an agent's display name still triggers dispatch.
+
+    Regression test: the old bespoke regex required the full name (e.g.
+    "@Orion Stardust"), which never matched the single-token @mention tokens
+    produced by the frontend (e.g. "@Orion"). The fix delegates to
+    mentions.py which supports first-name matching.
+    """
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        org, gw = await _seed_org_gateway(session)
+        board = await _seed_board(session, org, gw)
+        lead = await _seed_agent(session, board, is_lead=True)
+
+        # Non-lead agent with a two-word display name
+        worker = Agent(
+            id=uuid4(),
+            organization_id=board.organization_id,
+            board_id=board.id,
+            gateway_id=board.gateway_id,
+            name="Orion Stardust",
+            slug="orion-stardust",
+            is_board_lead=False,
+            openclaw_session_id="sess-orion",
+        )
+        session.add(worker)
+        await session.commit()
+        await session.refresh(worker)
+
+        channel = _discussion_channel(board)
+        session.add(channel)
+        session.add(_subscribe(channel, lead))
+        session.add(_subscribe(channel, worker))
+        await session.commit()
+
+        thread = _thread(channel)
+        session.add(thread)
+        await session.commit()
+
+        # Mention only the first name — as the frontend produces
+        msg = _message(thread, content="@Orion can you review this?")
+
+        result = await get_agents_to_notify(session, thread, msg, channel)
+        agent_ids = {n.agent_id for n in result}
+
+        assert worker.id in agent_ids, (
+            "Agent with multi-word name must be notified when @mentioned by first name"
+        )
+
+    await engine.dispose()

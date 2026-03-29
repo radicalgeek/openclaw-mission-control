@@ -7,7 +7,6 @@ which agents to notify and dispatches the message to the Gateway.
 from __future__ import annotations
 
 import dataclasses
-import re
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -19,6 +18,7 @@ from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.channel import Channel
 from app.models.channel_subscription import ChannelSubscription
+from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 
 if TYPE_CHECKING:
@@ -39,11 +39,6 @@ class _AgentNotification:
     session_key: str
     board_id: UUID  # agent's own board — used for per-agent gateway config lookup
 
-
-def _is_agent_mentioned(content: str, agent_name: str) -> bool:
-    """Check if an agent is @mentioned in message content."""
-    pattern = rf"@{re.escape(agent_name)}\b"
-    return bool(re.search(pattern, content, re.IGNORECASE))
 
 
 async def get_agents_to_notify(
@@ -85,12 +80,13 @@ async def get_agents_to_notify(
                 return []
             agent = (await session.exec(select(Agent).where(col(Agent.id) == target_agent_id))).first()
             if agent and agent.openclaw_session_id and agent.board_id is not None:
+                _mentions = extract_mentions(message.content)
                 return [
                     _AgentNotification(
                         agent_id=agent.id,
                         agent_name=agent.name,
                         is_lead=agent.is_board_lead,
-                        is_mentioned=_is_agent_mentioned(message.content, agent.name),
+                        is_mentioned=matches_agent_mention(agent, _mentions),
                         session_key=agent.openclaw_session_id,
                         board_id=agent.board_id,
                     )
@@ -143,6 +139,7 @@ async def get_agents_to_notify(
         sub_by_agent[lead_agent.id] = virtual
 
     notifications: list[_AgentNotification] = []
+    _mentions = extract_mentions(message.content)
 
     for agent_id, sub in sub_by_agent.items():
         agent = (await session.exec(select(Agent).where(col(Agent.id) == agent_id))).first()
@@ -158,7 +155,7 @@ async def get_agents_to_notify(
         if agent_board_id is None:
             continue
 
-        is_mentioned = _is_agent_mentioned(message.content, agent.name)
+        is_mentioned = matches_agent_mention(agent, _mentions)
         is_platform_lead = agent.id == lead_agent_id
         is_cross_board_agent = agent_board_id != board.id
         should_notify = False
