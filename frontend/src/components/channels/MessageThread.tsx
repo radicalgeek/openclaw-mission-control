@@ -7,13 +7,10 @@ import {
   useState,
 } from "react";
 import { CheckCircle, Pin, PinOff, Send, TicketPlus, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
-
 import type { ThreadMessageRead, ThreadRead } from "@/api/channels";
 import { createTaskFromThread, getThreadMessages, sendMessage, updateThread } from "@/api/channels";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/atoms/Markdown";
 import { WebhookEventCard } from "./WebhookEventCard";
 import { LinkedTaskBadge } from "./LinkedTaskBadge";
 import { ApiError } from "@/api/mutator";
@@ -115,11 +112,7 @@ function MessageBubble({
                 : "prose-slate",
           )}
         >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkBreaks]}
-          >
-            {message.content}
-          </ReactMarkdown>
+          <Markdown content={message.content} variant="comment" />
         </div>
       </div>
       <p className="mt-0.5 text-[10px] text-slate-400">
@@ -398,12 +391,16 @@ export function MessageThread({
   };
 
   const handleMentionSelect = (name: string) => {
+    // Insert only the first word so we produce a clean single-token @mention.
+    // The backend matches on first name, so "@Celeste" correctly targets
+    // an agent named "Celeste Sunburst".
+    const token = name.split(" ")[0] ?? name;
     const pos = composerRef.current?.selectionStart ?? composerText.length;
     const before = composerText.slice(0, pos);
     const atIdx = before.lastIndexOf("@");
     if (atIdx !== -1) {
       const after = composerText.slice(pos);
-      const next = `${before.slice(0, atIdx)}@${name} ${after}`;
+      const next = `${before.slice(0, atIdx)}@${token} ${after}`;
       setComposerText(next);
     }
     setMentionFilter(null);

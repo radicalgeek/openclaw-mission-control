@@ -15,7 +15,21 @@ from app.api import boards
 from app.models.boards import Board
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 
-_NO_EXEC_RESULTS_ERROR = "No more exec_results left for session.exec"
+
+@dataclass
+class _FakeScalarResult:
+    """Minimal stand-in for SQLModel ScalarResult so code can call .all() / .first() / iterate."""
+
+    _rows: list[object]
+
+    def all(self) -> list[object]:
+        return self._rows
+
+    def first(self) -> object | None:
+        return self._rows[0] if self._rows else None
+
+    def __iter__(self):  # type: ignore[override]
+        return iter(self._rows)
 
 
 @dataclass
@@ -31,8 +45,16 @@ class _FakeSession:
             self.executed.append(statement)
             return None
         if not self.exec_results:
-            raise AssertionError(_NO_EXEC_RESULTS_ERROR)
-        return self.exec_results.pop(0)
+            # Return an empty result for any unexpected SELECT so that lifecycle
+            # hooks like on_board_deleted (which fire when CHANNELS_ENABLED=true
+            # is set by other test modules in the same pytest process) don't
+            # cause AssertionError just because they weren't pre-planned.
+            return _FakeScalarResult([])
+        result = self.exec_results.pop(0)
+        # Wrap bare lists in a ScalarResult-like object so callers can use .all()/.first()
+        if isinstance(result, list):
+            return _FakeScalarResult(result)
+        return result
 
     async def execute(self, statement: object) -> None:
         self.executed.append(statement)
@@ -45,8 +67,16 @@ class _FakeSession:
 
 
 @pytest.mark.asyncio
-async def test_delete_board_cleans_org_board_access_rows() -> None:
+async def test_delete_board_cleans_org_board_access_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deleting a board should clear org-board access rows before commit."""
+    async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(
+        "app.services.channel_lifecycle.on_board_deleted",
+        _noop_on_board_deleted,
+    )
+
     session: Any = _FakeSession(exec_results=[[], []])
     board = Board(
         id=uuid4(),
@@ -71,8 +101,16 @@ async def test_delete_board_cleans_org_board_access_rows() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_board_cleans_tag_assignments_before_tasks() -> None:
+async def test_delete_board_cleans_tag_assignments_before_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deleting a board should remove task-linked rows before deleting tasks."""
+    async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(
+        "app.services.channel_lifecycle.on_board_deleted",
+        _noop_on_board_deleted,
+    )
+
     session: Any = _FakeSession(exec_results=[[], [uuid4()]])
     board = Board(
         id=uuid4(),
@@ -99,6 +137,14 @@ async def test_delete_board_cleans_tag_assignments_before_tasks() -> None:
 @pytest.mark.asyncio
 async def test_delete_board_ignores_missing_gateway_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deleting a board should continue when gateway reports agent not found."""
+    async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(
+        "app.services.channel_lifecycle.on_board_deleted",
+        _noop_on_board_deleted,
+    )
+
     session: Any = _FakeSession(exec_results=[[]])
     board = Board(
         id=uuid4(),

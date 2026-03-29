@@ -35,7 +35,7 @@ function ChannelRow({
           : "text-slate-700 hover:bg-slate-100",
       )}
       aria-current={isSelected ? "page" : undefined}
-      data-testid={`channel-row-${channel.channel_type}`}
+      data-testid={`channel-row-${channel.name.toLowerCase()}`}
     >
       <Icon
         className={cn(
