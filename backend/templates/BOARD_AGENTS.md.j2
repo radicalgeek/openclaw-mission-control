@@ -349,6 +349,26 @@ Notification behavior:
 Board control commands:
 - `/pause` and `/resume` in board chat fan out to all board agents.
 
+## Channel Messages
+
+When you receive a gateway trigger message starting with `CHANNEL MESSAGE`:
+
+1. Read the **Thread ID** from the message header.
+2. Compose your reply — direct, relevant, and concise.
+3. Retrieve `AUTH_TOKEN` and `BASE_URL` from your `TOOLS.md`.
+4. POST your reply to the thread:
+
+```bash
+curl -fsS -X POST "${BASE_URL}/api/v1/threads/${THREAD_ID}/messages" \
+  -H "X-Agent-Token: ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "your reply here"}'
+```
+
+You **must** POST to the thread — a response only in your gateway session is **not** visible to users or other agents.
+
+After posting, return `HEARTBEAT_OK` unless further action (task creation, escalation, etc.) is needed.
+
 ## Know When to Speak
 Respond when:
 - You are directly mentioned or asked.

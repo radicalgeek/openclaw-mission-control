@@ -143,7 +143,20 @@ async def get_agents_to_notify(
 
     for agent_id, sub in sub_by_agent.items():
         agent = (await session.exec(select(Agent).where(col(Agent.id) == agent_id))).first()
-        if agent is None or not agent.openclaw_session_id:
+        if agent is None:
+            logger.info(
+                "channel_routing.agent_not_found agent_id=%s channel_id=%s — skipping",
+                agent_id,
+                channel.id,
+            )
+            continue
+        if not agent.openclaw_session_id:
+            logger.info(
+                "channel_routing.agent_offline agent_id=%s agent_name=%s channel_id=%s — no session, skipping",
+                agent.id,
+                agent.name,
+                channel.id,
+            )
             continue
 
         # Never dispatch back to the agent who sent this message (prevents reply loops)
@@ -153,6 +166,11 @@ async def get_agents_to_notify(
         # Agent must have a valid board to resolve gateway config
         agent_board_id = agent.board_id
         if agent_board_id is None:
+            logger.info(
+                "channel_routing.agent_no_board agent_id=%s agent_name=%s — skipping",
+                agent.id,
+                agent.name,
+            )
             continue
 
         is_mentioned = matches_agent_mention(agent, _mentions)
@@ -244,9 +262,10 @@ async def dispatch_channel_message_to_agents(
         # subscriptions where agents may live on different gateway configurations.
         config = await _get_config_for_board(notification.board_id)
         if config is None:
-            logger.debug(
-                "channel_routing.no_gateway_config agent_id=%s board_id=%s",
+            logger.warning(
+                "channel_routing.no_gateway_config agent_id=%s agent_name=%s board_id=%s — cannot dispatch",
                 notification.agent_id,
+                notification.agent_name,
                 notification.board_id,
             )
             continue
@@ -296,8 +315,9 @@ async def dispatch_channel_message_to_agents(
                 error,
             )
         else:
-            logger.debug(
-                "channel_routing.dispatched agent_id=%s thread_id=%s",
+            logger.info(
+                "channel_routing.dispatched agent_id=%s agent_name=%s thread_id=%s",
                 notification.agent_id,
+                notification.agent_name,
                 thread.id,
             )
