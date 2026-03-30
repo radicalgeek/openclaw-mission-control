@@ -67,10 +67,13 @@ def build_plan_system_prompt(
     board_objective: str | None,
     current_content: str,
     base_url: str,
+    board_id: str,
+    plan_id: str,
 ) -> str:
     """Build the gateway prompt for a planning session start."""
     objective_text = board_objective or "Not yet defined"
     content_section = current_content.strip() or "(Empty — let's start building!)"
+    agent_update_url = f"{base_url}/api/v1/boards/{board_id}/plans/{plan_id}/agent-update"
     return (
         f'You are the lead agent for board "{board_name}".\n'
         "The user is collaborating with you to build a planning document.\n\n"
@@ -89,9 +92,9 @@ def build_plan_system_prompt(
         f"{content_section}\n\n"
         "Do NOT respond in OpenClaw chat.\n"
         "All planning responses MUST be sent to Mission Control via API.\n"
-        f"Mission Control base URL: {base_url}\n"
         "Use the AUTH_TOKEN from USER.md or TOOLS.md and pass it as X-Agent-Token.\n"
-        "Planning update endpoint: POST /api/v1/boards/<board_id>/plans/<plan_id>/agent-update\n"
+        f"Planning update endpoint: POST {agent_update_url}\n"
+        "Request body JSON: {\"reply\": \"<your conversational reply>\", \"content\": \"<full updated plan markdown or omit if no plan update>\"}\n"
     )
 
 

@@ -110,7 +110,7 @@ export function PlanningLayout({ boardId }: Props) {
             className={cn(
               "w-full px-4 py-2.5 text-left text-sm transition",
               board.id === boardId
-                ? "bg-blue-50 font-medium text-blue-800"
+                ? "bg-orange-50 font-medium text-orange-800"
                 : "text-slate-700 hover:bg-slate-50",
             )}
           >
@@ -152,7 +152,7 @@ export function PlanningLayout({ boardId }: Props) {
             </p>
             <button
               onClick={() => setShowNewModal(true)}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition"
+              className="rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 transition"
             >
               New plan
             </button>

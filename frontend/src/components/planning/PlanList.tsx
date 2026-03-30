@@ -31,7 +31,7 @@ export function PlanList({
         <button
           onClick={onNewPlan}
           title="New plan"
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 transition"
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-500 hover:bg-orange-50 transition"
         >
           <Plus className="h-3.5 w-3.5" />
           New
@@ -49,7 +49,7 @@ export function PlanList({
             <p className="text-sm text-slate-500">No plans yet.</p>
             <button
               onClick={onNewPlan}
-              className="mt-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition"
+              className="mt-1 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition"
             >
               Create your first plan
             </button>
@@ -61,14 +61,14 @@ export function PlanList({
             onClick={() => onSelectPlan(plan)}
             className={cn(
               "w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50",
-              plan.id === selectedPlanId && "bg-blue-50 hover:bg-blue-50",
+              plan.id === selectedPlanId && "bg-orange-50 hover:bg-orange-50",
             )}
           >
             <div className="flex items-start justify-between gap-2">
               <span
                 className={cn(
                   "truncate text-sm font-medium",
-                  plan.id === selectedPlanId ? "text-blue-800" : "text-slate-700",
+                  plan.id === selectedPlanId ? "text-orange-800" : "text-slate-700",
                 )}
               >
                 {plan.title}

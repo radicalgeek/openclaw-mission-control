@@ -10,7 +10,7 @@ type Props = {
 
 const CONFIG: Record<PlanStatus, { label: string; classes: string }> = {
   draft:     { label: "Draft",     classes: "bg-slate-100 text-slate-600" },
-  active:    { label: "Active",    classes: "bg-blue-100 text-blue-700" },
+  active:    { label: "Active",    classes: "bg-orange-100 text-orange-700" },
   completed: { label: "Completed", classes: "bg-green-100 text-green-700" },
   archived:  { label: "Archived",  classes: "bg-amber-100 text-amber-700" },
 };

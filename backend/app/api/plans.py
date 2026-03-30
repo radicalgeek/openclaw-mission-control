@@ -160,6 +160,8 @@ async def create_plan(
                 board_objective=board.objective,
                 current_content="",
                 base_url=settings.base_url,
+                board_id=str(board.id),
+                plan_id=str(plan.id),
             )
             full_prompt = f"{prompt}\n\n## Opening Message\n{payload.initial_prompt}"
             session_key = await dispatcher.dispatch_plan_start(
@@ -325,6 +327,8 @@ async def chat_plan(
             board_objective=board.objective,
             current_content=plan.content,
             base_url=settings.base_url,
+            board_id=str(board.id),
+            plan_id=str(plan.id),
         )
         full_prompt = f"{system_prompt}\n\n{turn_prompt}"
         session_key = await dispatcher.dispatch_plan_start(
