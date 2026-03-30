@@ -14,8 +14,6 @@ spec:
       labels:
         app: mission-control-frontend
     spec:
-      imagePullSecrets:
-      - name: gitlab-registry
       containers:
       - name: frontend
         image: ${FRONTEND_IMAGE}

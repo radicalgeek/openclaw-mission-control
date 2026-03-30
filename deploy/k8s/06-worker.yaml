@@ -14,8 +14,6 @@ spec:
       labels:
         app: mission-control-worker
     spec:
-      imagePullSecrets:
-      - name: gitlab-registry
       containers:
       - name: worker
         image: ${BACKEND_IMAGE}
