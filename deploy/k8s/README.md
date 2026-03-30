@@ -9,7 +9,30 @@ Images are published to Docker Hub under **`radicalgeek`**:
 | Backend (API + migrations) | `radicalgeek/mission-control-backend` |
 | Frontend (Next.js) | `radicalgeek/mission-control-frontend` |
 
-Both images are **public** — no pull secret is required.
+Both images are **public** — however Docker Hub rate-limits unauthenticated pulls, so a `dockerhub-registry` pull secret is required in the cluster.
+
+### Create the pull secret (once per cluster)
+
+```bash
+kubectl create secret docker-registry dockerhub-registry \
+  --docker-server=https://index.docker.io/v1/ \
+  --docker-username=<your-dockerhub-username> \
+  --docker-password=<your-dockerhub-password-or-pat> \
+  -n mission-control
+```
+
+Or from your local Docker Desktop login:
+
+```bash
+CREDS=$(echo "https://index.docker.io/v1/" | docker-credential-desktop get)
+DH_USER=$(echo "$CREDS" | python3 -c "import sys,json; c=json.load(sys.stdin); print(c['Username'])")
+DH_PASS=$(echo "$CREDS" | python3 -c "import sys,json; c=json.load(sys.stdin); print(c['Secret'])")
+kubectl create secret docker-registry dockerhub-registry \
+  --docker-server=https://index.docker.io/v1/ \
+  --docker-username="$DH_USER" \
+  --docker-password="$DH_PASS" \
+  -n mission-control
+```
 
 ## Applying Manifests
 
