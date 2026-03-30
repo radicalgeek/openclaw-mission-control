@@ -27,7 +27,7 @@ spec:
         # These runtime values only affect SSR env — they do NOT override the compiled bundle.
         # When building the image, pass the correct URL via --build-arg NEXT_PUBLIC_API_URL=...
         - name: NEXT_PUBLIC_API_URL
-          value: https://mission-control.radicalgeek.co.uk/api
+          value: https://mission-control.radicalgeek.co.uk
         - name: NEXT_PUBLIC_AUTH_MODE
           value: local
         livenessProbe:
