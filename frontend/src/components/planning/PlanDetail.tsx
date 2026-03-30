@@ -32,6 +32,11 @@ const SAVE_DEBOUNCE_MS = 1200;
 
 type ContentMode = "preview" | "edit";
 
+/** True when the last message is from the user and we're waiting for an agent reply. */
+function isAwaitingAgentReply(msgs: PlanMessage[]): boolean {
+  return msgs.length > 0 && msgs[msgs.length - 1].role === "user";
+}
+
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({ msg }: { msg: PlanMessage }) {
@@ -123,7 +128,9 @@ export function PlanDetail({
   const [messages, setMessages] = useState<PlanMessage[]>(
     initialPlan.messages ?? [],
   );
-  const [agentThinking, setAgentThinking] = useState(false);
+  const [agentThinking, setAgentThinking] = useState(
+    () => isAwaitingAgentReply(initialPlan.messages ?? []),
+  );
   const [showPromoteModal, setShowPromoteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [savePending, setSavePending] = useState(false);
@@ -136,8 +143,9 @@ export function PlanDetail({
   useEffect(() => {
     setPlan(initialPlan);
     setEditContent(initialPlan.content);
-    setMessages(initialPlan.messages ?? []);
-    setAgentThinking(false);
+    const msgs = initialPlan.messages ?? [];
+    setMessages(msgs);
+    setAgentThinking(isAwaitingAgentReply(msgs));
     setAgentPendingContent(null);
     setContentMode("preview");
     setIsEditing(false);
@@ -148,6 +156,16 @@ export function PlanDetail({
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, agentThinking]);
+
+  // Auto-start polling when the plan loads with a pending agent reply
+  // (e.g., immediately after creation with an initial prompt)
+  useEffect(() => {
+    if (isAwaitingAgentReply(messages)) {
+      startPolling();
+    }
+    // Only run on plan switch, not every messages change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPlan.id]);
 
   // Debounced auto-save for manual edits
   const scheduleAutoSave = useCallback(
@@ -370,13 +388,13 @@ export function PlanDetail({
                 setContentMode("edit");
                 setIsEditing(true);
               }}
-              disabled={isArchived}
+              disabled={isArchived || agentThinking}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition",
                 contentMode === "edit"
                   ? "bg-slate-100 text-slate-700"
                   : "text-slate-500 hover:bg-slate-50",
-                isArchived && "opacity-40 cursor-not-allowed",
+                (isArchived || agentThinking) && "opacity-40 cursor-not-allowed",
               )}
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -394,10 +412,18 @@ export function PlanDetail({
           <div className="flex-1 overflow-y-auto">
             {contentMode === "preview" ? (
               <div className="prose prose-sm max-w-none p-6">
-                {plan.content ? (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkBreaks]}
-                  >
+                {agentThinking && !plan.content ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                    <div className="flex gap-1.5 text-slate-400">
+                      <span className="animate-bounce text-lg">●</span>
+                      <span className="animate-bounce delay-100 text-lg">●</span>
+                      <span className="animate-bounce delay-200 text-lg">●</span>
+                    </div>
+                    <p className="text-sm text-slate-500">Agent is drafting your plan…</p>
+                    <p className="text-xs text-slate-400">Editing and chat are disabled until the first draft is ready.</p>
+                  </div>
+                ) : plan.content ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                     {plan.content}
                   </ReactMarkdown>
                 ) : (
