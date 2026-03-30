@@ -15,10 +15,15 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . ./
 
 # Allows configuring the API URL at build time.
+# Write to .env.local so Turbopack reliably picks up the value during the build
+# (process.env injection via Docker ENV is not consistently inlined by Turbopack).
 ARG NEXT_PUBLIC_API_URL=auto
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ARG NEXT_PUBLIC_AUTH_MODE
 ENV NEXT_PUBLIC_AUTH_MODE=${NEXT_PUBLIC_AUTH_MODE}
+
+RUN printf 'NEXT_PUBLIC_API_URL=%s\nNEXT_PUBLIC_AUTH_MODE=%s\n' \
+    "${NEXT_PUBLIC_API_URL}" "${NEXT_PUBLIC_AUTH_MODE:-local}" > .env.local
 
 RUN npm run build
 
