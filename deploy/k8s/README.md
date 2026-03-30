@@ -93,11 +93,15 @@ docker build -f backend/Dockerfile \
   .
 
 docker build -f frontend/Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=auto \
+  --build-arg NEXT_PUBLIC_API_URL=https://mission-control.radicalgeek.co.uk/api \
   --build-arg NEXT_PUBLIC_AUTH_MODE=local \
   -t radicalgeek/mission-control-frontend:latest \
   -t radicalgeek/mission-control-frontend:${GIT_SHA} \
   frontend/
+
+# NOTE: NEXT_PUBLIC_API_URL is baked into the Next.js bundle at build time.
+# It must be set to the public URL the browser uses to reach the backend API.
+# For this cluster: https://mission-control.radicalgeek.co.uk/api
 
 docker push radicalgeek/mission-control-backend:latest
 docker push radicalgeek/mission-control-backend:${GIT_SHA}

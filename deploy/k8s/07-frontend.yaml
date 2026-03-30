@@ -23,6 +23,9 @@ spec:
         - containerPort: 3000
           name: http
         env:
+        # NOTE: NEXT_PUBLIC_* vars are baked into the Next.js bundle at IMAGE BUILD TIME.
+        # These runtime values only affect SSR env — they do NOT override the compiled bundle.
+        # When building the image, pass the correct URL via --build-arg NEXT_PUBLIC_API_URL=...
         - name: NEXT_PUBLIC_API_URL
           value: https://mission-control.radicalgeek.co.uk/api
         - name: NEXT_PUBLIC_AUTH_MODE
