@@ -11,6 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi_pagination import add_pagination
 
 from app.api.channels import router as channels_router
+from app.api.plans import router as plans_router
 from app.api.threads import router as threads_router
 from app.api.thread_messages import router as thread_messages_router
 from app.api.activity import router as activity_router
@@ -136,6 +137,10 @@ OPENAPI_TAGS = [
     {
         "name": "channels",
         "description": "Board channel messaging: channels, threads, and thread messages.",
+    },
+    {
+        "name": "plans",
+        "description": "Board planning documents, chat sessions, and task promotion.",
     },
     {
         "name": "agent",
@@ -547,6 +552,7 @@ api_v1 = APIRouter(prefix="/api/v1")
 api_v1.include_router(auth_router)
 api_v1.include_router(agent_router)
 api_v1.include_router(channels_router)
+api_v1.include_router(plans_router)
 api_v1.include_router(threads_router)
 api_v1.include_router(thread_messages_router)
 api_v1.include_router(agents_router)

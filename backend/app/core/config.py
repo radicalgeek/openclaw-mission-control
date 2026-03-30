@@ -89,6 +89,10 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("CHANNELS_ENABLED", "channels_enabled"),
     )
+    planning_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("PLANNING_ENABLED", "planning_enabled"),
+    )
 
     # Logging
     log_level: str = "INFO"

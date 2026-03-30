@@ -1666,6 +1666,20 @@ async def delete_task_and_related_records(
         col(TaskCustomFieldValue.task_id) == task.id,
         commit=False,
     )
+    # Unlink any plans referencing this task (do not delete the plan)
+    try:
+        from app.core.config import settings as _settings  # noqa: PLC0415
+
+        if _settings.planning_enabled:
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+
+            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == task.id))
+            for _linked_plan in _result.all():
+                _linked_plan.task_id = None
+                session.add(_linked_plan)
+    except Exception:
+        pass  # Never block task deletion due to plan unlink failures
     await session.delete(task)
     await session.commit()
 
@@ -2369,6 +2383,46 @@ async def _apply_lead_task_update(
         except Exception:
             logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
 
+    # Auto-complete plan when task moves to done
+    if (
+        settings.planning_enabled
+        and update.previous_status != "done"
+        and update.task.status == "done"
+    ):
+        try:
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+
+            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            _linked_plan = _result.first()
+            if _linked_plan:
+                _linked_plan.status = "completed"
+                _linked_plan.updated_at = utcnow()
+                session.add(_linked_plan)
+                await session.commit()
+        except Exception:
+            logger.exception("task.plan_auto_complete_failed task_id=%s", update.task.id)
+
+    # Auto-revert plan to active when task is reopened
+    if (
+        settings.planning_enabled
+        and update.previous_status == "done"
+        and update.task.status != "done"
+    ):
+        try:
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+
+            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            _linked_plan = _result.first()
+            if _linked_plan and _linked_plan.status == "completed":
+                _linked_plan.status = "active"
+                _linked_plan.updated_at = utcnow()
+                session.add(_linked_plan)
+                await session.commit()
+        except Exception:
+            logger.exception("task.plan_reopen_failed task_id=%s", update.task.id)
+
     return await _task_read_response(
         session,
         task=update.task,
@@ -2766,6 +2820,46 @@ async def _finalize_updated_task(
             await auto_resolve_thread_for_completed_task(session, update.task)
         except Exception:
             logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
+
+    # Auto-complete plan when task moves to done
+    if (
+        settings.planning_enabled
+        and update.previous_status != "done"
+        and update.task.status == "done"
+    ):
+        try:
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+
+            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            _linked_plan = _result.first()
+            if _linked_plan:
+                _linked_plan.status = "completed"
+                _linked_plan.updated_at = utcnow()
+                session.add(_linked_plan)
+                await session.commit()
+        except Exception:
+            logger.exception("task.plan_auto_complete_failed task_id=%s", update.task.id)
+
+    # Auto-revert plan to active when task is reopened
+    if (
+        settings.planning_enabled
+        and update.previous_status == "done"
+        and update.task.status != "done"
+    ):
+        try:
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+
+            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            _linked_plan = _result.first()
+            if _linked_plan and _linked_plan.status == "completed":
+                _linked_plan.status = "active"
+                _linked_plan.updated_at = utcnow()
+                session.add(_linked_plan)
+                await session.commit()
+        except Exception:
+            logger.exception("task.plan_reopen_failed task_id=%s", update.task.id)
 
     return await _task_read_response(
         session,

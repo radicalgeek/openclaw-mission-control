@@ -56,6 +56,8 @@ spec:
           value: https://mission-control.radicalgeek.co.uk
         - name: CHANNELS_ENABLED
           value: "true"
+        - name: PLANNING_ENABLED
+          value: "true"
         - name: AUTH_MODE
           value: local
         - name: LOCAL_AUTH_TOKEN

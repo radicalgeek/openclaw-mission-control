@@ -8,6 +8,7 @@ import {
   Bot,
   Boxes,
   CheckCircle2,
+  FileText,
   Folder,
   Building2,
   LayoutGrid,
@@ -135,6 +136,18 @@ export function DashboardSidebar() {
               >
                 <MessageSquare className="h-4 w-4" />
                 Channels
+              </Link>
+              <Link
+                href="/planning"
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 transition",
+                  pathname.startsWith("/planning")
+                    ? "bg-blue-100 text-blue-800 font-medium"
+                    : "hover:bg-slate-100",
+                )}
+              >
+                <FileText className="h-4 w-4" />
+                Planning
               </Link>
               <Link
                 href="/tags"
