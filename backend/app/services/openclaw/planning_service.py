@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.core.logging import TRACE_LEVEL
+from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.plans import Plan
 from app.services.openclaw.coordination_service import AbstractGatewayMessagingService
@@ -24,7 +25,12 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         prompt: str,
         correlation_id: str | None = None,
     ) -> str:
-        """Initialize a new gateway session for a planning document and send the opening prompt."""
+        """Send the opening prompt to the board lead agent's gateway session.
+
+        Uses the board lead's existing session so the agent has proper board
+        context, auth token, and memory.  Falls back to the gateway main
+        session when no provisioned lead is found.
+        """
         trace_id = GatewayDispatchService.resolve_trace_id(
             correlation_id, prefix="planning.start"
         )
@@ -37,12 +43,30 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         gateway, config = await GatewayDispatchService(
             self.session
         ).require_gateway_config_for_board(board)
-        session_key = GatewayAgentIdentity.session_key(gateway)
+
+        # Prefer the board lead's session: it has the right X-Agent-Token and board context.
+        lead = await Agent.objects.filter_by(
+            board_id=board.id, is_board_lead=True
+        ).first(self.session)
+
+        if lead is not None and lead.openclaw_session_id:
+            session_key = lead.openclaw_session_id
+            agent_name = lead.name
+        else:
+            # Fallback: gateway main session (no board-specific auth token).
+            session_key = GatewayAgentIdentity.session_key(gateway)
+            agent_name = "Gateway Agent"
+            self.logger.warning(
+                "gateway.planning.start_dispatch.no_lead trace_id=%s board_id=%s "
+                "falling back to gateway main session",
+                trace_id,
+                board.id,
+            )
         try:
             await self._dispatch_gateway_message(
                 session_key=session_key,
                 config=config,
-                agent_name="Gateway Agent",
+                agent_name=agent_name,
                 message=prompt,
                 deliver=True,
             )
@@ -84,11 +108,24 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         _gateway, config = await GatewayDispatchService(
             self.session
         ).require_gateway_config_for_board(board)
+
+        # Always route to the board lead's session for proper auth and board context.
+        lead = await Agent.objects.filter_by(
+            board_id=board.id, is_board_lead=True
+        ).first(self.session)
+
+        if lead is not None and lead.openclaw_session_id:
+            session_key = lead.openclaw_session_id
+            agent_name = lead.name
+        else:
+            session_key = plan.session_key
+            agent_name = "Gateway Agent"
+
         try:
             await self._dispatch_gateway_message(
-                session_key=plan.session_key,
+                session_key=session_key,
                 config=config,
-                agent_name="Gateway Agent",
+                agent_name=agent_name,
                 message=message,
                 deliver=True,
             )
