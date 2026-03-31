@@ -8,6 +8,13 @@ import { customFetch } from "./mutator";
 
 type ApiResponse<T> = { data: T; status: number; headers: Headers };
 
+export type TagRef = {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+};
+
 export type SprintStatus = "draft" | "queued" | "active" | "completed" | "cancelled";
 
 export type SprintRead = {
@@ -50,6 +57,8 @@ export type TaskRead = {
   assigned_agent_id: string | null;
   is_backlog: boolean;
   sprint_id: string | null;
+  tags: TagRef[];
+  tag_ids: string[];
   created_at: string;
   updated_at: string;
 };
@@ -60,6 +69,8 @@ export type BacklogTaskCreate = {
   priority?: "low" | "medium" | "high" | "critical";
   sprint_id?: string;
   assigned_agent_id?: string;
+  tag_ids?: string[];
+  due_at?: string | null;
 };
 
 export type BatchBacklogCreate = {
@@ -208,4 +219,20 @@ export const batchCreateBacklog = (
   customFetch<ApiResponse<TaskRead[]>>(`${backlogBase(boardId)}/batch`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+
+// ─── Tags ─────────────────────────────────────────────────────────────────────
+
+export type PagedTags = {
+  items: TagRef[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export const listOrgTags = (
+  limit = 200,
+): Promise<ApiResponse<PagedTags>> =>
+  customFetch<ApiResponse<PagedTags>>(`/api/v1/tags?limit=${limit}`, {
+    method: "GET",
   });

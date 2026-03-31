@@ -29,9 +29,11 @@ from app.schemas.sprints import (
     SprintTicketReorderRequest,
     SprintUpdate,
 )
+from app.schemas.tags import TagRef
 from app.schemas.tasks import TaskCreate, TaskRead
 from app.services.activity_log import record_activity
 from app.services.planning import generate_slug
+from app.services.tags import load_tag_state, replace_tags, validate_tag_ids
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
@@ -122,7 +124,11 @@ def _sprint_to_read(
     )
 
 
-def _task_to_read(task: Task) -> TaskRead:
+def _task_to_read(
+    task: Task,
+    tags: list[TagRef] | None = None,
+    tag_ids: list[UUID] | None = None,
+) -> TaskRead:
     return TaskRead(
         id=task.id,
         board_id=task.board_id,
@@ -133,7 +139,8 @@ def _task_to_read(task: Task) -> TaskRead:
         due_at=task.due_at,
         assigned_agent_id=task.assigned_agent_id,
         depends_on_task_ids=[],
-        tag_ids=[],
+        tag_ids=tag_ids or [],
+        tags=tags or [],
         created_by_user_id=task.created_by_user_id,
         in_progress_at=task.in_progress_at,
         created_at=task.created_at,
@@ -142,6 +149,29 @@ def _task_to_read(task: Task) -> TaskRead:
         is_backlog=task.is_backlog,
         sprint_id=task.sprint_id,
     )
+
+
+async def _tasks_to_read_with_tags(
+    session: "AsyncSession",
+    tasks: list[Task],
+) -> list[TaskRead]:
+    """Convert tasks to TaskRead, batch-loading tags in a single query."""
+    if not tasks:
+        return []
+    tag_state_map = await load_tag_state(
+        session, task_ids=[t.id for t in tasks if t.id is not None]
+    )
+    result: list[TaskRead] = []
+    for task in tasks:
+        state = tag_state_map.get(task.id)  # type: ignore[arg-type]
+        result.append(
+            _task_to_read(
+                task,
+                tags=state.tags if state else None,
+                tag_ids=state.tag_ids if state else None,
+            )
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -360,15 +390,15 @@ async def list_sprint_tickets(
         )
     ).all()
 
-    out: list[TaskRead] = []
+    task_list: list[Task] = []
     for ticket in tickets:
         task = await session.get(Task, ticket.task_id)
         if task is None:
             continue
         if ticket_status and task.status != ticket_status:
             continue
-        out.append(_task_to_read(task))
-    return out
+        task_list.append(task)
+    return await _tasks_to_read_with_tags(session, task_list)
 
 
 @router.post("/sprints/{sprint_id}/tickets", response_model=list[SprintTicketRead])
@@ -508,8 +538,8 @@ async def list_backlog(
     elif unassigned:
         query = query.where(col(Task.sprint_id).is_(None))
 
-    tasks = (await session.exec(query)).all()
-    return [_task_to_read(t) for t in tasks]
+    tasks = list((await session.exec(query)).all())
+    return await _tasks_to_read_with_tags(session, tasks)
 
 
 @router.post("/backlog", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
@@ -520,6 +550,11 @@ async def create_backlog_task(
     auth: "AuthContext" = USER_AUTH_DEP,
 ) -> TaskRead:
     """Create a task directly in the backlog (is_backlog=True)."""
+    normalized_tag_ids = await validate_tag_ids(
+        session,
+        organization_id=board.organization_id,
+        tag_ids=list(payload.tag_ids),
+    )
     task = Task(
         board_id=board.id,
         title=payload.title,
@@ -532,6 +567,9 @@ async def create_backlog_task(
         is_backlog=True,
     )
     session.add(task)
+    await session.flush()
+    if normalized_tag_ids:
+        await replace_tags(session, task_id=task.id, tag_ids=normalized_tag_ids)
     record_activity(
         session,
         event_type="backlog_task_created",
@@ -540,7 +578,9 @@ async def create_backlog_task(
     )
     await session.commit()
     await session.refresh(task)
-    return _task_to_read(task)
+    reads = await _tasks_to_read_with_tags(session, [task])
+    return reads[0]
+
 
 
 @router.post("/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED)

@@ -1,16 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Layers } from "lucide-react";
+import {
+  type listBoardsApiV1BoardsGetResponse,
+  useListBoardsApiV1BoardsGet,
+} from "@/api/generated/boards/boards";
+import { ApiError } from "@/api/mutator";
 import {
   type SprintRead,
   type SprintCreate,
+  type TagRef,
   listSprints,
   createSprint,
+  listOrgTags,
 } from "@/api/sprints";
+import { cn } from "@/lib/utils";
 import { SprintList } from "./SprintList";
 import { SprintDetail } from "./SprintDetail";
 import { BacklogView } from "./BacklogView";
-import { ApiError } from "@/api/mutator";
 
 type Props = {
   boardId: string;
@@ -19,6 +28,28 @@ type Props = {
 type View = { type: "backlog" } | { type: "sprint"; sprint: SprintRead };
 
 export function SprintsLayout({ boardId }: Props) {
+  const router = useRouter();
+
+  // ── Boards ─────────────────────────────────────────────────────────────────
+  const boardsQuery = useListBoardsApiV1BoardsGet<
+    listBoardsApiV1BoardsGetResponse,
+    ApiError
+  >(undefined, { query: { refetchOnMount: false } });
+  const allBoards =
+    boardsQuery.data?.status === 200
+      ? (boardsQuery.data.data.items ?? [])
+      : [];
+  const currentBoard = allBoards.find((b) => b.id === boardId);
+
+  // ── Org tags ───────────────────────────────────────────────────────────────
+  const [orgTags, setOrgTags] = useState<TagRef[]>([]);
+  useEffect(() => {
+    void listOrgTags().then((res) => {
+      if (res.status === 200) setOrgTags(res.data.items ?? []);
+    }).catch(() => undefined);
+  }, []);
+
+  // ── Sprints ────────────────────────────────────────────────────────────────
   const [sprints, setSprints] = useState<SprintRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>({ type: "backlog" });
@@ -33,7 +64,6 @@ export function SprintsLayout({ boardId }: Props) {
     try {
       const res = await listSprints(boardId);
       setSprints(res.data);
-      // Keep selected sprint in sync after refresh
       setView((prev) => {
         if (prev.type === "sprint") {
           const updated = res.data.find((s) => s.id === prev.sprint.id);
@@ -50,7 +80,8 @@ export function SprintsLayout({ boardId }: Props) {
 
   useEffect(() => {
     void loadSprints();
-  }, [loadSprints]);
+    setView({ type: "backlog" });
+  }, [boardId, loadSprints]);
 
   const handleCreateSprint = useCallback(
     async (e: React.FormEvent) => {
@@ -83,7 +114,34 @@ export function SprintsLayout({ boardId }: Props) {
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
-      {/* Left sidebar */}
+      {/* ── Board selector ── */}
+      <nav className="flex w-44 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white">
+        <div className="flex items-center gap-1.5 px-3 py-3">
+          <Layers className="h-3.5 w-3.5 text-slate-400" />
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Boards
+          </p>
+        </div>
+        {allBoards.map((board) => (
+          <button
+            key={board.id}
+            onClick={() => router.push(`/sprints/${board.id}`)}
+            className={cn(
+              "w-full px-4 py-2.5 text-left text-sm transition",
+              board.id === boardId
+                ? "bg-orange-50 font-medium text-orange-800"
+                : "text-slate-700 hover:bg-slate-50",
+            )}
+          >
+            <span className="block truncate">{board.name}</span>
+          </button>
+        ))}
+        {allBoards.length === 0 && (
+          <p className="px-4 py-4 text-xs text-slate-400">No boards.</p>
+        )}
+      </nav>
+
+      {/* ── Sprint list ── */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-white">
         <SprintList
           sprints={sprints}
@@ -96,14 +154,12 @@ export function SprintsLayout({ boardId }: Props) {
         />
       </aside>
 
-      {/* Main content */}
+      {/* ── Main content ── */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-slate-50">
-        {/* New sprint modal (inline) */}
+        {/* New sprint form (slide-in) */}
         {showNewForm && (
           <div className="border-b border-slate-200 bg-white px-6 py-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">
-              New Sprint
-            </h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">New Sprint</h3>
             <form
               onSubmit={(e) => void handleCreateSprint(e)}
               className="space-y-3"
@@ -119,39 +175,63 @@ export function SprintsLayout({ boardId }: Props) {
               <input
                 value={newGoal}
                 onChange={(e) => setNewGoal(e.target.value)}
-                placeholder="Sprint goal (optional)"
+                placeholder="Goal (optional)"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-200"
               />
+              {createError && (
+                <p className="text-xs text-red-500">{createError}</p>
+              )}
               <div className="flex gap-2">
                 <button
                   type="submit"
                   disabled={creating}
-                  className="rounded-md bg-orange-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-50 transition"
+                  className="rounded-md bg-orange-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50 transition"
                 >
                   {creating ? "Creating…" : "Create"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowNewForm(false)}
-                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition"
+                  onClick={() => {
+                    setShowNewForm(false);
+                    setNewName("");
+                    setNewGoal("");
+                    setCreateError(null);
+                  }}
+                  className="rounded-md border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
                 >
                   Cancel
                 </button>
               </div>
-              {createError && (
-                <p className="text-xs text-red-500">{createError}</p>
-              )}
             </form>
           </div>
         )}
 
-        {view.type === "backlog" ? (
-          <BacklogView boardId={boardId} />
-        ) : (
+        {/* Board name breadcrumb */}
+        {currentBoard && (
+          <div className="flex items-center gap-2 border-b border-slate-100 bg-white px-6 py-2.5">
+            <span className="text-xs text-slate-400">Board</span>
+            <span className="text-xs text-slate-300">/</span>
+            <span className="text-xs font-medium text-slate-700">
+              {currentBoard.name}
+            </span>
+          </div>
+        )}
+
+        {view.type === "sprint" ? (
           <SprintDetail
+            key={view.sprint.id}
             boardId={boardId}
             sprint={view.sprint}
+            sprints={sprints}
+            orgTags={orgTags}
             onRefresh={() => void loadSprints()}
+          />
+        ) : (
+          <BacklogView
+            boardId={boardId}
+            sprints={sprints}
+            orgTags={orgTags}
+            onSprintChange={() => void loadSprints()}
           />
         )}
       </main>

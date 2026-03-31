@@ -75,42 +75,71 @@ export function SprintList({
             </button>
           </div>
         )}
-        {sprints.map((sprint) => (
-          <button
-            key={sprint.id}
-            onClick={() => onSelectSprint(sprint)}
-            className={cn(
-              "w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50",
-              sprint.id === selectedSprintId && "bg-orange-50 hover:bg-orange-50",
-            )}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <span
-                className={cn(
-                  "truncate text-sm font-medium",
-                  sprint.id === selectedSprintId
-                    ? "text-orange-800"
-                    : "text-slate-700",
-                )}
-              >
-                {sprint.name}
-              </span>
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                  statusColor[sprint.status],
-                )}
-              >
-                {sprint.status}
-              </span>
-            </div>
-            {sprint.ticket_count > 0 && (
-              <p className="mt-0.5 text-[11px] text-slate-400">
-                {sprint.tickets_done_count}/{sprint.ticket_count} done
-              </p>
-            )}
-          </button>
-        ))}
+        {sprints.map((sprint) => {
+          const pct =
+            sprint.ticket_count > 0
+              ? Math.round(
+                  (sprint.tickets_done_count / sprint.ticket_count) * 100,
+                )
+              : 0;
+          const isSelected = sprint.id === selectedSprintId;
+          return (
+            <button
+              key={sprint.id}
+              onClick={() => onSelectSprint(sprint)}
+              className={cn(
+                "w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50",
+                isSelected && "bg-orange-50 hover:bg-orange-50",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span
+                  className={cn(
+                    "truncate text-sm font-medium leading-snug",
+                    isSelected ? "text-orange-800" : "text-slate-700",
+                  )}
+                >
+                  {sprint.name}
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                    statusColor[sprint.status],
+                  )}
+                >
+                  {sprint.status}
+                </span>
+              </div>
+              {sprint.ticket_count > 0 && (
+                <div className="mt-1.5 space-y-0.5">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>
+                      {sprint.tickets_done_count}/{sprint.ticket_count}
+                    </span>
+                    <span>{pct}%</span>
+                  </div>
+                  <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        sprint.status === "completed"
+                          ? "bg-green-400"
+                          : "bg-orange-400",
+                      )}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {sprint.goal && (
+                <p className="mt-1 truncate text-[10px] text-slate-400">
+                  {sprint.goal}
+                </p>
+              )}
+            </button>
+          );
+        })}
+
       </div>
     </div>
   );
