@@ -38,6 +38,7 @@ class TaskCreate(TaskBase):
 
     created_by_user_id: UUID | None = None
     custom_field_values: TaskCustomFieldValues = Field(default_factory=dict)
+    is_backlog: bool = False
 
 
 class TaskUpdate(SQLModel):
@@ -96,6 +97,8 @@ class TaskRead(TaskBase):
     # Channel thread link (None for legacy tasks without a linked thread)
     thread_id: UUID | None = None
     channel_info: ChannelInfo | None = None
+    is_backlog: bool = False
+    sprint_id: UUID | None = None
 
 
 class TaskCommentCreate(SQLModel):

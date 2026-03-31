@@ -82,6 +82,7 @@ class BoardUpdate(SQLModel):
     only_lead_can_change_status: bool | None = None
     max_agents: int | None = Field(default=None, ge=0)
     is_platform: bool | None = None
+    auto_advance_sprint: bool | None = None
 
     @model_validator(mode="after")
     def validate_gateway_id(self) -> Self:
@@ -104,5 +105,6 @@ class BoardRead(BoardBase):
 
     id: UUID
     organization_id: UUID
+    auto_advance_sprint: bool = False
     created_at: datetime
     updated_at: datetime

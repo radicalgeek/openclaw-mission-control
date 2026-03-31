@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 import re
 import uuid
 from typing import TYPE_CHECKING
@@ -109,3 +110,32 @@ def build_plan_turn_prompt(
         f"## Current Plan State\n{content_section}\n\n"
         f"## User Message\n{user_message}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Decompose plan → tickets helpers
+# ---------------------------------------------------------------------------
+
+_TICKETS_BLOCK_RE = re.compile(r"```tickets\s*\n(.+?)\n```", re.DOTALL)
+
+
+def build_decompose_prompt(plan_content: str) -> str:
+    """Build the gateway prompt that asks an agent to decompose a plan into tickets."""
+    return (
+        "Break the following plan into discrete, actionable work tickets.\n"
+        "Return ONLY a JSON array inside a ```tickets``` fenced code block.\n"
+        'Each element must be: {"title": string, "description": string, '
+        '"priority": "low"|"medium"|"high"|"critical"}.\n\n'
+        "Plan content:\n" + plan_content
+    )
+
+
+def extract_decomposed_tickets(agent_reply: str) -> list[dict[str, object]] | None:
+    """Extract a list of ticket dicts from an agent reply containing a ```tickets``` block."""
+    match = _TICKETS_BLOCK_RE.search(agent_reply)
+    if not match:
+        return None
+    try:
+        return _json.loads(match.group(1))  # type: ignore[no-any-return]
+    except _json.JSONDecodeError:
+        return None
