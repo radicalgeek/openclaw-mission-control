@@ -50,7 +50,7 @@ export function PlanningLayout({ boardId }: Props) {
     try {
       const result = await listPlans(boardId, filterStatus);
       if (result.status === 200) {
-        setPlans(result.data.items ?? []);
+        setPlans(result.data ?? []);
       }
     } finally {
       setPlansLoading(false);

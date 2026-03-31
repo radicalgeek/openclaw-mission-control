@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import col, select
 
 from app.api.deps import (
+    get_board_for_actor_read,
     get_board_for_user_read,
     get_board_for_user_write,
     require_user_auth,
@@ -376,7 +377,7 @@ async def chat_plan(
 async def agent_update_plan(
     plan_id: UUID,
     payload: PlanAgentUpdateRequest,
-    board: Board = BOARD_READ_DEP,
+    board: Board = Depends(get_board_for_actor_read),
     session: AsyncSession = SESSION_DEP,
 ) -> OkResponse:
     """Receive a plan update pushed by the gateway lead agent.

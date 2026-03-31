@@ -58,11 +58,6 @@ export type PlanPromoteRequest = {
   assigned_agent_id?: string;
 };
 
-export type PlanListResponse = {
-  items: PlanRead[];
-  total: number;
-};
-
 // ─── API Functions ────────────────────────────────────────────────────────────
 
 const base = (boardId: string) => `/api/v1/boards/${boardId}/plans`;
@@ -70,9 +65,9 @@ const base = (boardId: string) => `/api/v1/boards/${boardId}/plans`;
 export const listPlans = (
   boardId: string,
   status?: PlanStatus,
-): Promise<ApiResponse<PlanListResponse>> => {
+): Promise<ApiResponse<PlanRead[]>> => {
   const url = status ? `${base(boardId)}?status=${status}` : base(boardId);
-  return customFetch<ApiResponse<PlanListResponse>>(url, { method: "GET" });
+  return customFetch<ApiResponse<PlanRead[]>>(url, { method: "GET" });
 };
 
 export const createPlan = (
