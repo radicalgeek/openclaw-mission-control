@@ -44,7 +44,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                 config=config,
                 agent_name="Gateway Agent",
                 message=prompt,
-                deliver=False,
+                deliver=True,
             )
         except (OpenClawGatewayError, TimeoutError) as exc:
             self.logger.error(
@@ -90,7 +90,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                 config=config,
                 agent_name="Gateway Agent",
                 message=message,
-                deliver=False,
+                deliver=True,
             )
         except (OpenClawGatewayError, TimeoutError) as exc:
             self.logger.error(
