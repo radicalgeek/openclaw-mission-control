@@ -14,6 +14,7 @@ import {
   type TagRef,
   listSprints,
   createSprint,
+  updateSprint,
   listOrgTags,
 } from "@/api/sprints";
 import { cn } from "@/lib/utils";
@@ -109,6 +110,25 @@ export function SprintsLayout({ boardId }: Props) {
     [boardId, newName, newGoal, loadSprints],
   );
 
+  const handleReorder = useCallback(
+    async (orderedIds: string[]) => {
+      // Optimistically reorder locally
+      setSprints((prev) =>
+        prev.map((s) => {
+          const newIdx = orderedIds.indexOf(s.id);
+          return newIdx === -1 ? s : { ...s, position: newIdx + 1 };
+        }),
+      );
+      // Persist to backend
+      await Promise.all(
+        orderedIds.map((id, idx) =>
+          updateSprint(boardId, id, { position: idx + 1 }).catch(() => undefined),
+        ),
+      );
+    },
+    [boardId],
+  );
+
   const selectedSprintId =
     view.type === "sprint" ? view.sprint.id : null;
 
@@ -151,6 +171,7 @@ export function SprintsLayout({ boardId }: Props) {
           onSelectBacklog={() => setView({ type: "backlog" })}
           showingBacklog={view.type === "backlog"}
           loading={loading}
+          onReorder={(ids) => void handleReorder(ids)}
         />
       </aside>
 
