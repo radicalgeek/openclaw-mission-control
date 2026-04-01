@@ -413,7 +413,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 <div
                   key={task.id}
                   className={cn(
-                    "rounded-xl overflow-hidden border transition-colors",
+                    "rounded-xl border transition-colors",
                     isSelected
                       ? "border-orange-300 shadow-sm"
                       : "border-slate-100 hover:border-slate-200",
@@ -421,7 +421,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 >
                   {/* Card - clickable to open detail */}
                   <div
-                    className="cursor-pointer"
+                    className="cursor-pointer overflow-hidden rounded-t-xl"
                     onClick={() => (isSelected ? closeDetail() : openDetail(task))}
                   >
                     <TaskCard
@@ -436,7 +436,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                   </div>
 
                   {/* Sprint assignment bar - always visible */}
-                  <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 border-t border-slate-100">
+                  <div className="relative flex items-center gap-2 rounded-b-xl bg-slate-50 px-3 py-1.5 border-t border-slate-100">
                     {assignedSprint ? (
                       <>
                         <span className="flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
