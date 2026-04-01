@@ -274,18 +274,28 @@ async def delete_plan(
     session: AsyncSession = SESSION_DEP,
     _auth: AuthContext = USER_AUTH_DEP,
 ) -> OkResponse:
-    """Soft-delete (archive) a plan."""
+    """Archive a plan, or permanently delete it if it is already archived."""
     _planning_enabled_check()
     plan = await _require_plan(session, plan_id, board)
-    plan.status = "archived"
-    plan.updated_at = utcnow()
-    session.add(plan)
-    record_activity(
-        session,
-        event_type="plan_archived",
-        message=f"Plan archived: {plan.title}",
-        board_id=board.id,
-    )
+    if plan.status == "archived":
+        # Second delete = permanent removal
+        record_activity(
+            session,
+            event_type="plan_deleted",
+            message=f"Plan permanently deleted: {plan.title}",
+            board_id=board.id,
+        )
+        await session.delete(plan)
+    else:
+        plan.status = "archived"
+        plan.updated_at = utcnow()
+        session.add(plan)
+        record_activity(
+            session,
+            event_type="plan_archived",
+            message=f"Plan archived: {plan.title}",
+            board_id=board.id,
+        )
     await session.commit()
     return OkResponse()
 

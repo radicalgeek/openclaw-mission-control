@@ -43,6 +43,7 @@ export function PlanningLayout({ boardId }: Props) {
   const [filterStatus, _setFilterStatus] = useState<PlanStatus | undefined>(
     undefined,
   );
+  const [showArchived, setShowArchived] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
 
   const loadPlans = useCallback(async () => {
@@ -125,11 +126,13 @@ export function PlanningLayout({ boardId }: Props) {
       {/* Plan list */}
       <div className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
         <PlanList
-          plans={plans}
+          plans={showArchived ? plans : plans.filter((p) => p.status !== "archived")}
           selectedPlanId={selectedPlan?.id ?? null}
           onSelectPlan={handleSelectPlan}
           onNewPlan={() => setShowNewModal(true)}
           loading={plansLoading}
+          showArchived={showArchived}
+          onToggleArchived={() => setShowArchived((v) => !v)}
         />
       </div>
 

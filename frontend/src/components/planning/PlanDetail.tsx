@@ -321,16 +321,24 @@ export function PlanDetail({
         )}
         <button
           onClick={handleDelete}
-          title={deleteConfirm ? "Click again to confirm delete" : "Archive plan"}
+          title={
+            deleteConfirm
+              ? "Click again to confirm"
+              : isArchived
+                ? "Permanently delete this plan"
+                : "Archive plan"
+          }
           className={cn(
             "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition",
             deleteConfirm
               ? "bg-red-100 text-red-700 hover:bg-red-200"
-              : "text-slate-500 hover:bg-slate-100",
+              : isArchived
+                ? "text-red-400 hover:bg-red-50"
+                : "text-slate-500 hover:bg-slate-100",
           )}
         >
           <Trash2 className="h-3.5 w-3.5" />
-          {deleteConfirm ? "Confirm delete" : ""}
+          {deleteConfirm ? "Confirm delete" : isArchived ? "Delete" : ""}
         </button>
       </div>
 

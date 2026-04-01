@@ -12,6 +12,8 @@ type Props = {
   onSelectPlan: (plan: PlanRead) => void;
   onNewPlan: () => void;
   loading?: boolean;
+  showArchived?: boolean;
+  onToggleArchived?: () => void;
 };
 
 export function PlanList({
@@ -20,6 +22,8 @@ export function PlanList({
   onSelectPlan,
   onNewPlan,
   loading = false,
+  showArchived = false,
+  onToggleArchived,
 }: Props) {
   return (
     <div className="flex h-full flex-col">
@@ -28,14 +32,30 @@ export function PlanList({
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           Plans
         </span>
-        <button
-          onClick={onNewPlan}
-          title="New plan"
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-500 hover:bg-orange-50 transition"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New
-        </button>
+        <div className="flex items-center gap-1">
+          {onToggleArchived && (
+            <button
+              onClick={onToggleArchived}
+              title={showArchived ? "Hide archived" : "Show archived"}
+              className={cn(
+                "rounded-md px-2 py-1 text-xs font-medium transition",
+                showArchived
+                  ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  : "text-slate-400 hover:bg-slate-100",
+              )}
+            >
+              Archived
+            </button>
+          )}
+          <button
+            onClick={onNewPlan}
+            title="New plan"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-500 hover:bg-orange-50 transition"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </button>
+        </div>
       </div>
 
       {/* Plan rows */}
