@@ -236,3 +236,24 @@ export const listOrgTags = (
   customFetch<ApiResponse<PagedTags>>(`/api/v1/tags?limit=${limit}`, {
     method: "GET",
   });
+
+// ─── Task update ──────────────────────────────────────────────────────────────
+
+export type BacklogTaskUpdate = {
+  title?: string;
+  description?: string | null;
+  priority?: string | null;
+  due_at?: string | null;
+  tag_ids?: string[] | null;
+  status?: string | null;
+};
+
+export const updateBacklogTask = (
+  boardId: string,
+  taskId: string,
+  payload: BacklogTaskUpdate,
+): Promise<ApiResponse<TaskRead>> =>
+  customFetch<ApiResponse<TaskRead>>(
+    `/api/v1/boards/${boardId}/tasks/${taskId}`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
