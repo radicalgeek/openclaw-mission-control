@@ -2861,6 +2861,15 @@ async def _finalize_updated_task(
         except Exception:
             logger.exception("task.plan_reopen_failed task_id=%s", update.task.id)
 
+    # Sprint completion check when task transitions to done
+    if update.previous_status != "done" and update.task.status == "done":
+        try:
+            from app.services.sprint_lifecycle import SprintService  # noqa: PLC0415
+
+            await SprintService.check_sprint_completion(session, board_id=update.board_id)
+        except Exception:
+            logger.exception("task.sprint_completion_check_failed task_id=%s", update.task.id)
+
     return await _task_read_response(
         session,
         task=update.task,

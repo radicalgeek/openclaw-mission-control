@@ -93,6 +93,7 @@ async def build_board_snapshot(session: AsyncSession, board: Board) -> BoardSnap
 
     tasks = list(
         await Task.objects.filter_by(board_id=board.id)
+        .filter(col(Task.is_backlog).is_(False))
         .order_by(col(Task.created_at).desc())
         .all(session),
     )

@@ -23,6 +23,7 @@ from app.models.plans import Plan
 from app.models.tasks import Task
 from app.schemas.common import OkResponse
 from app.schemas.plans import (
+    DecomposedTicket,
     PlanAgentUpdateRequest,
     PlanChatRequest,
     PlanChatResponse,
@@ -33,8 +34,10 @@ from app.schemas.plans import (
 )
 from app.services.activity_log import record_activity
 from app.services.planning import (
+    build_decompose_prompt,
     build_plan_system_prompt,
     build_plan_turn_prompt,
+    extract_decomposed_tickets,
     extract_plan_content,
     generate_slug,
 )
@@ -271,18 +274,28 @@ async def delete_plan(
     session: AsyncSession = SESSION_DEP,
     _auth: AuthContext = USER_AUTH_DEP,
 ) -> OkResponse:
-    """Soft-delete (archive) a plan."""
+    """Archive a plan, or permanently delete it if it is already archived."""
     _planning_enabled_check()
     plan = await _require_plan(session, plan_id, board)
-    plan.status = "archived"
-    plan.updated_at = utcnow()
-    session.add(plan)
-    record_activity(
-        session,
-        event_type="plan_archived",
-        message=f"Plan archived: {plan.title}",
-        board_id=board.id,
-    )
+    if plan.status == "archived":
+        # Second delete = permanent removal
+        record_activity(
+            session,
+            event_type="plan_deleted",
+            message=f"Plan permanently deleted: {plan.title}",
+            board_id=board.id,
+        )
+        await session.delete(plan)
+    else:
+        plan.status = "archived"
+        plan.updated_at = utcnow()
+        session.add(plan)
+        record_activity(
+            session,
+            event_type="plan_archived",
+            message=f"Plan archived: {plan.title}",
+            board_id=board.id,
+        )
     await session.commit()
     return OkResponse()
 
@@ -406,6 +419,13 @@ async def agent_update_plan(
     if new_content is not None:
         plan.content = new_content
 
+    # Store decomposed tickets if agent provided them
+    if payload.tickets:
+        plan.decomposed_tickets = [
+            {"title": t.title, "description": t.description, "priority": t.priority}
+            for t in payload.tickets
+        ]
+
     plan.messages = messages
     plan.updated_at = utcnow()
     session.add(plan)
@@ -472,3 +492,51 @@ async def promote_plan(
     await session.refresh(plan)
 
     return _plan_to_read(plan, task.status)
+
+
+# ---------------------------------------------------------------------------
+# Decompose plan → backlog tickets
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{plan_id}/decompose", response_model=OkResponse)
+async def decompose_plan(
+    plan_id: UUID,
+    board: Board = BOARD_WRITE_DEP,
+    session: AsyncSession = SESSION_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
+) -> OkResponse:
+    """Dispatch a gateway session that decomposes the plan into backlog tickets.
+
+    The agent will reply via ``agent-update`` with a ``tickets`` list.
+    """
+    _planning_enabled_check()
+    plan = await _require_plan(session, plan_id, board)
+
+    if not plan.content:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Plan has no content to decompose.",
+        )
+
+    decompose_prompt = build_decompose_prompt(plan.content)
+
+    try:
+        from app.services.openclaw.gateway_dispatch import GatewayDispatchService  # noqa: PLC0415
+
+        await GatewayDispatchService.dispatch(
+            session=session,
+            board=board,
+            prompt=decompose_prompt,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("plan.decompose_dispatch_failed plan_id=%s err=%s", plan_id, exc)
+
+    record_activity(
+        session,
+        event_type="plan_decompose_requested",
+        message=f"Decompose requested for plan: {plan.title}",
+        board_id=board.id,
+    )
+    await session.commit()
+    return OkResponse()

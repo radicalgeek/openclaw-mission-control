@@ -46,5 +46,9 @@ class Task(TenantScoped, table=True):
     # or manually by users linking tasks to channel conversations).
     thread_id: UUID | None = Field(default=None, foreign_key="threads.id", index=True)
 
+    # Backlog / sprint fields
+    is_backlog: bool = Field(default=False, index=True)
+    sprint_id: UUID | None = Field(default=None, foreign_key="sprints.id", index=True)
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -11,6 +11,14 @@ from app.schemas.common import NonEmptyStr
 
 RUNTIME_ANNOTATION_TYPES = (datetime, UUID, NonEmptyStr)
 
+
+class DecomposedTicket(SQLModel):
+    """A single ticket produced by plan decomposition."""
+
+    title: str
+    description: str = ""
+    priority: str = "medium"  # low | medium | high | critical
+
 VALID_PLAN_STATUSES = frozenset({"draft", "active", "completed", "archived"})
 
 
@@ -42,6 +50,7 @@ class PlanRead(SQLModel):
     task_id: UUID | None
     task_status: str | None  # Denormalized from linked task for display
     messages: list[dict[str, object]] | None
+    decomposed_tickets: list[DecomposedTicket] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -73,3 +82,4 @@ class PlanAgentUpdateRequest(SQLModel):
 
     reply: str = ""  # Agent reply text (appended to transcript as assistant message)
     content: str | None = None  # If provided, replaces plan.content
+    tickets: list[DecomposedTicket] | None = None  # If provided, stores decomposed tickets

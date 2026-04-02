@@ -46,5 +46,11 @@ class Plan(TenantScoped, table=True):
         sa_column=Column(JSON),
     )
 
+    # Agent-generated ticket decomposition (stored until user commits to backlog)
+    decomposed_tickets: list[dict[str, object]] | None = Field(
+        default=None,
+        sa_column=Column(JSON),
+    )
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
