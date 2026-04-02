@@ -509,6 +509,7 @@ export default function EditBoardPage() {
     boardGroupId ?? baseBoard?.board_group_id ?? "none";
   const resolvedBoardType = boardType ?? baseBoard?.board_type ?? "goal";
   const resolvedObjective = objective ?? baseBoard?.objective ?? "";
+  const isGoalFieldsRequired = resolvedBoardType === "goal";
   const resolvedRequireApprovalForDone =
     requireApprovalForDone ?? baseBoard?.require_approval_for_done ?? true;
   const resolvedRequireReviewBeforeDone =
@@ -924,6 +925,9 @@ export default function EditBoardPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900">
                     Objective
+                    {isGoalFieldsRequired && (
+                      <span className="text-red-500"> *</span>
+                    )}
                   </label>
                   <Textarea
                     value={resolvedObjective}
@@ -937,6 +941,9 @@ export default function EditBoardPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-900">
                     Success metrics (JSON)
+                    {isGoalFieldsRequired && (
+                      <span className="text-red-500"> *</span>
+                    )}
                   </label>
                   <Textarea
                     value={resolvedSuccessMetrics}
