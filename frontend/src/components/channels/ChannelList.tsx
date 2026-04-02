@@ -31,7 +31,7 @@ function ChannelRow({
       className={cn(
         "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition",
         isSelected
-          ? "bg-blue-100 text-blue-800 font-medium"
+          ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
           : "text-slate-700 hover:bg-slate-100",
       )}
       aria-current={isSelected ? "page" : undefined}
@@ -40,7 +40,7 @@ function ChannelRow({
       <Icon
         className={cn(
           "h-4 w-4 flex-shrink-0",
-          isSelected ? "text-blue-600" : "text-slate-400",
+          isSelected ? "text-[color:var(--accent-strong)]" : "text-slate-400",
         )}
       />
       <span className="flex-1 truncate">#{channel.name}</span>

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers } from "lucide-react";
 import {
   type listBoardsApiV1BoardsGetResponse,
   useListBoardsApiV1BoardsGet,
@@ -18,6 +17,7 @@ import {
   listOrgTags,
 } from "@/api/sprints";
 import { cn } from "@/lib/utils";
+import { BoardSelectorSidebar } from "@/components/boards/BoardSelectorSidebar";
 import { SprintList } from "./SprintList";
 import { SprintDetail } from "./SprintDetail";
 import { BacklogView } from "./BacklogView";
@@ -135,31 +135,12 @@ export function SprintsLayout({ boardId }: Props) {
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
       {/* ── Board selector ── */}
-      <nav className="flex w-44 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white">
-        <div className="flex items-center gap-1.5 px-3 py-3">
-          <Layers className="h-3.5 w-3.5 text-slate-400" />
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Boards
-          </p>
-        </div>
-        {allBoards.map((board) => (
-          <button
-            key={board.id}
-            onClick={() => router.push(`/sprints/${board.id}`)}
-            className={cn(
-              "w-full px-4 py-2.5 text-left text-sm transition",
-              board.id === boardId
-                ? "bg-orange-50 font-medium text-orange-800"
-                : "text-slate-700 hover:bg-slate-50",
-            )}
-          >
-            <span className="block truncate">{board.name}</span>
-          </button>
-        ))}
-        {allBoards.length === 0 && (
-          <p className="px-4 py-4 text-xs text-slate-400">No boards.</p>
-        )}
-      </nav>
+      <BoardSelectorSidebar
+        boards={allBoards}
+        currentBoardId={boardId}
+        onSelectBoard={(id) => router.push(`/sprints/${id}`)}
+        loading={boardsQuery.isLoading && allBoards.length === 0}
+      />
 
       {/* ── Sprint list ── */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -191,13 +172,13 @@ export function SprintsLayout({ boardId }: Props) {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Sprint name"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-200"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--accent-soft)]"
               />
               <input
                 value={newGoal}
                 onChange={(e) => setNewGoal(e.target.value)}
                 placeholder="Goal (optional)"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-200"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--accent-soft)]"
               />
               {createError && (
                 <p className="text-xs text-red-500">{createError}</p>
@@ -206,7 +187,7 @@ export function SprintsLayout({ boardId }: Props) {
                 <button
                   type="submit"
                   disabled={creating}
-                  className="rounded-md bg-orange-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50 transition"
+                  className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
                 >
                   {creating ? "Creating…" : "Create"}
                 </button>

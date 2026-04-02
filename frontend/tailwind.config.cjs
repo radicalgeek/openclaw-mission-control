@@ -9,6 +9,13 @@ module.exports = {
         body: ["var(--font-body)", "sans-serif"],
         display: ["var(--font-display)", "serif"],
       },
+      colors: {
+        brand: {
+          DEFAULT: "var(--accent)",
+          strong: "var(--accent-strong)",
+          soft: "var(--accent-soft)",
+        },
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

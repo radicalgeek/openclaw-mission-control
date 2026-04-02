@@ -104,7 +104,7 @@ export function WebhookEventCard({ message }: Props) {
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[color:var(--accent)] hover:underline"
             >
               View →
             </a>

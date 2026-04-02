@@ -50,7 +50,7 @@ function MessageBubble({ msg }: { msg: PlanMessage }) {
         className={cn(
           "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
           isUser
-            ? "bg-orange-500 text-white rounded-br-sm"
+            ? "bg-[color:var(--accent)] text-white rounded-br-sm"
             : "bg-white border border-slate-200 text-slate-800 rounded-bl-sm",
         )}
       >
@@ -91,12 +91,12 @@ function ChatComposer({ onSend, disabled }: ComposerProps) {
         disabled={disabled}
         rows={2}
         placeholder={disabled ? "Agent is thinking…" : "Message the agent…"}
-        className="flex-1 resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:opacity-50"
+        className="flex-1 resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm focus:border-[color:var(--accent)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)] disabled:opacity-50"
       />
       <button
         onClick={submit}
         disabled={disabled || !text.trim()}
-        className="mb-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-white transition hover:bg-orange-600 disabled:opacity-40"
+        className="mb-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-[color:var(--accent)] text-white transition hover:bg-[color:var(--accent-strong)] disabled:opacity-40"
         title="Send"
       >
         <ArrowUpCircle className="h-5 w-5" />
@@ -313,7 +313,7 @@ export function PlanDetail({
         {!isArchived && !isCompleted && !plan.task_id && (
           <button
             onClick={handlePromote}
-            className="flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition"
+            className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             Promote to task

@@ -254,7 +254,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
           </div>
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-orange-600 transition"
+            className="flex items-center gap-1.5 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-[color:var(--accent-strong)] transition"
           >
             <Plus className="h-3.5 w-3.5" />
             {showForm ? "Cancel" : "Add ticket"}
@@ -273,14 +273,14 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="Ticket title"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-200"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--accent-soft)]"
             />
             <textarea
               value={form.description ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="Description (optional)"
               rows={2}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-200"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--accent-soft)]"
             />
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
@@ -295,7 +295,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                       priority: e.target.value as BacklogTaskCreate["priority"],
                     }))
                   }
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-orange-400"
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[color:var(--accent)]"
                 >
                   {PRIORITY_OPTIONS.map((p) => (
                     <option key={p} value={p}>
@@ -317,7 +317,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                       due_at: e.target.value ? `${e.target.value}T00:00:00Z` : null,
                     }))
                   }
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-orange-400"
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[color:var(--accent)]"
                 />
               </div>
             </div>
@@ -358,7 +358,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50 transition"
+                className="rounded-lg bg-[color:var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
               >
                 {saving ? "Saving…" : "Add to backlog"}
               </button>
@@ -390,7 +390,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
               <p className="text-xs text-slate-400">Add tickets to plan your upcoming work.</p>
               <button
                 onClick={() => setShowForm(true)}
-                className="mt-1 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 transition"
+                className="mt-1 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
               >
                 Add first ticket
               </button>
@@ -535,7 +535,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                       });
                     }
                   }}
-                  className="w-full rounded-lg border border-orange-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-orange-200"
+                  className="w-full rounded-lg border border-orange-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-[color:var(--accent-soft)]"
                 />
               ) : (
                 <div className="flex items-center gap-2 group min-w-0">
@@ -560,7 +560,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 <button
                   onClick={() => void handleSaveEdit()}
                   disabled={editBusy}
-                  className="flex items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-50 transition"
+                  className="flex items-center gap-1 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
                 >
                   <Check className="h-3 w-3" />
                   {editBusy ? "Saving…" : "Save"}
@@ -642,7 +642,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 }
                 placeholder="Add a description…"
                 rows={4}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-orange-300 focus:bg-white focus:ring-1 focus:ring-orange-100 transition"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-[color:var(--accent)] focus:bg-white focus:ring-1 focus:ring-[color:var(--accent-soft)] transition"
               />
             </div>
 
@@ -661,7 +661,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                     due_at: e.target.value ? `${e.target.value}T00:00:00Z` : null,
                   }))
                 }
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm outline-none focus:border-orange-300 focus:bg-white transition"
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm outline-none focus:border-[color:var(--accent)] focus:bg-white transition"
               />
             </div>
 

@@ -52,7 +52,7 @@ function PostCard({
       className={cn(
         "w-full rounded-xl border px-5 py-4 text-left transition-colors",
         isSelected
-          ? "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
+          ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)] ring-1 ring-[color:var(--accent)]"
           : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80",
       )}
     >
@@ -66,7 +66,7 @@ function PostCard({
             <p
               className={cn(
                 "text-sm font-semibold leading-snug text-slate-900 line-clamp-1",
-                isSelected && "text-blue-800",
+                isSelected && "text-[color:var(--accent-strong)]",
               )}
             >
               {thread.topic}

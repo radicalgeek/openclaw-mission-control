@@ -96,10 +96,10 @@ function MessageBubble({
         className={cn(
           "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
           isCurrentUser
-            ? "bg-slate-900 text-white"
+            ? "bg-[color:var(--accent)] text-white rounded-br-sm"
             : isAgent
-              ? "bg-teal-50 text-teal-900 ring-1 ring-teal-200"
-              : "bg-white text-slate-900 ring-1 ring-slate-200",
+              ? "bg-slate-100 text-slate-800 rounded-bl-sm ring-1 ring-slate-200"
+              : "bg-white text-slate-900 rounded-bl-sm ring-1 ring-slate-200",
         )}
       >
         <div
@@ -108,7 +108,7 @@ function MessageBubble({
             isCurrentUser
               ? "prose-invert"
               : isAgent
-                ? "prose-teal"
+                ? "prose-slate"
                 : "prose-slate",
           )}
         >
@@ -441,7 +441,7 @@ export function MessageThread({
                 onClick={() => void handleCreateTask()}
                 disabled={isCreatingTask}
                 title="Create a task from this conversation"
-                className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+                className="flex items-center gap-1 rounded-lg border border-[color:var(--accent)] bg-[color:var(--accent-soft)] px-2 py-1 text-xs font-medium text-[color:var(--accent-strong)] transition hover:bg-[color:var(--accent-soft)] disabled:opacity-50"
               >
                 <TicketPlus className="h-3.5 w-3.5" />
                 {isCreatingTask ? "Creating…" : "Create issue"}
@@ -544,7 +544,7 @@ export function MessageThread({
               messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
               setUnreadWhileScrolledUp(0);
             }}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-blue-700"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-[color:var(--accent-strong)]"
           >
             {unreadWhileScrolledUp} new message{unreadWhileScrolledUp > 1 ? "s" : ""}
           </button>
@@ -572,13 +572,13 @@ export function MessageThread({
             placeholder="Write a message… (Enter to send, Shift+Enter for newline, @ to mention)"
             rows={2}
             disabled={isSending}
-            className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
+            className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm outline-none transition focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[color:var(--accent-soft)] disabled:opacity-50"
           />
           <button
             type="button"
             onClick={() => void handleSend()}
             disabled={isSending || !composerText.trim()}
-            className="flex-shrink-0 rounded-xl bg-slate-900 p-2.5 text-white transition hover:bg-slate-700 disabled:opacity-40"
+            className="flex-shrink-0 rounded-xl bg-[color:var(--accent)] p-2.5 text-white transition hover:bg-[color:var(--accent-strong)] disabled:opacity-40"
             aria-label="Send message"
           >
             <Send className="h-4 w-4" />

@@ -15,6 +15,7 @@ import {
   listPlans,
   createPlan,
 } from "@/api/plans";
+import { BoardSelectorSidebar } from "@/components/boards/BoardSelectorSidebar";
 import { PlanList } from "./PlanList";
 import { PlanDetail } from "./PlanDetail";
 import { NewPlanModal } from "./NewPlanModal";
@@ -98,30 +99,12 @@ export function PlanningLayout({ boardId }: Props) {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Board selector sidebar */}
-      <nav className="flex w-48 shrink-0 flex-col border-r border-slate-200 bg-white overflow-y-auto">
-        <div className="px-3 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Boards
-          </p>
-        </div>
-        {allBoards.map((board) => (
-          <button
-            key={board.id}
-            onClick={() => router.push(`/planning/${board.id}`)}
-            className={cn(
-              "w-full px-4 py-2.5 text-left text-sm transition",
-              board.id === boardId
-                ? "bg-orange-50 font-medium text-orange-800"
-                : "text-slate-700 hover:bg-slate-50",
-            )}
-          >
-            <span className="truncate block">{board.name}</span>
-          </button>
-        ))}
-        {allBoards.length === 0 && (
-          <p className="px-4 py-4 text-xs text-slate-400">No boards.</p>
-        )}
-      </nav>
+      <BoardSelectorSidebar
+        boards={allBoards}
+        currentBoardId={boardId}
+        onSelectBoard={(id) => router.push(`/planning/${id}`)}
+        loading={boardsQuery.isLoading && allBoards.length === 0}
+      />
 
       {/* Plan list */}
       <div className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
@@ -155,7 +138,7 @@ export function PlanningLayout({ boardId }: Props) {
             </p>
             <button
               onClick={() => setShowNewModal(true)}
-              className="rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 transition"
+              className="rounded-md bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
             >
               New plan
             </button>

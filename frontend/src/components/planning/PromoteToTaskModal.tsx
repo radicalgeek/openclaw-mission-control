@@ -63,7 +63,7 @@ export function PromoteToTaskModal({ plan, onConfirm, onClose }: Props) {
               type="text"
               value={taskTitle}
               onChange={(e) => setTaskTitle(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-[color:var(--accent)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
               placeholder="Task title"
               required
             />
@@ -76,7 +76,7 @@ export function PromoteToTaskModal({ plan, onConfirm, onClose }: Props) {
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-[color:var(--accent)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>

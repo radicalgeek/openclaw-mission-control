@@ -237,7 +237,7 @@ export function SprintList({
             <p className="text-sm text-slate-500">No sprints yet.</p>
             <button
               onClick={onNewSprint}
-              className="mt-1 flex items-center gap-1 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition"
+              className="mt-1 flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
             >
               <Plus className="h-3 w-3" />
               Create first sprint
@@ -267,7 +267,7 @@ export function SprintList({
               onDrop={(e) => handleDrop(e, null)}
               className={cn(
                 "h-3 transition",
-                dropBeforeId === "__end__" && dragId ? "border-t-2 border-orange-400" : "",
+                dropBeforeId === "__end__" && dragId ? "border-t-2 border-[color:var(--accent)]" : "",
               )}
             />
           </div>

@@ -69,7 +69,7 @@ export function PlanList({
             <p className="text-sm text-slate-500">No plans yet.</p>
             <button
               onClick={onNewPlan}
-              className="mt-1 rounded-md bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-600 transition"
+              className="mt-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
             >
               Create your first plan
             </button>

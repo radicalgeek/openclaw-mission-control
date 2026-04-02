@@ -35,6 +35,7 @@ import {
 } from "@/components/molecules/DependencyBanner";
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { BoardChatComposer } from "@/components/BoardChatComposer";
+import { BoardSelectorSidebar } from "@/components/boards/BoardSelectorSidebar";
 import { TaskCustomFieldsEditor } from "./TaskCustomFieldsEditor";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +68,8 @@ import { listActivityApiV1ActivityGet } from "@/api/generated/activity/activity"
 import {
   getBoardGroupSnapshotApiV1BoardsBoardIdGroupSnapshotGet,
   getBoardSnapshotApiV1BoardsBoardIdSnapshotGet,
+  type listBoardsApiV1BoardsGetResponse,
+  useListBoardsApiV1BoardsGet,
 } from "@/api/generated/boards/boards";
 import {
   createBoardMemoryApiV1BoardsBoardIdMemoryPost,
@@ -609,7 +612,7 @@ const TaskCommentCard = memo(function TaskCommentCard({
       className={cn(
         "scroll-mt-28 rounded-xl border bg-white p-3 transition",
         isHighlighted
-          ? "border-blue-300 ring-2 ring-blue-200"
+          ? "border-[color:var(--accent)] ring-2 ring-[color:var(--accent-soft)]"
           : "border-slate-200",
       )}
     >
@@ -680,7 +683,7 @@ const LiveFeedCard = memo(function LiveFeedCard({
       className={cn(
         "rounded-xl border p-3 transition-colors duration-300",
         isNew
-          ? "border-blue-200 bg-blue-50/70 shadow-sm hover:border-blue-300 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-right-2 motion-safe:duration-300"
+          ? "border-[color:var(--accent)] bg-[color:var(--accent-soft)] shadow-sm hover:border-[color:var(--accent-strong)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-right-2 motion-safe:duration-300"
           : "border-slate-200 bg-white hover:border-slate-300",
       )}
     >
@@ -755,6 +758,21 @@ export default function BoardDetailPage() {
   const boardIdParam = params?.boardId;
   const boardId = Array.isArray(boardIdParam) ? boardIdParam[0] : boardIdParam;
   const { isSignedIn } = useAuth();
+
+  const boardsQuery = useListBoardsApiV1BoardsGet<
+    listBoardsApiV1BoardsGetResponse,
+    ApiError
+  >(undefined, {
+    query: {
+      enabled: Boolean(isSignedIn),
+      refetchOnMount: false,
+      refetchInterval: 60_000,
+    },
+  });
+  const allBoards =
+    boardsQuery.data?.status === 200
+      ? (boardsQuery.data.data.items ?? [])
+      : [];
   const isPageActive = usePageActive();
   const taskIdFromUrl = searchParams.get("taskId");
   const commentIdFromUrl = searchParams.get("commentId");
@@ -3165,12 +3183,19 @@ export default function BoardDetailPage() {
       </SignedOut>
       <SignedIn>
         <DashboardSidebar />
-        <main
-          className={cn(
-            "flex-1 bg-gradient-to-br from-slate-50 to-slate-100",
-            isSidePanelOpen ? "overflow-hidden" : "overflow-y-auto",
-          )}
-        >
+        <main className="flex-1 flex min-h-0 overflow-hidden">
+          <BoardSelectorSidebar
+            boards={allBoards}
+            currentBoardId={boardId ?? ""}
+            onSelectBoard={(id) => router.push(`/boards/${id}`)}
+            loading={boardsQuery.isLoading && allBoards.length === 0}
+          />
+          <div
+            className={cn(
+              "flex-1 bg-gradient-to-br from-slate-50 to-slate-100",
+              isSidePanelOpen ? "overflow-hidden" : "overflow-y-auto",
+            )}
+          >
           <div className="sticky top-0 z-30 border-b border-slate-200 bg-white shadow-sm">
             <div className="px-4 py-4 md:px-8 md:py-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -3194,7 +3219,7 @@ export default function BoardDetailPage() {
                       className={cn(
                         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                         viewMode === "board"
-                          ? "bg-slate-900 text-white"
+                          ? "bg-[color:var(--accent)] text-white"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
                       )}
                       onClick={() => setViewMode("board")}
@@ -3205,7 +3230,7 @@ export default function BoardDetailPage() {
                       className={cn(
                         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                         viewMode === "list"
-                          ? "bg-slate-900 text-white"
+                          ? "bg-[color:var(--accent)] text-white"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
                       )}
                       onClick={() => setViewMode("list")}
@@ -3733,6 +3758,7 @@ export default function BoardDetailPage() {
               )}
             </div>
           </div>
+          </div>
         </main>
       </SignedIn>
       {isDetailOpen || isChatOpen || isLiveFeedOpen ? (
@@ -4161,7 +4187,7 @@ export default function BoardDetailPage() {
 
       <aside
         className={cn(
-          "fixed right-0 top-0 z-50 h-full w-full max-w-[96vw] transform border-l border-slate-200 bg-white shadow-2xl transition-transform md:w-[560px]",
+          "fixed right-0 top-0 z-50 h-full w-full max-w-[96vw] transform border-l border-slate-200 bg-white shadow-2xl transition-transform md:w-[520px]",
           isChatOpen ? "transform-none" : "translate-x-full",
         )}
       >

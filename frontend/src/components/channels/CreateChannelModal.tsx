@@ -145,8 +145,8 @@ export function CreateChannelModal({ isOpen, onClose, onSubmit }: Props) {
               className={cn(
                 "flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white",
                 isSubmitting
-                  ? "bg-blue-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
+                  ? "bg-[color:var(--accent)] opacity-60 cursor-not-allowed"
+                  : "bg-[color:var(--accent)] hover:bg-[color:var(--accent-strong)]"
               )}
             >
               {isSubmitting ? "Creating..." : "Create Channel"}

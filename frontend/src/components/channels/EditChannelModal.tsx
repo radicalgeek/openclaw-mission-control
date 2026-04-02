@@ -134,7 +134,7 @@ export function EditChannelModal({ channel, isOpen, onClose, onUpdated }: Props)
               disabled={isSubmitting}
               className={cn(
                 "flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white",
-                isSubmitting ? "cursor-not-allowed bg-blue-400" : "bg-blue-600 hover:bg-blue-700",
+                isSubmitting ? "cursor-not-allowed bg-[color:var(--accent)] opacity-60" : "bg-[color:var(--accent)] hover:bg-[color:var(--accent-strong)]",
               )}
             >
               {isSubmitting ? "Saving…" : "Save Changes"}

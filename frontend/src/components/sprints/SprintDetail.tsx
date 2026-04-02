@@ -248,7 +248,7 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-orange-500 transition-all"
+                className="h-full rounded-full bg-[color:var(--accent)] transition-all"
                 style={{ width: `${donePct}%` }}
               />
             </div>
@@ -325,7 +325,7 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
               <button
                 disabled={selected.size === 0 || addingBusy}
                 onClick={() => void handleAddTickets()}
-                className="rounded-lg bg-orange-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-orange-600 disabled:opacity-40 transition"
+                className="rounded-lg bg-[color:var(--accent)] px-4 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-40 transition"
               >
                 {addingBusy
                   ? "Adding…"
@@ -360,7 +360,7 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
             {canEdit && (
               <button
                 onClick={openPicker}
-                className="mt-1 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 transition"
+                className="mt-1 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
               >
                 Add tickets from backlog
               </button>
