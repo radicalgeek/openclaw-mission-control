@@ -36,6 +36,88 @@ body {
   border-color: var(--border);
 }
 
+/* ─── Dark-theme global overrides ─────────────────────────────────────────
+   Remap common Tailwind slate/white classes to CSS vars so every component
+   in the dashboard picks up the dark palette without per-file edits.
+   Landing-page custom CSS classes (.landing-enterprise, .landing-nav, etc.)
+   use direct `background:` rules which take precedence over these.
+────────────────────────────────────────────────────────────────────────── */
+
+/* Backgrounds */
+.bg-white                    { background-color: var(--surface)       !important; }
+.bg-slate-50                 { background-color: var(--bg)            !important; }
+.bg-slate-100                { background-color: var(--surface-muted) !important; }
+.bg-slate-200                { background-color: var(--surface-strong)!important; }
+.bg-gray-50                  { background-color: var(--bg)            !important; }
+.bg-gray-100                 { background-color: var(--surface-muted) !important; }
+.hover\:bg-slate-50:hover    { background-color: var(--surface)       !important; }
+.hover\:bg-slate-100:hover   { background-color: var(--surface-muted) !important; }
+.hover\:bg-white:hover       { background-color: var(--surface-strong)!important; }
+.hover\:bg-gray-50:hover     { background-color: var(--surface)       !important; }
+.focus\:bg-white:focus       { background-color: var(--surface)       !important; }
+
+/* Borders */
+.border-slate-100            { border-color: var(--border)       !important; }
+.border-slate-200            { border-color: var(--border)       !important; }
+.border-slate-300            { border-color: var(--border-strong)!important; }
+.border-gray-100             { border-color: var(--border)       !important; }
+.border-gray-200             { border-color: var(--border)       !important; }
+.divide-slate-200 > * + *    { border-color: var(--border)       !important; }
+.divide-slate-100 > * + *    { border-color: var(--border)       !important; }
+
+/* Text */
+.text-slate-900              { color: var(--text)       !important; }
+.text-slate-800              { color: var(--text)       !important; }
+.text-slate-700              { color: var(--text-muted) !important; }
+.text-slate-600              { color: var(--text-muted) !important; }
+.text-slate-500              { color: var(--text-quiet) !important; }
+.text-slate-400              { color: var(--text-quiet) !important; }
+.text-gray-900               { color: var(--text)       !important; }
+.text-gray-800               { color: var(--text)       !important; }
+.text-gray-700               { color: var(--text-muted) !important; }
+.text-gray-600               { color: var(--text-muted) !important; }
+.text-gray-500               { color: var(--text-quiet) !important; }
+.hover\:text-slate-900:hover { color: var(--text)       !important; }
+.hover\:text-slate-700:hover { color: var(--text-muted) !important; }
+
+/* Shadows — lighten so they read on dark */
+.shadow-sm  { box-shadow: 0 1px 2px rgba(0,0,0,0.35) !important; }
+.shadow     { box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.2) !important; }
+.shadow-md  { box-shadow: 0 4px 6px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2) !important; }
+
+/* Form inputs */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  background-color: var(--surface-muted) !important;
+  color: var(--text) !important;
+  border-color: var(--border-strong) !important;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-quiet) !important;
+}
+
+/* Landing page: undo all overrides so it stays light */
+.landing-enterprise,
+.landing-enterprise * {
+  color-scheme: light;
+}
+.landing-enterprise .bg-white            { background-color: #ffffff          !important; }
+.landing-enterprise .bg-slate-50         { background-color: #f8fafb          !important; }
+.landing-enterprise .bg-slate-100        { background-color: #f1f5f9          !important; }
+.landing-enterprise .text-slate-900      { color: #0f172a !important; }
+.landing-enterprise .text-slate-700      { color: #3e4c59 !important; }
+.landing-enterprise .text-slate-500      { color: #64748b !important; }
+.landing-enterprise .border-slate-200    { border-color: #e5e9ed !important; }
+.landing-enterprise input,
+.landing-enterprise textarea,
+.landing-enterprise select {
+  background-color: #ffffff !important;
+  color: #0f172a  !important;
+  border-color: #cbd5e1 !important;
+}
+
 @keyframes fade-in-up {
   from {
     opacity: 0;
