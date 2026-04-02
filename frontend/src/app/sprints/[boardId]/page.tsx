@@ -36,7 +36,7 @@ export default function SprintsBoardPage() {
       </SignedOut>
       <SignedIn>
         <DashboardSidebar />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50 h-full max-h-full">
+        <main className="flex min-h-0 flex-1 overflow-hidden">
           {isSignedIn && boardId ? (
             <SprintsLayout boardId={boardId} />
           ) : null}

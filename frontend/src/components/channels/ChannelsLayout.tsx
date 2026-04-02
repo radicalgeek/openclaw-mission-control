@@ -366,7 +366,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-h-0 flex-col md:flex-row overflow-hidden">
+    <div className="flex flex-1 min-h-0 flex-col md:flex-row overflow-hidden">
 
       {/* ── Discord-style left sidebar ──────────────────────────────────── */}
       <div

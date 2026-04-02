@@ -97,7 +97,7 @@ export function PlanningLayout({ boardId }: Props) {
   const currentBoard = allBoards.find((b) => b.id === boardId);
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Board selector sidebar */}
       <BoardSelectorSidebar
         boards={allBoards}

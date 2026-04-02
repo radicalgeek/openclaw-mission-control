@@ -133,7 +133,7 @@ export function SprintsLayout({ boardId }: Props) {
     view.type === "sprint" ? view.sprint.id : null;
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* ── Board selector ── */}
       <BoardSelectorSidebar
         boards={allBoards}
