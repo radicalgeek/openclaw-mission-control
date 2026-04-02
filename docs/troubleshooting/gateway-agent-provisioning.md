@@ -104,3 +104,29 @@ Actions:
    - gateway logs around bootstrap
    - worker logs around lifecycle events
    - agent `last_provision_error`, `wake_attempts`, `last_seen_at`
+
+## Re-syncing auth tokens when Mission Control and OpenClaw have drifted
+
+Mission Control stores a hash of each agent’s token and provisions OpenClaw by writing templates (e.g. `TOOLS.md`) that include `AUTH_TOKEN`. If the token on the gateway and the backend hash drift (e.g. after a reinstall, token change, or manual edit), heartbeats can fail with 401 and the agent may appear offline.
+
+To re-sync:
+
+1. Ensure Mission Control is running (API and queue worker).
+2. Run **template sync with token rotation** so the backend issues new agent tokens and rewrites `AUTH_TOKEN` into the gateway’s agent files.
+
+**Via API (curl):**
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/gateways/GATEWAY_ID/templates/sync?rotate_tokens=true" \
+  -H "Authorization: Bearer YOUR_LOCAL_AUTH_TOKEN"
+```
+
+Replace `GATEWAY_ID` (from the Gateways list or gateway URL in the UI) and `YOUR_LOCAL_AUTH_TOKEN` with your local auth token.
+
+**Via CLI (from repo root):**
+
+```bash
+cd backend && uv run python scripts/sync_gateway_templates.py --gateway-id GATEWAY_ID --rotate-tokens
+```
+
+After a successful sync, OpenClaw agents will have new `AUTH_TOKEN` values in their workspace files; the next heartbeat or bootstrap will use the new token. If the gateway was offline, trigger a wake/update from Mission Control so agents restart and pick up the new token.

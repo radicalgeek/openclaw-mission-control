@@ -3,13 +3,7 @@
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
-if [[ "$SCRIPT_NAME" == "bash" || "$SCRIPT_NAME" == "-bash" ]]; then
-  SCRIPT_NAME="install.sh"
-fi
-REPO_ROOT=""
-REPO_GIT_URL="${OPENCLAW_REPO_URL:-https://github.com/abhi1693/openclaw-mission-control.git}"
-REPO_CLONE_REF="${OPENCLAW_REPO_REF:-}"
-REPO_DIR_NAME="openclaw-mission-control"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
 LOG_DIR="$STATE_DIR/openclaw-mission-control-install"
 
@@ -30,6 +24,7 @@ FORCE_LOCAL_AUTH_TOKEN=""
 FORCE_DB_MODE=""
 FORCE_DATABASE_URL=""
 FORCE_START_SERVICES=""
+FORCE_INSTALL_SERVICE=""
 
 if [[ -t 0 ]]; then
   INTERACTIVE=1
@@ -56,66 +51,6 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
-repo_has_layout() {
-  local dir="$1"
-  [[ -f "$dir/Makefile" && -f "$dir/compose.yml" ]]
-}
-
-resolve_script_directory() {
-  local script_source=""
-  local script_dir=""
-
-  if [[ -n "${BASH_SOURCE:-}" && -n "${BASH_SOURCE[0]:-}" ]]; then
-    script_source="${BASH_SOURCE[0]}"
-  elif [[ -n "${0:-}" && "${0:-}" != "bash" ]]; then
-    script_source="$0"
-  fi
-
-  [[ -n "$script_source" ]] || return 1
-
-  script_dir="$(cd -- "$(dirname -- "$script_source")" 2>/dev/null && pwd -P)" || return 1
-  printf '%s\n' "$script_dir"
-}
-
-bootstrap_repo_checkout() {
-  local target_dir="$PWD/$REPO_DIR_NAME"
-
-  if ! command_exists git; then
-    die "Git is required for one-line bootstrap installs. Install git and re-run."
-  fi
-  if [[ -e "$target_dir" ]]; then
-    die "Cannot auto-clone into $target_dir because it already exists. Run ./install.sh from that repository or remove the directory."
-  fi
-
-  info "Repository checkout not found. Cloning into $target_dir ..."
-  if [[ -n "$REPO_CLONE_REF" ]]; then
-    git clone --depth 1 --branch "$REPO_CLONE_REF" "$REPO_GIT_URL" "$target_dir"
-  else
-    git clone --depth 1 "$REPO_GIT_URL" "$target_dir"
-  fi
-
-  REPO_ROOT="$target_dir"
-  SCRIPT_NAME="install.sh"
-}
-
-resolve_repo_root() {
-  local script_dir=""
-
-  if script_dir="$(resolve_script_directory)"; then
-    if repo_has_layout "$script_dir"; then
-      REPO_ROOT="$script_dir"
-      return
-    fi
-  fi
-
-  if repo_has_layout "$PWD"; then
-    REPO_ROOT="$PWD"
-    return
-  fi
-
-  bootstrap_repo_checkout
-}
-
 usage() {
   cat <<EOF
 Usage: $SCRIPT_NAME [options]
@@ -131,6 +66,7 @@ Options:
   --db-mode <docker|external>     Local mode only
   --database-url <url>            Required when --db-mode external
   --start-services <yes|no>       Local mode only
+  --install-service               Local mode only: install systemd user units for run at boot (Linux)
   -h, --help
 
 If an option is omitted, the script prompts in interactive mode and uses defaults in non-interactive mode.
@@ -219,6 +155,10 @@ parse_args() {
         fi
         FORCE_START_SERVICES="$2"
         shift 2
+        ;;
+      --install-service)
+        FORCE_INSTALL_SERVICE="yes"
+        shift
         ;;
       -h|--help)
         usage
@@ -733,9 +673,52 @@ start_local_services() {
   )
 }
 
+install_systemd_services() {
+  local backend_port="$1"
+  local frontend_port="$2"
+  local systemd_user_dir
+  systemd_user_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  local units_dir="$REPO_ROOT/docs/deployment/systemd"
+
+  if [[ "$REPO_ROOT" == *" "* ]]; then
+    warn "REPO_ROOT must not contain spaces (systemd unit paths do not support it): $REPO_ROOT"
+    return 1
+  fi
+  if [[ "$PLATFORM" != "linux" ]]; then
+    info "Skipping systemd install (not Linux). For macOS run-at-boot see docs/deployment/README.md (launchd)."
+    return 0
+  fi
+  if [[ ! -d "$units_dir" ]]; then
+    warn "Systemd units dir not found: $units_dir"
+    return 1
+  fi
+  for name in openclaw-mission-control-backend openclaw-mission-control-frontend openclaw-mission-control-rq-worker; do
+    if [[ ! -f "$units_dir/$name.service" ]]; then
+      warn "Unit file not found: $units_dir/$name.service"
+      return 1
+    fi
+  done
+
+  mkdir -p "$systemd_user_dir"
+  for name in openclaw-mission-control-backend openclaw-mission-control-frontend openclaw-mission-control-rq-worker; do
+    sed -e "s|REPO_ROOT|$REPO_ROOT|g" \
+        -e "s|BACKEND_PORT|$backend_port|g" \
+        -e "s|FRONTEND_PORT|$frontend_port|g" \
+        "$units_dir/$name.service" > "$systemd_user_dir/$name.service"
+    info "Installed $systemd_user_dir/$name.service"
+  done
+  if command_exists systemctl; then
+    systemctl --user daemon-reload
+    systemctl --user enable openclaw-mission-control-backend openclaw-mission-control-frontend openclaw-mission-control-rq-worker
+    info "Systemd user units enabled. Start with: systemctl --user start openclaw-mission-control-backend openclaw-mission-control-frontend openclaw-mission-control-rq-worker"
+  else
+    warn "systemctl not found; units were copied but not enabled."
+  fi
+}
+
 ensure_repo_layout() {
-  [[ -f "$REPO_ROOT/Makefile" ]] || die "Missing Makefile in expected repository root: $REPO_ROOT"
-  [[ -f "$REPO_ROOT/compose.yml" ]] || die "Missing compose.yml in expected repository root: $REPO_ROOT"
+  [[ -f "$REPO_ROOT/Makefile" ]] || die "Run $SCRIPT_NAME from repository root."
+  [[ -f "$REPO_ROOT/compose.yml" ]] || die "Missing compose.yml in repository root."
 }
 
 main() {
@@ -750,7 +733,6 @@ main() {
   local database_url=""
   local start_services="yes"
 
-  resolve_repo_root
   cd "$REPO_ROOT"
   ensure_repo_layout
   parse_args "$@"
@@ -874,18 +856,11 @@ main() {
   upsert_env_value "$REPO_ROOT/.env" "AUTH_MODE" "local"
   upsert_env_value "$REPO_ROOT/.env" "LOCAL_AUTH_TOKEN" "$local_auth_token"
   upsert_env_value "$REPO_ROOT/.env" "NEXT_PUBLIC_API_URL" "$next_public_api_url"
+  upsert_env_value "$REPO_ROOT/.env" "BASE_URL" "http://$public_host:$backend_port"
   upsert_env_value "$REPO_ROOT/.env" "CORS_ORIGINS" "http://$public_host:$frontend_port"
 
   if [[ "$deployment_mode" == "docker" ]]; then
     ensure_file_from_example "$REPO_ROOT/backend/.env" "$REPO_ROOT/backend/.env.example"
-
-    # Docker services load backend/.env; ensure required runtime values are populated.
-    upsert_env_value "$REPO_ROOT/backend/.env" "ENVIRONMENT" "prod"
-    upsert_env_value "$REPO_ROOT/backend/.env" "AUTH_MODE" "local"
-    upsert_env_value "$REPO_ROOT/backend/.env" "LOCAL_AUTH_TOKEN" "$local_auth_token"
-    upsert_env_value "$REPO_ROOT/backend/.env" "CORS_ORIGINS" "http://$public_host:$frontend_port"
-    upsert_env_value "$REPO_ROOT/backend/.env" "BASE_URL" "http://$public_host:$backend_port"
-    upsert_env_value "$REPO_ROOT/backend/.env" "DB_AUTO_MIGRATE" "true"
 
     upsert_env_value "$REPO_ROOT/.env" "DB_AUTO_MIGRATE" "true"
 
@@ -952,6 +927,16 @@ SUMMARY
     start_local_services "$backend_port" "$frontend_port"
     wait_for_http "http://127.0.0.1:$backend_port/healthz" "Backend" 120 || true
     wait_for_http "http://127.0.0.1:$frontend_port" "Frontend" 120 || true
+  fi
+
+  if [[ -n "$FORCE_INSTALL_SERVICE" ]]; then
+    if ! install_systemd_services "$backend_port" "$frontend_port"; then
+      warn "Systemd service install failed; see errors above."
+      die "Cannot continue when --install-service was requested and install failed."
+    fi
+    if [[ "$PLATFORM" == "linux" ]]; then
+      info "Run at boot: systemd user units were installed and enabled. Start with: systemctl --user start openclaw-mission-control-backend openclaw-mission-control-frontend openclaw-mission-control-rq-worker"
+    fi
   fi
 
   cat <<SUMMARY
