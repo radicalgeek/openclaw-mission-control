@@ -3,7 +3,7 @@ import { HeroKicker } from "@/components/atoms/HeroKicker";
 export function HeroCopy() {
   return (
     <div className="space-y-6">
-      <HeroKicker>OpenClaw Mission Control</HeroKicker>
+      <HeroKicker>AxiaCraft ProductFoundry</HeroKicker>
       <div className="space-y-4">
         <h1 className="font-heading text-4xl font-semibold leading-tight text-strong sm:text-5xl lg:text-6xl">
           Command autonomous work.

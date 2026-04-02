@@ -118,7 +118,7 @@ export default function OnboardingPage() {
           <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                Mission Control profile
+                ProductFoundry profile
               </h1>
               <p className="mt-1 text-sm text-slate-600">
                 Sign in to configure your profile and timezone.
@@ -141,10 +141,10 @@ export default function OnboardingPage() {
           <section className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                Mission Control profile
+                ProductFoundry profile
               </h1>
               <p className="mt-1 text-sm text-slate-600">
-                Configure your mission control settings and preferences.
+                Configure your ProductFoundry settings and preferences.
               </p>
             </div>
             <div className="px-6 py-6">

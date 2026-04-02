@@ -100,7 +100,7 @@ export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
               Local Authentication
             </h1>
             <p className="text-sm text-muted">
-              Enter your access token to unlock Mission Control.
+              Enter your access token to unlock ProductFoundry.
             </p>
           </div>
         </CardHeader>

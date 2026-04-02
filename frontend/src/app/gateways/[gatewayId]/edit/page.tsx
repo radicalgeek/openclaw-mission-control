@@ -165,7 +165,7 @@ export default function EditGatewayPage() {
           ? `Edit gateway — ${resolvedName.trim()}`
           : "Edit gateway"
       }
-      description="Update connection settings for this OpenClaw gateway."
+      description="Update connection settings for this AxiaCraft gateway."
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can edit gateways."
     >

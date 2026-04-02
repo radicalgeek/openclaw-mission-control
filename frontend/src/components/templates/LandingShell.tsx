@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -19,14 +20,15 @@ export function LandingShell({ children }: { children: ReactNode }) {
     <div className="landing-enterprise">
       <nav className="landing-nav" aria-label="Primary navigation">
         <div className="nav-container">
-          <Link href="/" className="logo-section" aria-label="OpenClaw home">
-            <div className="logo-icon" aria-hidden="true">
-              OC
-            </div>
-            <div className="logo-text">
-              <div className="logo-name">Radical</div>
-              <div className="logo-tagline">Claw</div>
-            </div>
+          <Link href="/" className="logo-section" aria-label="AxiaCraft ProductFoundry home">
+            <Image
+              src="/axiacraft-logo.png"
+              alt="AxiaCraft ProductFoundry"
+              width={2018}
+              height={1042}
+              className="h-10 w-auto"
+              priority
+            />
           </Link>
 
           <div className="nav-links">
@@ -89,9 +91,9 @@ export function LandingShell({ children }: { children: ReactNode }) {
       <footer className="landing-footer">
         <div className="footer-content">
           <div className="footer-brand">
-            <h3>OpenClaw</h3>
-            <p>A calm command center for boards, agents, and approvals.</p>
-            <div className="footer-tagline">Realtime Execution Visibility</div>
+            <h3>AxiaCraft ProductFoundry</h3>
+            <p>AI product engineering command center for agents, boards, and delivery.</p>
+            <div className="footer-tagline">Autonomous Engineering Delivery</div>
           </div>
 
           <div className="footer-column">
@@ -150,7 +152,7 @@ export function LandingShell({ children }: { children: ReactNode }) {
 
         <div className="footer-bottom">
           <div className="footer-copyright">
-            © {new Date().getFullYear()} OpenClaw. All rights reserved.
+            © {new Date().getFullYear()} AxiaCraft. All rights reserved.
           </div>
           <div className="footer-bottom-links">
             <Link href="#capabilities">Capabilities</Link>

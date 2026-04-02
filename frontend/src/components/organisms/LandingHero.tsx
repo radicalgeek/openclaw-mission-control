@@ -34,7 +34,7 @@ export function LandingHero() {
     <>
       <section className="hero">
         <div className="hero-content">
-          <div className="hero-label">OpenClaw Mission Control</div>
+          <div className="hero-label">AxiaCraft ProductFoundry</div>
           <h1>
             Command <span className="hero-highlight">autonomous work.</span>
             <br />

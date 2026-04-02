@@ -13,9 +13,10 @@
   --text: #0f172a;
   --text-muted: #64748b;
   --text-quiet: #94a3b8;
-  --accent: #f97316;
-  --accent-strong: #ea580c;
-  --accent-soft: rgba(249, 115, 22, 0.12);
+  /* AxiaCraft gold */
+  --accent: #c9972a;
+  --accent-strong: #a67c1a;
+  --accent-soft: rgba(201, 151, 42, 0.12);
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
@@ -133,9 +134,9 @@ body {
 
 /* Landing (Enterprise) */
 .landing-enterprise {
-  --primary-navy: #0a1628;
-  --secondary-navy: #1a2942;
-  --accent-gold: #d4af37;
+  --primary-navy: #1a2035;
+  --secondary-navy: #243050;
+  --accent-gold: #c9972a;
   --accent-teal: #2dd4bf;
   --neutral-100: #f8fafb;
   --neutral-200: #e5e9ed;

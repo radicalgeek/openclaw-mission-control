@@ -3,18 +3,18 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { DM_Serif_Display, IBM_Plex_Sans, Sora } from "next/font/google";
+import { DM_Serif_Display, Inter, Sora } from "next/font/google";
 
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { GlobalLoader } from "@/components/ui/global-loader";
 
 export const metadata: Metadata = {
-  title: "Radical Claw",
-  description: "A calm command center for every task.",
+  title: "AxiaCraft ProductFoundry",
+  description: "AI product engineering command center.",
 };
 
-const bodyFont = IBM_Plex_Sans({
+const bodyFont = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-body",

@@ -246,7 +246,7 @@ export default function SettingsPage() {
               Delete account
             </h2>
             <p className="mt-1 text-sm text-rose-800">
-              This permanently removes your Mission Control account and related
+              This permanently removes your ProductFoundry account and related
               personal data. This action cannot be undone.
             </p>
             <div className="mt-4">
