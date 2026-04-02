@@ -104,6 +104,7 @@ export function PlanningLayout({ boardId }: Props) {
         currentBoardId={boardId}
         onSelectBoard={(id) => router.push(`/planning/${id}`)}
         loading={boardsQuery.isLoading && allBoards.length === 0}
+        createBoardHref="/boards/new"
       />
 
       {/* Plan list */}

@@ -3189,6 +3189,7 @@ export default function BoardDetailPage() {
             currentBoardId={boardId ?? ""}
             onSelectBoard={(id) => router.push(`/boards/${id}`)}
             loading={boardsQuery.isLoading && allBoards.length === 0}
+            createBoardHref="/boards/new"
           />
           <div
             className={cn(

@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { Plus } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 type Board = {
@@ -12,6 +15,8 @@ type Props = {
   currentBoardId: string;
   onSelectBoard: (boardId: string) => void;
   loading?: boolean;
+  /** If provided, renders a '+ New board' link at the bottom of the list (admin only). */
+  createBoardHref?: string;
 };
 
 /**
@@ -24,6 +29,7 @@ export function BoardSelectorSidebar({
   currentBoardId,
   onSelectBoard,
   loading = false,
+  createBoardHref,
 }: Props) {
   return (
     <nav
@@ -48,7 +54,7 @@ export function BoardSelectorSidebar({
       ) : boards.length === 0 ? (
         <p className="px-4 py-4 text-xs text-slate-400">No boards.</p>
       ) : (
-        <div className="py-1">
+        <div className="flex-1 py-1 overflow-y-auto">
           {boards.map((board) => {
             const isActive = board.id === currentBoardId;
             return (
@@ -68,6 +74,18 @@ export function BoardSelectorSidebar({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {createBoardHref && (
+        <div className="shrink-0 border-t border-slate-100 p-2">
+          <Link
+            href={createBoardHref}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-[color:var(--accent-strong)] transition"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New board
+          </Link>
         </div>
       )}
     </nav>

@@ -140,6 +140,7 @@ export function SprintsLayout({ boardId }: Props) {
         currentBoardId={boardId}
         onSelectBoard={(id) => router.push(`/sprints/${id}`)}
         loading={boardsQuery.isLoading && allBoards.length === 0}
+        createBoardHref="/boards/new"
       />
 
       {/* ── Sprint list ── */}
