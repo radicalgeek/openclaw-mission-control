@@ -93,7 +93,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-screen bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
+    <div className="h-screen overflow-hidden bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
         <div className="flex items-center py-3">
           <div className="flex items-center px-4 md:px-6 md:w-[260px]">
