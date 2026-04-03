@@ -61,6 +61,9 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
   const [assignPopover, setAssignPopover] = useState<string | null>(null);
   const [assignBusy, setAssignBusy] = useState<string | null>(null);
 
+  // Backlog filter — only show inbox tasks by default
+  const [showNonInbox, setShowNonInbox] = useState(false);
+
   // Detail panel
   const [selectedTask, setSelectedTask] = useState<TaskRead | null>(null);
   const [editDraft, setEditDraft] = useState<BacklogTaskUpdate>({});
@@ -73,6 +76,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
     setLoading(true);
     try {
       const res = await listBacklog(boardId, { unassigned: false });
+      // Store all tasks; filtering is done at render time
       setTasks(res.data);
     } catch {
       // silent
@@ -246,11 +250,30 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
           <div>
             <h2 className="text-base font-semibold text-slate-800">Backlog</h2>
-            {tasks.length > 0 && (
-              <p className="text-xs text-slate-400">
-                {tasks.length} ticket{tasks.length !== 1 ? "s" : ""}
-              </p>
-            )}
+            {(() => {
+              const inboxCount = tasks.filter((t) => t.status === "inbox").length;
+              const hiddenCount = tasks.length - inboxCount;
+              return (
+                <div className="flex items-center gap-2">
+                  {inboxCount > 0 && (
+                    <p className="text-xs text-slate-400">
+                      {inboxCount} ticket{inboxCount !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                  {hiddenCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNonInbox((v) => !v)}
+                      className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline transition"
+                    >
+                      {showNonInbox
+                        ? `Hide completed (${hiddenCount})`
+                        : `Show completed (${hiddenCount})`}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <button
             onClick={() => setShowForm((v) => !v)}
@@ -397,9 +420,31 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
             </div>
           )}
 
+          {!loading &&
+            tasks.length > 0 &&
+            tasks.filter((t) => t.status === "inbox").length === 0 &&
+            !showNonInbox &&
+            !showForm && (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <p className="text-sm font-medium text-slate-600">No open tickets</p>
+                <p className="text-xs text-slate-400">
+                  All backlog tickets are done or in progress.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowNonInbox(true)}
+                  className="mt-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Show all ({tasks.length})
+                </button>
+              </div>
+            )}
+
           <div className="space-y-2">
-            {tasks.map((task) => {
-              const assignedSprint = task.sprint_id ? sprintMap[task.sprint_id] : null;
+            {tasks
+              .filter((t) => showNonInbox || t.status === "inbox")
+              .map((task) => {
+                const assignedSprint = task.sprint_id ? sprintMap[task.sprint_id] : null;
               const dueDate = task.due_at
                 ? new Date(task.due_at).toLocaleDateString("en-GB", {
                     day: "numeric",
