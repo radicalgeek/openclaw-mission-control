@@ -45,6 +45,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { AgentFilesPanel } from "@/components/agents/AgentFilesPanel";
 
 export default function AgentDetailPage() {
   const { isSignedIn } = useAuth();
@@ -57,6 +58,7 @@ export default function AgentDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [showFiles, setShowFiles] = useState(false);
 
   const agentQuery = useGetAgentApiV1AgentsAgentIdGet<
     getAgentApiV1AgentsAgentIdGetResponse,
@@ -189,6 +191,14 @@ export default function AgentDetailPage() {
                   Back to agents
                 </Button>
                 {agent ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFiles((v) => !v)}
+                  >
+                    {showFiles ? "Hide files" : "View files"}
+                  </Button>
+                ) : null}
+                {agent ? (
                   <Link
                     href={`/agents/${agent.id}/edit`}
                     className="inline-flex h-10 items-center justify-center rounded-xl border border-[color:var(--border)] px-4 text-sm font-semibold text-muted transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
@@ -215,6 +225,7 @@ export default function AgentDetailPage() {
                 Loading agent details…
               </div>
             ) : agent ? (
+              <>
               <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
                 <div className="space-y-6">
                   <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
@@ -360,6 +371,16 @@ export default function AgentDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {showFiles ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
+                    Workspace files
+                  </p>
+                  <AgentFilesPanel agentId={agent.id} isAdmin={isAdmin} />
+                </div>
+              ) : null}
+              </>
             ) : (
               <div className="flex flex-1 items-center justify-center text-sm text-muted">
                 Agent not found.

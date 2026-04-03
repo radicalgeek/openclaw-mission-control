@@ -447,7 +447,15 @@ def _render_agent_files(
     *,
     include_bootstrap: bool,
     template_overrides: dict[str, str] | None = None,
+    db_templates: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    """Render agent workspace files from templates.
+
+    Template resolution cascade (highest priority first):
+    1. Per-agent override (agent.identity_template / agent.soul_template)
+    2. DB-stored override (board or org level, passed via ``db_templates``)
+    3. Built-in .j2 file on disk (backend/templates/)
+    """
     env = _template_env()
     overrides: dict[str, str] = {}
     if agent.identity_template:
@@ -471,10 +479,16 @@ def _render_agent_files(
                 raise FileNotFoundError(msg)
             rendered[name] = env.get_template(heartbeat_template).render(**context).strip()
             continue
+        # 1. Per-agent override (identity_template / soul_template)
         override = overrides.get(name)
         if override:
             rendered[name] = env.from_string(override).render(**context).strip()
             continue
+        # 2. DB-stored template override (board-level or org-level)
+        if db_templates and name in db_templates:
+            rendered[name] = env.from_string(db_templates[name]).render(**context).strip()
+            continue
+        # 3. Built-in .j2 template from disk
         template_name = (
             template_overrides[name] if template_overrides and name in template_overrides else name
         )
@@ -905,6 +919,7 @@ class BaseAgentLifecycleManager(ABC):
         board: Board | None = None,
         session_label: str | None = None,
         extra_files: dict[str, str] | None = None,
+        db_templates: dict[str, str] | None = None,
     ) -> None:
         if not self._gateway.workspace_root:
             msg = "gateway_workspace_root is required"
@@ -946,6 +961,7 @@ class BaseAgentLifecycleManager(ABC):
             file_names,
             include_bootstrap=include_bootstrap,
             template_overrides=self._template_overrides(agent),
+            db_templates=db_templates,
         )
 
         await self._set_agent_files(
@@ -1176,6 +1192,7 @@ class OpenClawGatewayProvisioner:
         deliver_wakeup: bool = True,
         wakeup_verb: str | None = None,
         extra_files: dict[str, str] | None = None,
+        db_templates: dict[str, str] | None = None,
     ) -> None:
         """Create/update an agent, sync all template files, and optionally wake the agent.
 
@@ -1222,6 +1239,7 @@ class OpenClawGatewayProvisioner:
             ),
             session_label=agent.name or "Gateway Agent",
             extra_files=extra_files,
+            db_templates=db_templates,
         )
 
         if reset_session:

@@ -585,6 +585,41 @@ async def _resolve_agent_auth_token(
     return auth_token, False
 
 
+async def fetch_db_template_overrides(
+    session: AsyncSession,
+    *,
+    board_id: UUID | None,
+    organization_id: UUID,
+) -> dict[str, str]:
+    """Return DB-stored Jinja2 template overrides for provisioning.
+
+    Resolution order (higher index overrides lower):
+    1. Org-wide defaults (``board_id IS NULL`` rows)
+    2. Board-specific overrides (board_id = ``board_id``)
+    """
+    from app.models.board_templates import BoardTemplate
+
+    result: dict[str, str] = {}
+    # Org-wide defaults (lower priority)
+    org_rows = (await session.exec(
+        select(BoardTemplate)
+        .where(col(BoardTemplate.organization_id) == organization_id)
+        .where(col(BoardTemplate.board_id).is_(None))
+    )).all()
+    for bt in org_rows:
+        result[bt.file_name] = bt.template_content
+    # Board-specific overrides (higher priority)
+    if board_id is not None:
+        board_rows = (await session.exec(
+            select(BoardTemplate)
+            .where(col(BoardTemplate.organization_id) == organization_id)
+            .where(col(BoardTemplate.board_id) == board_id)
+        )).all()
+        for bt in board_rows:
+            result[bt.file_name] = bt.template_content
+    return result
+
+
 async def _sync_one_agent(
     ctx: _SyncContext,
     result: GatewayTemplatesSyncResult,
@@ -602,6 +637,13 @@ async def _sync_one_agent(
         return True
     if not auth_token:
         return False
+
+    db_templates = await fetch_db_template_overrides(
+        ctx.session,
+        board_id=board.id,
+        organization_id=ctx.gateway.organization_id,
+    )
+
     try:
 
         async def _do_provision() -> bool:
@@ -620,6 +662,7 @@ async def _sync_one_agent(
                     wakeup_verb="updated",
                     clear_confirm_token=False,
                     raise_gateway_errors=True,
+                    db_templates=db_templates or None,
                 )
             except HTTPException as exc:
                 if exc.status_code == status.HTTP_502_BAD_GATEWAY:

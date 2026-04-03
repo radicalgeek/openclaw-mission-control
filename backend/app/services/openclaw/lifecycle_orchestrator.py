@@ -67,6 +67,7 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
         clear_confirm_token: bool = False,
         raise_gateway_errors: bool = True,
         extra_files: dict[str, str] | None = None,
+        db_templates: dict[str, str] | None = None,
     ) -> Agent:
         """Provision or update any agent under a per-agent lock."""
 
@@ -120,6 +121,7 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 deliver_wakeup=deliver_wakeup,
                 wakeup_verb=wakeup_verb,
                 extra_files=extra_files,
+                db_templates=db_templates,
             )
         except OpenClawGatewayError as exc:
             locked.last_provision_error = str(exc)

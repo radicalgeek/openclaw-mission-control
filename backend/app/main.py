@@ -13,6 +13,9 @@ from fastapi_pagination import add_pagination
 from app.api.sprints import router as sprints_router
 from app.api.sprint_webhooks import router as sprint_webhooks_router
 from app.api.channels import router as channels_router
+from app.api.agent_files import router as agent_files_router
+from app.api.board_templates import router as board_templates_router
+from app.api.board_templates import org_router as org_templates_router
 from app.api.plans import router as plans_router
 from app.api.threads import router as threads_router
 from app.api.thread_messages import router as thread_messages_router
@@ -558,6 +561,7 @@ api_v1.include_router(plans_router)
 api_v1.include_router(threads_router)
 api_v1.include_router(thread_messages_router)
 api_v1.include_router(agents_router)
+api_v1.include_router(agent_files_router)
 api_v1.include_router(activity_router)
 api_v1.include_router(gateway_router)
 api_v1.include_router(gateways_router)
@@ -568,6 +572,8 @@ api_v1.include_router(skills_marketplace_router)
 api_v1.include_router(board_groups_router)
 api_v1.include_router(board_group_memory_router)
 api_v1.include_router(boards_router)
+api_v1.include_router(board_templates_router)
+api_v1.include_router(org_templates_router)
 api_v1.include_router(board_memory_router)
 api_v1.include_router(board_webhooks_router)
 api_v1.include_router(sprints_router)

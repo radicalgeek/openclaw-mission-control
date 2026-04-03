@@ -44,6 +44,7 @@ import type {
   BoardUpdate,
 } from "@/api/generated/model";
 import { BoardOnboardingChat } from "@/components/BoardOnboardingChat";
+import { BoardTemplateEditor } from "@/components/boards/BoardTemplateEditor";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
@@ -1314,6 +1315,18 @@ export default function EditBoardPage() {
               </div>
             </section>
           </form>
+
+          {boardId ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Templates</h2>
+                <p className="text-xs text-slate-600">
+                  Customise the Jinja2 workspace templates applied to agents on this board. Board overrides take precedence over org-wide defaults and built-in templates.
+                </p>
+              </div>
+              <BoardTemplateEditor boardId={boardId} />
+            </div>
+          ) : null}
         </div>
       </DashboardPageLayout>
       <Dialog open={isOnboardingOpen} onOpenChange={setIsOnboardingOpen}>
