@@ -174,6 +174,11 @@ export function MessageThread({
   const [unreadWhileScrolledUp, setUnreadWhileScrolledUp] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const threadIdRef = useRef<string>(thread.id);
   const [currentThread, setCurrentThread] = useState<ThreadRead>(thread);
@@ -221,7 +226,7 @@ export function MessageThread({
       // New messages arrived
       if (isNearBottom) {
         // User is at bottom → scroll down
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        scrollToBottom();
         setUnreadWhileScrolledUp(0);
       } else {
         // User scrolled up → increment unread counter
@@ -274,7 +279,7 @@ export function MessageThread({
       if (result.status === 201) {
         setMessages((prev) => [...prev, result.data]);
         setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          scrollToBottom();
         }, 100);
       } else {
         // Restore text so the user can try again
@@ -541,7 +546,7 @@ export function MessageThread({
           <button
             type="button"
             onClick={() => {
-              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              scrollToBottom();
               setUnreadWhileScrolledUp(0);
             }}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-[color:var(--accent-strong)]"

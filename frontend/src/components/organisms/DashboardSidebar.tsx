@@ -59,7 +59,7 @@ export function DashboardSidebar() {
         : "System degraded";
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 flex w-[280px] -translate-x-full flex-col border-r border-[var(--border)] bg-[var(--surface)] pt-16 shadow-lg transition-transform duration-200 ease-in-out [[data-sidebar=open]_&]:translate-x-0 md:relative md:inset-auto md:z-auto md:w-[260px] md:translate-x-0 md:pt-0 md:shadow-none md:transition-none">
+    <aside className="fixed inset-y-0 left-0 z-40 flex w-[280px] -translate-x-full flex-col border-r border-[var(--border)] bg-[var(--surface)] pt-16 shadow-lg transition-transform duration-200 ease-in-out [[data-sidebar=open]_&]:translate-x-0 md:relative md:inset-auto md:z-auto md:w-[260px] md:translate-x-0 md:pt-0 md:shadow-none md:transition-none md:h-full md:overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
         <p className="px-3 text-xs font-semibold uppercase tracking-wider text-[color:var(--text-quiet)]">
           Navigation

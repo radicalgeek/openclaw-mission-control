@@ -93,7 +93,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }, [sidebarOpen]);
 
   return (
-    <div className="h-screen overflow-hidden bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
+    <div className="flex flex-col h-screen overflow-hidden bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)] shadow-sm">
         <div className="flex items-center py-3">
           <div className="flex items-center px-4 md:px-6 md:w-[260px]">
@@ -140,7 +140,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         />
       ) : null}
 
-      <div className="grid h-[calc(100vh-64px)] grid-cols-1 md:grid-cols-[260px_1fr] bg-[var(--bg)] overflow-hidden">
+      <div className="grid flex-1 min-h-0 grid-cols-1 md:grid-cols-[260px_1fr] bg-[var(--bg)] overflow-hidden">
         {children}
       </div>
     </div>

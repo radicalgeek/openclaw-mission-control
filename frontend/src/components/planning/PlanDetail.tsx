@@ -138,6 +138,7 @@ export function PlanDetail({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Sync when a different plan is selected
   useEffect(() => {
@@ -154,7 +155,9 @@ export function PlanDetail({
 
   // Auto-scroll chat
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, agentThinking]);
 
   // Auto-start polling when the plan loads with a pending agent reply
@@ -461,7 +464,7 @@ export function PlanDetail({
             </span>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
             {messages.length === 0 && !agentThinking && (
               <p className="text-center text-xs text-slate-400">
                 Chat with the board agent to build your plan.
