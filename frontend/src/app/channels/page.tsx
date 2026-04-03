@@ -61,7 +61,7 @@ export default function ChannelsIndexPage() {
       </SignedOut>
       <SignedIn>
         <DashboardSidebar />
-        <main className="flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 to-slate-100">
+        <main className="flex-1 overflow-y-auto bg-[color:var(--bg)]">
           <div className="flex h-full items-center justify-center">
             {boardsQuery.isLoading ? (
               <p className="text-sm text-slate-500">Loading channels…</p>

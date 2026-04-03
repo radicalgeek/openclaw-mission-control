@@ -66,6 +66,21 @@ body {
   .sm\:bg-white\/80          { background-color: var(--surface)       !important; }
 }
 
+/* Gradient stop overrides — background-image: linear-gradient(...) paints over
+   background-color, so from-* / to-* must be remapped to dark values too */
+.from-slate-50               { --tw-gradient-from: var(--bg)            !important; }
+.from-slate-100              { --tw-gradient-from: var(--surface)       !important; }
+.from-slate-200              { --tw-gradient-from: var(--surface-muted) !important; }
+.from-gray-50                { --tw-gradient-from: var(--bg)            !important; }
+.from-gray-100               { --tw-gradient-from: var(--surface)       !important; }
+.to-slate-50                 { --tw-gradient-to:   var(--bg)            !important; }
+.to-slate-100                { --tw-gradient-to:   var(--surface)       !important; }
+.to-slate-200                { --tw-gradient-to:   var(--surface-muted) !important; }
+.to-gray-50                  { --tw-gradient-to:   var(--bg)            !important; }
+.to-gray-100                 { --tw-gradient-to:   var(--surface)       !important; }
+.via-slate-50                { --tw-gradient-via:  var(--bg)            !important; }
+.via-slate-100               { --tw-gradient-via:  var(--surface)       !important; }
+
 /* Borders */
 .border-slate-100            { border-color: var(--border)       !important; }
 .border-slate-200            { border-color: var(--border)       !important; }

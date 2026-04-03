@@ -33,7 +33,7 @@ export function BoardSelectorSidebar({
 }: Props) {
   return (
     <nav
-      className="flex w-48 shrink-0 flex-col border-r border-slate-200 bg-white overflow-y-auto"
+      className="flex w-48 shrink-0 flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)] overflow-y-auto"
       aria-label="Board selector"
     >
       <div className="px-3 py-3 border-b border-slate-100">
