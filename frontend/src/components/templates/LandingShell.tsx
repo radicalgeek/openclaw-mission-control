@@ -26,7 +26,7 @@ export function LandingShell({ children }: { children: ReactNode }) {
               alt="AxiaCraft ProductFoundry"
               width={2018}
               height={1042}
-              className="h-12 w-auto"
+              className="h-14 w-auto"
               priority
             />
           </Link>
