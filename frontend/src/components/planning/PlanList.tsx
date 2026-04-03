@@ -50,7 +50,7 @@ export function PlanList({
           <button
             onClick={onNewPlan}
             title="New plan"
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-orange-500 hover:bg-orange-50 transition"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] transition"
           >
             <Plus className="h-3.5 w-3.5" />
             New
@@ -80,15 +80,15 @@ export function PlanList({
             key={plan.id}
             onClick={() => onSelectPlan(plan)}
             className={cn(
-              "w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-50",
-              plan.id === selectedPlanId && "bg-orange-50 hover:bg-orange-50",
+              "w-full border-b border-[color:var(--border)] px-4 py-3 text-left transition hover:bg-[color:var(--surface-muted)]",
+              plan.id === selectedPlanId && "bg-[color:var(--accent-soft)] hover:bg-[color:var(--accent-soft)]",
             )}
           >
             <div className="flex items-start justify-between gap-2">
               <span
                 className={cn(
                   "truncate text-sm font-medium",
-                  plan.id === selectedPlanId ? "text-orange-800" : "text-slate-700",
+                  plan.id === selectedPlanId ? "text-[color:var(--accent-strong)]" : "text-[color:var(--text)]",
                 )}
               >
                 {plan.title}

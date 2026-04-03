@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
 import {
   ArrowUpCircle,
   CheckCircle2,
@@ -13,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { Markdown } from "@/components/atoms/Markdown";
 import { cn } from "@/lib/utils";
 import {
   type PlanRead,
@@ -422,23 +420,21 @@ export function PlanDetail({
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
             {contentMode === "preview" ? (
-              <div className="prose prose-sm max-w-none p-6">
+              <div className="p-6 text-sm">
                 {agentThinking && !plan.content ? (
                   <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                    <div className="flex gap-1.5 text-slate-400">
+                    <div className="flex gap-1.5 text-[color:var(--text-quiet)]">
                       <span className="animate-bounce text-lg">●</span>
                       <span className="animate-bounce delay-100 text-lg">●</span>
                       <span className="animate-bounce delay-200 text-lg">●</span>
                     </div>
-                    <p className="text-sm text-slate-500">Agent is drafting your plan…</p>
-                    <p className="text-xs text-slate-400">Editing and chat are disabled until the first draft is ready.</p>
+                    <p className="text-sm text-[color:var(--text-muted)]">Agent is drafting your plan…</p>
+                    <p className="text-xs text-[color:var(--text-quiet)]">Editing and chat are disabled until the first draft is ready.</p>
                   </div>
                 ) : plan.content ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                    {plan.content}
-                  </ReactMarkdown>
+                  <Markdown content={plan.content} variant="description" />
                 ) : (
-                  <p className="italic text-slate-400">
+                  <p className="italic text-[color:var(--text-quiet)]">
                     No content yet. Chat with the agent or switch to Edit mode
                     to start writing.
                   </p>
