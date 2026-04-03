@@ -4,7 +4,7 @@ export function BrandMark() {
     <img
       src="/axiacraft-logo.png"
       alt="AxiaCraft ProductFoundry"
-      className="h-10 w-auto object-contain"
+      className="h-12 w-auto object-contain"
     />
   );
 }
