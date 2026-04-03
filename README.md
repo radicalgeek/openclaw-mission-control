@@ -1,50 +1,65 @@
-# OpenClaw Mission Control
+# AxiaCraft Product Foundry
 
-[![CI](https://github.com/abhi1693/openclaw-mission-control/actions/workflows/ci.yml/badge.svg)](https://github.com/abhi1693/openclaw-mission-control/actions/workflows/ci.yml) ![Static Badge](https://img.shields.io/badge/Join-Slack-active?style=flat&color=blue&link=https%3A%2F%2Fjoin.slack.com%2Ft%2Foc-mission-control%2Fshared_invite%2Fzt-3qpcm57xh-AI9C~smc3MDBVzEhvwf7gg)
-
-OpenClaw Mission Control is the centralized operations and governance platform for running OpenClaw across teams and organizations, with unified visibility, approval controls, and gateway-aware orchestration.
+AxiaCraft Product Foundry is the centralized operations and governance platform for running AI agent teams across products and organizations — with unified visibility, approval controls, sprint tracking, planning tools, and gateway-aware orchestration.
 It gives operators a single interface for work orchestration, agent and gateway management, approval-driven governance, and API-backed automation.
 
-<img width="1896" height="869" alt="Mission Control dashboard" src="https://github.com/user-attachments/assets/49a3c823-6aaf-4c56-8328-fb1485ee940f" />
-<img width="1896" height="858" alt="image" src="https://github.com/user-attachments/assets/2bfee13a-3dab-4f4a-9135-e47bb6949dcf" />
-<img width="1890" height="865" alt="image" src="https://github.com/user-attachments/assets/84c2e867-5dc7-4a36-9290-e29179d2a659" />
-<img width="1912" height="881" alt="image" src="https://github.com/user-attachments/assets/3bbd825c-9969-4bbf-bf31-987f9168f370" />
-<img width="1902" height="878" alt="image" src="https://github.com/user-attachments/assets/eea09632-60e4-4d6d-9e6e-bdfa0ac97630" />
+![Boards — kanban task management with agent assignments](docs/screenshots/01-boards.png)
+
+![Sprints — backlog management and sprint planning with burn-down tracking](docs/screenshots/02-sprints.png)
+
+![Channels — team communication and shared message threads](docs/screenshots/03-channels.png)
+
+![Planning — markdown-based plan editor with agent collaboration](docs/screenshots/04-planning.png)
 
 ## Platform overview
 
-Mission Control is designed to be the day-to-day operations surface for OpenClaw.
-Instead of splitting work across multiple tools, teams can plan, execute, review, and audit activity in one system.
+Product Foundry is designed to be the day-to-day operations surface for AI agent teams.
+Instead of splitting work across multiple tools, teams can plan, execute, review, and audit all activity in one system.
 
 Core operational areas:
 
-- Work orchestration: manage organizations, board groups, boards, tasks, and tags.
-- Agent operations: create, inspect, and manage agent lifecycle from a unified control surface.
-- Governance and approvals: route sensitive actions through explicit approval flows.
-- Gateway management: connect and operate gateway integrations for distributed environments.
-- Activity visibility: review a timeline of system actions for faster debugging and accountability.
-- API-first model: support both web workflows and automation clients from the same platform.
+- **Work orchestration**: manage organizations, board groups, boards, tasks, sprints, and tags from a unified control surface.
+- **Sprint management**: run backlog refinement, sprint planning, and delivery tracking with burndown visibility.
+- **Planning**: create and iterate on markdown-based plans with agent collaboration baked in.
+- **Channels**: structured team communication alongside the work, without switching context.
+- **Agent operations**: provision, inspect, and manage agent lifecycle — including gateways, skills, and skill packs.
+- **Governance and approvals**: route sensitive actions through explicit approval flows with full audit trails.
+- **Activity visibility**: review a real-time feed of system actions for faster debugging and accountability.
+- **API-first model**: every operation available in the UI is also accessible via the same API used by agents.
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| Kanban boards | Drag-and-drop task management with custom columns, agent assignment, and priority labels |
+| List view | Compact flat-list alternative to the kanban board for bulk task management |
+| Sprint planning | Backlog management, sprint creation, and delivery tracking |
+| Planning | Markdown plan editor with rendered preview and agent chat integration |
+| Channels | Persistent message threads scoped to teams or projects |
+| Approvals | Human-in-the-loop gate for sensitive actions, with decision history |
+| Board groups | Organize multiple boards by team, product, or domain |
+| Custom fields | Extend task metadata to match your workflow |
+| Agent management | Full agent lifecycle: create, configure, assign to boards and gateways |
+| Gateways | Connect remote OpenClaw runtime environments to the same control plane |
+| Skills Marketplace | Browse and install skill packs for agent capability extension |
+| Live feed | Real-time activity stream for tasks, approvals, agent events, and board chat |
+| Tags | Cross-cutting labels for tasks and agents |
+| Organization management | Multi-org support with role-based access |
 
 ## Use cases
 
-- Multi-team agent operations: run multiple boards and board groups across organizations from a single control plane.
-- Human-in-the-loop execution: require approvals before sensitive actions and keep decision trails attached to work.
-- Distributed runtime control: connect gateways and operate remote execution environments without changing operator workflow.
-- Audit and incident review: use activity history to reconstruct what happened, when it happened, and who initiated it.
-- API-backed process integration: connect internal workflows and automation clients to the same operational model used in the UI.
-
-## What makes Mission Control different
-
-- Operations-first design: built for running agent work reliably, not just creating tasks.
-- Governance built in: approvals, auth modes, and clear control boundaries are first-class.
-- Gateway-aware orchestration: built to operate both local and connected runtime environments.
-- Unified UI and API model: operators and automation act on the same objects and lifecycle.
-- Team-scale structure: organizations, board groups, boards, tasks, tags, and users in one system of record.
+- **Multi-team agent operations**: run multiple boards and board groups across organizations from a single control plane.
+- **Product delivery**: track feature work through sprints with clear ownership and approval gates.
+- **Human-in-the-loop execution**: require approvals before sensitive agent actions and keep decision trails attached to work.
+- **Distributed runtime control**: connect gateways and operate remote execution environments without changing operator workflow.
+- **Audit and incident review**: use the live activity feed to reconstruct what happened, when, and who initiated it.
+- **API-backed process integration**: connect internal workflows and automation clients to the same operational model used in the UI.
 
 ## Who it is for
 
-- Platform teams running OpenClaw in self-hosted or internal environments.
-- Operations and engineering teams that need clear approval and auditability controls.
+- Platform teams running AI agents in self-hosted or internal environments.
+- Product and engineering teams that need sprint planning alongside agent automation.
+- Operations teams that want clear approval and auditability controls.
 - Organizations that want API-accessible operations without losing a usable web UI.
 
 ## Get started in minutes
@@ -95,7 +110,7 @@ Before startup:
 - `NEXT_PUBLIC_API_URL=auto` (default) resolves to `http(s)://<current-host>:8000`.
   - Set an explicit URL when your API is behind a reverse proxy or non-default port.
 
-### 2. Start Mission Control
+### 2. Start Product Foundry
 
 ```bash
 docker compose -f compose.yml --env-file .env up -d --build
@@ -133,8 +148,8 @@ docker compose -f compose.yml --env-file .env up -d --force-recreate
 
 ### 3. Open the application
 
-- Mission Control UI: http://localhost:3000
-- Backend health: http://localhost:8000/healthz
+- Product Foundry UI: http://localhost:3000
+- Backend API: http://localhost:8000/docs
 
 ### 4. Stop the stack
 
@@ -144,7 +159,7 @@ docker compose -f compose.yml --env-file .env down
 
 ## Authentication
 
-Mission Control supports two authentication modes:
+Product Foundry supports two authentication modes:
 
 - `local`: shared bearer token mode (default for self-hosted use)
 - `clerk`: Clerk JWT mode
@@ -161,7 +176,7 @@ Complete guides for deployment, production, troubleshooting, and testing are in 
 
 ## Project status
 
-Mission Control is under active development.
+AxiaCraft Product Foundry is under active development.
 
 - Features and APIs may change between releases.
 - Validate and harden your configuration before production use.
@@ -171,13 +186,7 @@ Mission Control is under active development.
 Issues and pull requests are welcome.
 
 - [Contributing guide](./CONTRIBUTING.md)
-- [Open issues](https://github.com/abhi1693/openclaw-mission-control/issues)
 
 ## License
 
 This project is licensed under the MIT License. See [`LICENSE`](./LICENSE).
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=abhi1693/openclaw-mission-control&type=date&legend=top-left)](https://www.star-history.com/#abhi1693/openclaw-mission-control&type=date&legend=top-left)
-# Trigger master deployment
