@@ -1,8 +1,6 @@
 stages:
   - build
-  - deploy-test
   - update-argocd
-  - deploy-prod
 
 variables:
   REGISTRY: reg.gitlab.radicalgeek.co.uk
@@ -30,21 +28,6 @@ variables:
         sleep 2
       done
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
-
-.kubectl_deploy: &kubectl_deploy
-  image: debian:bookworm-slim
-  tags:
-    - k8s
-    - arm64
-    - hoofer
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq curl gettext-base ca-certificates
-    - |
-      KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-      curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/arm64/kubectl"
-      chmod +x kubectl && mv kubectl /usr/local/bin/
-    - mkdir -p ~/.kube
-    - echo "$KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
 
 build:backend:
   <<: *docker_build
@@ -93,33 +76,6 @@ build:frontend:
     reports:
       dotenv: build.env
 
-deploy:test:
-  <<: *kubectl_deploy
-  stage: deploy-test
-  dependencies:
-    - build:backend
-    - build:frontend
-  script:
-    - |
-      export BACKEND_IMAGE="$IMAGE_BACKEND:$BACKEND_TAG"
-      export FRONTEND_IMAGE="$IMAGE_FRONTEND:$FRONTEND_TAG"
-      export NAMESPACE="mission-control"
-      export ENVIRONMENT="test"
-      export POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
-      export LOCAL_AUTH_TOKEN="${LOCAL_AUTH_TOKEN}"
-    - |
-      for f in deploy/k8s/*.yaml; do
-        envsubst < "$f" | kubectl apply -f - --insecure-skip-tls-verify
-      done
-    - kubectl rollout status deployment/mission-control-backend -n $NAMESPACE --insecure-skip-tls-verify --timeout=8m
-    - kubectl rollout status deployment/mission-control-frontend -n $NAMESPACE --insecure-skip-tls-verify --timeout=10m
-  environment:
-    name: test
-    url: https://mission-control.radicalgeek.co.uk
-  only:
-    - master
-    - main
-
 update:argocd-manifests:
   image: debian:bookworm-slim
   stage: update-argocd
@@ -153,30 +109,3 @@ update:argocd-manifests:
   only:
     - master
     - main
-
-deploy:prod:
-  <<: *kubectl_deploy
-  stage: deploy-prod
-  dependencies:
-    - build:backend
-    - build:frontend
-  script:
-    - |
-      export BACKEND_IMAGE="$IMAGE_BACKEND:$BACKEND_TAG"
-      export FRONTEND_IMAGE="$IMAGE_FRONTEND:$FRONTEND_TAG"
-      export NAMESPACE="mission-control"
-      export ENVIRONMENT="prod"
-      export POSTGRES_PASSWORD="${POSTGRES_PASSWORD}"
-      export LOCAL_AUTH_TOKEN="${LOCAL_AUTH_TOKEN}"
-    - |
-      for f in deploy/k8s/*.yaml; do
-        envsubst < "$f" | kubectl apply -f - --insecure-skip-tls-verify
-      done
-    - kubectl rollout status deployment/mission-control-backend -n $NAMESPACE --insecure-skip-tls-verify --timeout=8m
-    - kubectl rollout status deployment/mission-control-frontend -n $NAMESPACE --insecure-skip-tls-verify --timeout=10m
-  environment:
-    name: production
-    url: https://mission-control.radicalgeek.co.uk
-  when: manual
-  only:
-    - tags
