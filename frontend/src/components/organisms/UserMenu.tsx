@@ -58,11 +58,11 @@ export function UserMenu({
           type="button"
           className={cn(
             "group inline-flex h-9 items-center gap-2 rounded-[10px] bg-transparent px-1 py-1 transition",
-            "hover:bg-white/70",
+            "hover:bg-[color:var(--surface-strong)]",
             // Avoid the default browser focus outline (often bright blue) on click.
             // Keep a subtle, enterprise-looking focus ring for keyboard navigation.
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--neutral-300,var(--border-strong))] focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-            "data-[state=open]:bg-white",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--neutral-300,var(--border-strong))] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)]",
+            "data-[state=open]:bg-[color:var(--surface-strong)]",
             className,
           )}
           aria-label="Open user menu"
@@ -93,7 +93,7 @@ export function UserMenu({
       <PopoverContent
         align="end"
         sideOffset={12}
-        className="w-80 overflow-hidden rounded-2xl border border-[color:var(--neutral-200,var(--border))] bg-white/95 p-0 shadow-[0_8px_32px_rgba(10,22,40,0.08)] backdrop-blur"
+        className="w-80 overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-0 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
       >
         <div className="border-b border-[color:var(--neutral-200,var(--border))] px-4 py-3">
           <div className="flex items-center gap-3">
@@ -133,7 +133,7 @@ export function UserMenu({
           <div className="grid grid-cols-2 gap-2">
             <Link
               href="/boards"
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--neutral-300,var(--border-strong))] bg-white px-3 py-2 text-sm font-semibold text-[color:var(--neutral-800,var(--text))] transition hover:border-[color:var(--primary-navy,var(--accent-strong))] hover:bg-[color:var(--neutral-100,var(--surface-muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-teal,var(--accent))] focus-visible:ring-offset-2"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--border-strong)] bg-[color:var(--surface-muted)] px-3 py-2 text-sm font-semibold text-[color:var(--text)] transition hover:border-[color:var(--accent-strong)] hover:bg-[color:var(--surface-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2"
               onClick={() => setOpen(false)}
             >
               <Trello className="h-4 w-4 text-[color:var(--neutral-700,var(--text-quiet))]" />

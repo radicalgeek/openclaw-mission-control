@@ -45,7 +45,12 @@ body {
 
 /* Backgrounds */
 .bg-white                    { background-color: var(--surface)       !important; }
+.bg-white\/80                { background-color: var(--surface)       !important; }
+.bg-white\/95                { background-color: var(--surface)       !important; }
+.bg-white\/70                { background-color: var(--surface)       !important; }
 .bg-slate-50                 { background-color: var(--bg)            !important; }
+.bg-slate-50\/60             { background-color: var(--bg)            !important; }
+.bg-slate-50\/40             { background-color: var(--bg)            !important; }
 .bg-slate-100                { background-color: var(--surface-muted) !important; }
 .bg-slate-200                { background-color: var(--surface-strong)!important; }
 .bg-gray-50                  { background-color: var(--bg)            !important; }
@@ -53,8 +58,13 @@ body {
 .hover\:bg-slate-50:hover    { background-color: var(--surface)       !important; }
 .hover\:bg-slate-100:hover   { background-color: var(--surface-muted) !important; }
 .hover\:bg-white:hover       { background-color: var(--surface-strong)!important; }
+.hover\:bg-white\/70:hover   { background-color: var(--surface-strong)!important; }
 .hover\:bg-gray-50:hover     { background-color: var(--surface)       !important; }
 .focus\:bg-white:focus       { background-color: var(--surface)       !important; }
+/* Responsive opacity variants (sm+) */
+@media (min-width: 640px) {
+  .sm\:bg-white\/80          { background-color: var(--surface)       !important; }
+}
 
 /* Borders */
 .border-slate-100            { border-color: var(--border)       !important; }
