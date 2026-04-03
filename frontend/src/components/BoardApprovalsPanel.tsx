@@ -65,22 +65,22 @@ const formatTimestamp = (value?: string | null) => {
 
 const statusBadgeClass = (status: string) => {
   if (status === "approved") {
-    return "bg-emerald-50 text-emerald-700";
+    return "bg-emerald-900/30 text-emerald-400";
   }
   if (status === "rejected") {
-    return "bg-rose-50 text-rose-700";
+    return "bg-rose-900/30 text-rose-400";
   }
-  return "bg-amber-100 text-amber-700";
+  return "bg-amber-900/40 text-amber-400";
 };
 
 const confidenceBadgeClass = (confidence: number) => {
   if (confidence >= 90) {
-    return "bg-emerald-50 text-emerald-700";
+    return "bg-emerald-900/30 text-emerald-400";
   }
   if (confidence >= 80) {
-    return "bg-amber-100 text-amber-700";
+    return "bg-amber-900/40 text-amber-400";
   }
-  return "bg-orange-100 text-orange-700";
+  return "bg-orange-900/40 text-orange-400";
 };
 
 const humanizeAction = (value: string) =>
@@ -558,12 +558,12 @@ export function BoardApprovalsPanel({
       ) : pendingCount === 0 && resolvedCount === 0 ? (
         <div
           className={cn(
-            "rounded-xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center",
+            "rounded-xl border border-dashed border-[color:var(--border)] bg-[color:var(--surface)] px-6 py-10 text-center",
             scrollable && "flex h-full items-center justify-center",
           )}
         >
           <div className="max-w-sm">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900/30 text-emerald-400">
               <CheckCircle2 className="h-6 w-6" />
             </div>
             <p className="mt-4 text-sm font-semibold text-slate-900">
@@ -584,12 +584,12 @@ export function BoardApprovalsPanel({
         >
           <div
             className={cn(
-              "overflow-hidden rounded-xl border border-slate-200 bg-white",
+              "overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)]",
               scrollable && "flex min-h-0 flex-col",
             )}
           >
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <div className="border-b border-[color:var(--border)] bg-[color:var(--surface-muted)] px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                 Unapproved tasks
               </p>
               <p className="mt-1 text-xs text-slate-500">
@@ -632,8 +632,8 @@ export function BoardApprovalsPanel({
                     type="button"
                     onClick={() => setSelectedId(approval.id)}
                     className={cn(
-                      "w-full px-4 py-4 text-left transition hover:bg-slate-50",
-                      isSelected && "bg-amber-50 border-l-2 border-amber-500",
+                      "w-full px-4 py-4 text-left transition hover:bg-[color:var(--surface-muted)]",
+                      isSelected && "bg-amber-900/20 border-l-2 border-amber-500",
                       !isPending && "opacity-60",
                     )}
                   >
@@ -659,7 +659,7 @@ export function BoardApprovalsPanel({
                       </p>
                     ) : null}
                     <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700">
+                      <span className="rounded bg-[color:var(--surface-strong)] px-1.5 py-0.5 font-semibold text-[color:var(--text-muted)]">
                         {approval.confidence}% score
                       </span>
                       <Clock className="h-3.5 w-3.5 opacity-60" />
@@ -673,12 +673,12 @@ export function BoardApprovalsPanel({
 
           <div
             className={cn(
-              "overflow-hidden rounded-xl border border-slate-200 bg-white",
+              "overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)]",
               scrollable && "flex min-h-0 flex-col",
             )}
           >
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <div className="border-b border-[color:var(--border)] bg-[color:var(--surface-muted)] px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                 {selectedApproval?.status === "pending"
                   ? "Latest unapproved task"
                   : "Approval detail"}
@@ -792,7 +792,7 @@ export function BoardApprovalsPanel({
                                 handleDecision(selectedApproval.id, "rejected")
                               }
                               disabled={updatingId === selectedApproval.id}
-                              className="border-slate-300 text-slate-700 hover:bg-slate-100"
+                              className="border-[color:var(--border-strong)] text-[color:var(--text-muted)] hover:bg-[color:var(--surface-muted)]"
                             >
                               Reject
                             </Button>
@@ -801,7 +801,7 @@ export function BoardApprovalsPanel({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-4 py-3">
                       <StatusDot
                         status={selectedApproval.status}
                         variant="approval"
@@ -836,7 +836,7 @@ export function BoardApprovalsPanel({
                         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                           Description
                         </p>
-                        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text)]">
                           {descriptionText}
                         </div>
                       </div>
@@ -847,7 +847,7 @@ export function BoardApprovalsPanel({
                         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                           Lead reasoning
                         </p>
-                        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-4 py-3 text-sm text-[color:var(--text-muted)]">
                           <p>{reasoningText}</p>
                         </div>
                       </div>
@@ -866,7 +866,7 @@ export function BoardApprovalsPanel({
                                 selectedApproval.board_id,
                                 task.id,
                               )}
-                              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 underline-offset-2 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 hover:underline"
+                              className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-2 py-1 text-xs text-[color:var(--text)] underline-offset-2 transition hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-strong)] hover:text-[color:var(--text)] hover:underline"
                             >
                               {task.title}
                             </Link>
@@ -884,7 +884,7 @@ export function BoardApprovalsPanel({
                           {extraRows.map((row) => (
                             <div
                               key={`${selectedApproval.id}-${row.label}`}
-                              className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                              className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-3 py-2"
                             >
                               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                                 {row.label}
