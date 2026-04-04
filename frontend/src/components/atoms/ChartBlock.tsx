@@ -226,7 +226,7 @@ function RadialChart({ spec }: { spec: ChartSpec }) {
           cy="50%"
           innerRadius={innerRadius}
           outerRadius="75%"
-          label={({ name }: { name: string }) => name}
+          label={({ name }: { name?: string }) => name ?? ""}
         >
           {data.map((_entry, i) => (
             <Cell key={i} fill={colors[i % colors.length]} />
