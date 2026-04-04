@@ -1075,6 +1075,7 @@ class BoardAgentLifecycleManager(BaseAgentLifecycleManager):
                 "WORKFLOW.md",
                 "STATUS.md",
                 "APIS.md",
+                "skills/mission-control-charts/SKILL.md",
             }
         )
 

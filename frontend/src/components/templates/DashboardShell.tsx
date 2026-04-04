@@ -140,7 +140,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         />
       ) : null}
 
-      <div className="grid flex-1 min-h-0 grid-cols-1 md:grid-cols-[260px_1fr] bg-[var(--bg)] overflow-hidden">
+      <div className="grid flex-1 min-h-0 grid-rows-[1fr] grid-cols-1 md:grid-cols-[260px_1fr] bg-[var(--bg)] overflow-hidden">
         {children}
       </div>
     </div>

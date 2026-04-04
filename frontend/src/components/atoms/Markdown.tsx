@@ -15,6 +15,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/lib/utils";
+import { ChartBlock } from "@/components/atoms/ChartBlock";
 
 type MarkdownCodeProps = HTMLAttributes<HTMLElement> & {
   node?: unknown;
@@ -127,6 +128,19 @@ const MARKDOWN_CODE_COMPONENTS: Components = {
     const codeText = Array.isArray(children)
       ? children.join("")
       : String(children ?? "");
+
+    // ── json:chart intercept ────────────────────────────────────────────────
+    // Fenced blocks tagged ```json:chart produce className="language-json:chart".
+    // Parse the JSON and hand off to ChartBlock; fall through on parse failure.
+    if (className === "language-json:chart") {
+      try {
+        const spec: unknown = JSON.parse(codeText);
+        return <ChartBlock spec={spec} />;
+      } catch {
+        // malformed JSON — render as a normal code block below
+      }
+    }
+
     const isInline =
       typeof inline === "boolean" ? inline : !codeText.includes("\n");
 

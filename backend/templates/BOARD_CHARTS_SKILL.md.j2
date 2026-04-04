@@ -1,0 +1,175 @@
+# Mission Control Charts Skill
+
+This skill enables you to render interactive charts in any Mission Control chat
+surface: board chat, group chat, channel threads, and planning chat.
+
+The Mission Control UI interprets a fenced `json:chart` code block inside any
+message and renders it as an interactive chart. The rest of the message is
+rendered as normal Markdown.
+
+---
+
+## Supported chart types
+
+| `type`   | Description                                                |
+|----------|------------------------------------------------------------|
+| `line`   | Line chart — burndowns, trends, cumulative flow            |
+| `area`   | Area (filled) chart — velocity, throughput over time       |
+| `bar`    | Bar chart — workload by agent, task counts, comparisons    |
+| `pie`    | Pie chart — status breakdown, priority split               |
+| `donut`  | Donut chart — same as pie, with a centred value label      |
+
+---
+
+## Chart spec reference
+
+````
+```json:chart
+{
+  "type":   "<line|area|bar|pie|donut>",
+  "title":  "<optional heading shown above chart>",
+  "xKey":   "<field name used as X axis or pie label>",
+  "yKeys":  "<field name, or array of field names, for Y values>",
+  "xLabel": "<optional X axis label>",
+  "yLabel": "<optional Y axis label>",
+  "data":   [ { "<xKey>": "...", "<yKey>": 0 } ],
+  "colors": ["<optional hex or CSS colour overrides, one per series>"],
+  "height": 260
+}
+```
+````
+
+**Required fields**: `type`, `xKey`, `yKeys`, `data`.
+
+All values mapped by `yKeys` **must be numbers**. The `xKey` dimension is the
+category/label (string or number both fine).
+
+---
+
+## Examples
+
+### Sprint burndown
+
+````
+```json:chart
+{
+  "type": "line",
+  "title": "Sprint Burndown",
+  "xKey": "day",
+  "yKeys": ["remaining", "ideal"],
+  "xLabel": "Day",
+  "yLabel": "Story Points",
+  "data": [
+    {"day": "Mon", "remaining": 24, "ideal": 20},
+    {"day": "Tue", "remaining": 19, "ideal": 16},
+    {"day": "Wed", "remaining": 15, "ideal": 12},
+    {"day": "Thu", "remaining": 10, "ideal":  8},
+    {"day": "Fri", "remaining":  4, "ideal":  4}
+  ]
+}
+```
+````
+
+### Task status breakdown
+
+````
+```json:chart
+{
+  "type": "pie",
+  "title": "Task Status",
+  "xKey": "status",
+  "yKeys": ["count"],
+  "data": [
+    {"status": "done",        "count": 12},
+    {"status": "in_progress", "count":  5},
+    {"status": "open",        "count":  8},
+    {"status": "blocked",     "count":  2}
+  ]
+}
+```
+````
+
+### Open tasks per agent
+
+````
+```json:chart
+{
+  "type": "bar",
+  "title": "Open Tasks per Agent",
+  "xKey": "agent",
+  "yKeys": ["tasks"],
+  "data": [
+    {"agent": "Alice", "tasks": 4},
+    {"agent": "Bob",   "tasks": 7},
+    {"agent": "Carol", "tasks": 2}
+  ]
+}
+```
+````
+
+### Velocity trend (multi-series area)
+
+````
+```json:chart
+{
+  "type": "area",
+  "title": "Sprint Velocity",
+  "xKey": "sprint",
+  "yKeys": ["completed", "planned"],
+  "xLabel": "Sprint",
+  "yLabel": "Story Points",
+  "data": [
+    {"sprint": "S1", "completed": 18, "planned": 20},
+    {"sprint": "S2", "completed": 22, "planned": 20},
+    {"sprint": "S3", "completed": 17, "planned": 24},
+    {"sprint": "S4", "completed": 25, "planned": 24}
+  ]
+}
+```
+````
+
+---
+
+## Data sources
+
+Always query the Mission Control API to collect real data before composing a
+chart. Useful endpoints:
+
+| Data needed | API path |
+|---|---|
+| Task list with statuses | `GET /api/v1/agent/boards/{{ board_id }}/tasks` |
+| Sprint list | `GET /api/v1/agent/boards/{{ board_id }}/sprints` |
+| Sprint tickets | `GET /api/v1/agent/boards/{{ board_id }}/sprints/{sprint_id}/tickets` |
+| Board activity events | `GET /api/v1/agent/boards/{{ board_id }}/activity` |
+
+Use `jq` to aggregate counts from the task list before building your `data` array.
+
+---
+
+## Posting a chart
+
+Send a normal chat message that includes a `json:chart` fenced block. The block
+can appear anywhere in the message body. Example (board chat):
+
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/memory" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Here is the sprint burndown:\n\n```json:chart\n{\"type\":\"line\",\"title\":\"Sprint Burndown\",\"xKey\":\"day\",\"yKeys\":[\"remaining\",\"ideal\"],\"data\":[{\"day\":\"Mon\",\"remaining\":24,\"ideal\":20}]}\n```",
+    "tags": ["chat"]
+  }'
+```
+
+For channel threads, POST to `{{ base_url }}/api/v1/threads/{thread_id}/messages`.
+
+---
+
+## Rules
+
+- **Never fabricate data.** Always query the API and aggregate before charting.
+- **Numbers only** for Y-axis values. Strings cause the chart to fall back to a
+  code block without crashing.
+- **Limit `data` to ≤ 500 rows.** Aggregate/summarise larger datasets first.
+- A malformed JSON spec gracefully falls back to a styled code block in the UI —
+  the user sees the raw JSON rather than an error.

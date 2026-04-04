@@ -46,13 +46,13 @@ function MessageBubble({ msg }: { msg: PlanMessage }) {
       </span>
       <div
         className={cn(
-          "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+          "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
           isUser
-            ? "bg-[color:var(--accent)] text-white rounded-br-sm"
-            : "bg-white border border-slate-200 text-slate-800 rounded-bl-sm",
+            ? "max-w-[85%] bg-[color:var(--accent)] text-white rounded-br-sm"
+            : "w-full bg-white border border-slate-200 text-slate-800 rounded-bl-sm",
         )}
       >
-        {msg.content}
+        <Markdown content={msg.content} variant="comment" />
       </div>
     </div>
   );

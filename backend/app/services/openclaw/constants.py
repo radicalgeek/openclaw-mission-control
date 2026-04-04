@@ -65,6 +65,7 @@ DEFAULT_GATEWAY_FILES = frozenset(
         "USER.md",
         "HEARTBEAT.md",
         "MEMORY.md",
+        "skills/mission-control-charts/SKILL.md",
     },
 )
 
@@ -80,6 +81,7 @@ LEAD_GATEWAY_FILES = frozenset(
         "MEMORY.md",
         "TOOLS.md",
         "HEARTBEAT.md",
+        "skills/mission-control-charts/SKILL.md",
     },
 )
 
@@ -115,6 +117,7 @@ BOARD_SHARED_TEMPLATE_MAP = {
     "HEARTBEAT.md": "BOARD_HEARTBEAT.md.j2",
     "USER.md": "BOARD_USER.md.j2",
     "TOOLS.md": "BOARD_TOOLS.md.j2",
+    "skills/mission-control-charts/SKILL.md": "BOARD_CHARTS_SKILL.md.j2",
 }
 
 LEAD_TEMPLATE_MAP: dict[str, str] = {}
