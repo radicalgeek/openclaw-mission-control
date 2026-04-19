@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getApiBaseUrl } from "@/lib/api-base";
+import { useBranding } from "@/lib/branding";
 
 const LOCAL_AUTH_TOKEN_MIN_LENGTH = 50;
 
@@ -47,6 +48,7 @@ type LocalAuthLoginProps = {
 const defaultOnAuthenticated = () => window.location.reload();
 
 export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
+  const branding = useBranding();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -100,7 +102,7 @@ export function LocalAuthLogin({ onAuthenticated }: LocalAuthLoginProps) {
               Local Authentication
             </h1>
             <p className="text-sm text-muted">
-              Enter your access token to unlock ProductFoundry.
+              Enter your access token to unlock {branding.productName}.
             </p>
           </div>
         </CardHeader>

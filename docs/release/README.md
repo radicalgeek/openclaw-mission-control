@@ -1,6 +1,6 @@
 # Release checklist
 
-This is a lightweight, operator-friendly checklist for releasing Mission Control.
+This is a lightweight, operator-friendly checklist for releasing Product Foundry.
 
 > Goal: **no data loss** and **near-zero (ideally zero) user-visible downtime**.
 
@@ -44,7 +44,7 @@ docker compose -f compose.yml --env-file .env up -d --build
 - [ ] Frontend loads (no console spam)
 - [ ] Login works (local/clerk mode)
 - [ ] Core flows work end-to-end:
-  - [ ] View board
+  - [ ] View project
   - [ ] Create/update a task
   - [ ] Post a comment
   - [ ] Heartbeat check-in succeeds

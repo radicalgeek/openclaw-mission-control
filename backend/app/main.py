@@ -10,36 +10,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi_pagination import add_pagination
 
-from app.api.sprints import router as sprints_router
-from app.api.sprint_webhooks import router as sprint_webhooks_router
-from app.api.channels import router as channels_router
-from app.api.agent_files import router as agent_files_router
-from app.api.board_templates import router as board_templates_router
-from app.api.board_templates import org_router as org_templates_router
-from app.api.plans import router as plans_router
-from app.api.threads import router as threads_router
-from app.api.thread_messages import router as thread_messages_router
 from app.api.activity import router as activity_router
 from app.api.agent import router as agent_router
+from app.api.agent_board_access import router as agent_board_access_router
+from app.api.agent_files import router as agent_files_router
+from app.api.agent_skills import router as agent_skills_router
+from app.api.agent_webhooks import ingest_router as agent_webhook_ingest_router
+from app.api.agent_webhooks import router as agent_webhooks_router
 from app.api.agents import router as agents_router
 from app.api.approvals import router as approvals_router
 from app.api.auth import router as auth_router
+from app.api.branding import router as branding_router
 from app.api.board_group_memory import router as board_group_memory_router
 from app.api.board_groups import router as board_groups_router
 from app.api.board_memory import router as board_memory_router
 from app.api.board_onboarding import router as board_onboarding_router
+from app.api.board_templates import org_router as org_templates_router
+from app.api.board_templates import router as board_templates_router
 from app.api.board_webhooks import router as board_webhooks_router
 from app.api.boards import router as boards_router
+from app.api.channels import router as channels_router
 from app.api.gateway import router as gateway_router
 from app.api.gateways import router as gateways_router
 from app.api.metrics import router as metrics_router
 from app.api.organizations import router as organizations_router
+from app.api.plans import router as plans_router
 from app.api.skills_marketplace import router as skills_marketplace_router
 from app.api.souls_directory import router as souls_directory_router
+from app.api.sprint_webhooks import router as sprint_webhooks_router
+from app.api.sprints import router as sprints_router
 from app.api.tags import router as tags_router
 from app.api.task_custom_fields import router as task_custom_fields_router
 from app.api.tasks import router as tasks_router
+from app.api.thread_messages import router as thread_messages_router
+from app.api.threads import router as threads_router
 from app.api.users import router as users_router
+from app.core.branding import get_branding
 from app.core.config import settings
 from app.core.error_handling import install_error_handling
 from app.core.logging import configure_logging, get_logger
@@ -440,7 +446,7 @@ def _build_custom_openapi(fastapi_app: FastAPI) -> dict[str, Any]:
     return fastapi_app.openapi_schema
 
 
-class MissionControlFastAPI(FastAPI):
+class BrandedFastAPI(FastAPI):
     """FastAPI application with custom OpenAPI normalization."""
 
     def openapi(self) -> dict[str, Any]:
@@ -468,8 +474,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.info("app.lifecycle.stopped")
 
 
-app = MissionControlFastAPI(
-    title="Mission Control API",
+_branding = get_branding()
+
+app = BrandedFastAPI(
+    title=f"{_branding.full_title} API",
     version="0.1.0",
     lifespan=lifespan,
     openapi_tags=OPENAPI_TAGS,
@@ -562,6 +570,10 @@ api_v1.include_router(threads_router)
 api_v1.include_router(thread_messages_router)
 api_v1.include_router(agents_router)
 api_v1.include_router(agent_files_router)
+api_v1.include_router(agent_webhooks_router)
+api_v1.include_router(agent_webhook_ingest_router)
+api_v1.include_router(agent_board_access_router)
+api_v1.include_router(agent_skills_router)
 api_v1.include_router(activity_router)
 api_v1.include_router(gateway_router)
 api_v1.include_router(gateways_router)
@@ -585,6 +597,7 @@ api_v1.include_router(task_custom_fields_router)
 api_v1.include_router(tags_router)
 api_v1.include_router(users_router)
 app.include_router(api_v1)
+app.include_router(branding_router, prefix="/api/v1")
 
 add_pagination(app)
 logger.debug("app.routes.registered count=%s", len(app.routes))

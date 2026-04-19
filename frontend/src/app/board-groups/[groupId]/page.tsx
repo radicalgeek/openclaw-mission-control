@@ -38,6 +38,7 @@ import type {
 } from "@/api/generated/model";
 import type { BoardGroupBoardSnapshot } from "@/api/generated/model";
 import { Markdown } from "@/components/atoms/Markdown";
+import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
 import { SignedOutPanel } from "@/components/auth/SignedOutPanel";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
@@ -115,7 +116,15 @@ function GroupChatMessageCard({ message }: { message: BoardGroupMemoryRead }) {
         </span>
       </div>
       <div className="mt-2 select-text cursor-text text-sm leading-relaxed text-slate-900 break-words">
-        <Markdown content={message.content} variant="basic" />
+        {message.content_type === "mcp_app_result" ? (
+          <MpcAppResultCard
+            metadata={message.app_metadata ?? null}
+            fallbackContent={message.content}
+            variant="basic"
+          />
+        ) : (
+          <Markdown content={message.content} variant="basic" />
+        )}
       </div>
       {message.tags?.length ? (
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-600">
@@ -736,7 +745,7 @@ export default function BoardGroupDetailPage() {
     <DashboardShell>
       <SignedOut>
         <SignedOutPanel
-          message="Sign in to view board groups."
+          message="Sign in to view project groups."
           forceRedirectUrl={`/board-groups/${groupId ?? ""}`}
         />
       </SignedOut>
@@ -748,7 +757,7 @@ export default function BoardGroupDetailPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Board group
+                    Project group
                   </p>
                   <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
                     {group?.name ?? "Group"}
@@ -811,7 +820,7 @@ export default function BoardGroupDetailPage() {
                     href="/boards"
                     className={buttonVariants({ variant: "ghost", size: "sm" })}
                   >
-                    View boards
+                    View projects
                   </Link>
                 </div>
               </div>
@@ -827,7 +836,7 @@ export default function BoardGroupDetailPage() {
                   Include done
                 </label>
                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                  <span className="text-slate-500">Top tasks per board</span>
+                  <span className="text-slate-500">Top tasks per project</span>
                   <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
                     {[0, 3, 5, 10].map((value) => (
                       <button
@@ -978,7 +987,7 @@ export default function BoardGroupDetailPage() {
                 </div>
               ) : boards.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
-                  No boards in this group yet. Assign boards from the board
+                  No projects in this group yet. Assign projects from the project
                   settings page.
                 </div>
               ) : (
@@ -994,7 +1003,7 @@ export default function BoardGroupDetailPage() {
                             <Link
                               href={`/boards/${item.board.id}`}
                               className="group inline-flex items-center gap-2"
-                              title="Open board"
+                              title="Open project"
                             >
                               <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-blue-600">
                                 {item.board.name}
@@ -1030,7 +1039,7 @@ export default function BoardGroupDetailPage() {
                                     query: { taskId: task.id },
                                   }}
                                   className="block rounded-lg border border-slate-200 bg-slate-50/40 p-3 transition hover:border-blue-200 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                                  title="Open task on board"
+                                  title="Open task in project"
                                 >
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex min-w-0 items-center gap-2">
@@ -1111,7 +1120,7 @@ export default function BoardGroupDetailPage() {
                 Group chat
               </p>
               <p className="mt-1 truncate text-sm font-medium text-slate-900">
-                Shared across linked boards. Tag @lead, @name, or @all.
+                Shared across linked projects. Tag @lead, @name, or @all.
               </p>
             </div>
             <button
@@ -1198,7 +1207,7 @@ export default function BoardGroupDetailPage() {
                 Group notes
               </p>
               <p className="mt-1 truncate text-sm font-medium text-slate-900">
-                Shared across linked boards. Tag @lead, @name, or @all.
+                Shared across linked projects. Tag @lead, @name, or @all.
               </p>
             </div>
             <button
@@ -1248,7 +1257,7 @@ export default function BoardGroupDetailPage() {
               ) : notesMessages.length === 0 ? (
                 <p className="text-sm text-slate-500">
                   No notes yet. Post a note or a broadcast to share context
-                  across boards.
+                  across projects.
                 </p>
               ) : (
                 notesMessages.map((message) => (
@@ -1261,7 +1270,7 @@ export default function BoardGroupDetailPage() {
             <BoardChatComposer
               placeholder={
                 canWriteGroup
-                  ? "Post a shared note for all linked boards. Tag @lead, @name, or @all."
+                  ? "Post a shared note for all linked projects. Tag @lead, @name, or @all."
                   : "Read-only access. Notes are disabled."
               }
               isSending={isNoteSending}

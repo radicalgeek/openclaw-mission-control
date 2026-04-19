@@ -29,15 +29,15 @@ jq -r '
 ' /tmp/openapi.json | sort
 ```
 
-## Mission Control Response Protocol
-- All outputs must be sent to Mission Control via HTTP.
+## {{ product_name }} Response Protocol
+- All outputs must be sent to {{ product_name }} via HTTP.
 - Always include: `X-Agent-Token: {{ auth_token }}`
 
 ## Schedule
 - If a heartbeat schedule is configured, send a lightweight check-in only.
 - On first cycle after wake/bootstrap, run heartbeat check-in immediately (do not wait for cadence).
-- Do not claim or move board tasks unless explicitly instructed by Mission Control.
-- If you have any pending `LEAD REQUEST: ASK USER` messages in OpenClaw chat, handle them promptly (see AGENTS.md).
+- Do not claim or move board tasks unless explicitly instructed by {{ product_name }}.
+- If you have any pending `LEAD REQUEST: ASK USER` messages in {{ company_name }} chat, handle them promptly (see AGENTS.md).
 
 ## Heartbeat checklist
 1) Check in immediately:
@@ -149,7 +149,35 @@ Before execution:
 - Pull non-chat board memory.
 - Pull group memory if board is grouped.
 
+### Task Status Lifecycle
+Statuses `triage` and `backlog` are **off-board** — they do not appear in the Kanban columns and
+are not claimable by workers. Workers only interact with on-board statuses.
+
+| Status | On Board? | Claimable by Worker? |
+|---|---|---|
+| `triage` | No | No |
+| `backlog` | No | No |
+| `inbox` | **Yes** | **Yes** |
+| `in_progress` | **Yes** | **Yes** |
+| `review` | **Yes** | No (lead reviews) |
+| `done` | **Yes** | N/A |
+| `archived` | No | No |
+
+#### Legal Transition Table
+| From | Allowed Next Statuses |
+|---|---|
+| `triage` | `backlog`, `archived` |
+| `backlog` | `inbox`, `triage`, `archived` |
+| `inbox` | `in_progress`, `backlog` |
+| `in_progress` | `review`, `inbox` |
+| `review` | `done`, `in_progress` |
+| `done` | `archived`, `in_progress` |
+| `archived` | `backlog` |
+
+The API enforces these rules with a 409 response for invalid transitions.
+
 ## Role-Specific Loop
+{% set role_tpl = identity_role_template | default("") %}
 {% if is_lead %}
 ### Board Lead Loop
 1) Rebuild operating context from `AGENTS.md` and `MEMORY.md`.
@@ -228,6 +256,27 @@ curl -fsS -X PATCH "{{ base_url }}/api/v1/threads/{thread_id}" \
 - `only_lead_can_change_status`: `{{ board_rule_only_lead_can_change_status }}`
 - `max_agents`: `{{ board_rule_max_agents }}`
 {% else %}
+{% if role_tpl == "triager" %}
+{% include "specialists/_triager_heartbeat.md.j2" %}
+{% elif role_tpl == "planner" %}
+{% include "specialists/_planner_heartbeat.md.j2" %}
+{% elif role_tpl == "estimator" %}
+{% include "specialists/_estimator_heartbeat.md.j2" %}
+{% elif role_tpl == "test_agent" %}
+{% include "specialists/_test_agent_heartbeat.md.j2" %}
+{% elif role_tpl == "merger" %}
+{% include "specialists/_merger_heartbeat.md.j2" %}
+{% elif role_tpl == "ui_test" %}
+{% include "specialists/_ui_test_heartbeat.md.j2" %}
+{% elif role_tpl == "visual_regression" %}
+{% include "specialists/_visual_regression_heartbeat.md.j2" %}
+{% elif role_tpl == "quality_reviewer" %}
+{% include "specialists/_quality_reviewer_heartbeat.md.j2" %}
+{% elif role_tpl == "security_reviewer" %}
+{% include "specialists/_security_reviewer_heartbeat.md.j2" %}
+{% elif role_tpl == "architecture_reviewer" %}
+{% include "specialists/_architecture_reviewer_heartbeat.md.j2" %}
+{% else %}
 ### Board Worker Loop
 1) Check in via heartbeat endpoint.
 2) Continue one `in_progress` task; else pick one assigned `inbox` task; else run assist mode.
@@ -239,6 +288,7 @@ curl -fsS -X PATCH "{{ base_url }}/api/v1/threads/{thread_id}" \
 If no active/assigned task:
 1) Add one concrete assist comment to an `in_progress` or `review` task.
 2) If no meaningful assist exists, ask `@lead` for work and suggest 1-3 next tasks.
+{% endif %}
 {% endif %}
 {% if is_lead and is_platform_board != "true" %}
 

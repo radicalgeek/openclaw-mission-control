@@ -31,9 +31,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         context, auth token, and memory.  Falls back to the gateway main
         session when no provisioned lead is found.
         """
-        trace_id = GatewayDispatchService.resolve_trace_id(
-            correlation_id, prefix="planning.start"
-        )
+        trace_id = GatewayDispatchService.resolve_trace_id(correlation_id, prefix="planning.start")
         self.logger.log(
             TRACE_LEVEL,
             "gateway.planning.start_dispatch.start trace_id=%s board_id=%s",
@@ -45,9 +43,9 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         ).require_gateway_config_for_board(board)
 
         # Prefer the board lead's session: it has the right X-Agent-Token and board context.
-        lead = await Agent.objects.filter_by(
-            board_id=board.id, is_board_lead=True
-        ).first(self.session)
+        lead = await Agent.objects.filter_by(board_id=board.id, is_board_lead=True).first(
+            self.session
+        )
 
         if lead is not None and lead.openclaw_session_id:
             session_key = lead.openclaw_session_id
@@ -110,9 +108,9 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         ).require_gateway_config_for_board(board)
 
         # Always route to the board lead's session for proper auth and board context.
-        lead = await Agent.objects.filter_by(
-            board_id=board.id, is_board_lead=True
-        ).first(self.session)
+        lead = await Agent.objects.filter_by(board_id=board.id, is_board_lead=True).first(
+            self.session
+        )
 
         if lead is not None and lead.openclaw_session_id:
             session_key = lead.openclaw_session_id

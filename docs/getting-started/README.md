@@ -1,10 +1,10 @@
 # Getting started
 
-## What is Mission Control?
+## What is Product Foundry?
 
-Mission Control is the web UI and HTTP API for operating OpenClaw.
+Product Foundry is the web UI and HTTP API for operating OpenClaw.
 
-It provides a control plane for boards, tasks, agents, approvals, and (optionally) gateway connections.
+It provides a control plane for projects, tasks, agents, approvals, and (optionally) gateway connections.
 
 ## Quickstart (Docker Compose)
 

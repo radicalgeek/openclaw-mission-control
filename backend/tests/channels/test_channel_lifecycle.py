@@ -106,7 +106,9 @@ async def test_on_board_created_creates_channels() -> None:
         board = await _seed_board(session)
         await on_board_created(session, board)
 
-        channels = (await session.exec(select(Channel).where(col(Channel.board_id) == board.id))).all()
+        channels = (
+            await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
+        ).all()
         assert len(channels) == 9
         alert_names = {c.slug for c in channels if c.channel_type == "alert"}
         assert "build-alerts" in alert_names
@@ -147,7 +149,9 @@ async def test_on_board_deleted_archives_channels() -> None:
         # Soft delete
         await on_board_deleted(session, board, hard_delete=False)
 
-        channels = (await session.exec(select(Channel).where(col(Channel.board_id) == board.id))).all()
+        channels = (
+            await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
+        ).all()
         assert len(channels) == 9
         assert all(c.is_archived for c in channels)
 
@@ -164,7 +168,9 @@ async def test_on_board_deleted_hard_removes_channels() -> None:
         # Hard delete
         await on_board_deleted(session, board, hard_delete=True)
 
-        channels = (await session.exec(select(Channel).where(col(Channel.board_id) == board.id))).all()
+        channels = (
+            await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
+        ).all()
         assert len(channels) == 0
 
     await engine.dispose()

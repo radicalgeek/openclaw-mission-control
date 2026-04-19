@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<!--
+  Mission Control — Built-in Chart MCP App
+  Receives a chart spec via postMessage (MCP Apps AppBridge protocol) and
+  renders it using pure-JS Canvas. No external dependencies.
+
+  Expected postMessage data shape:
+  {
+    "type": "mcp-app:tool-result",
+    "result": {
+      "type": "line|area|bar|pie|donut",
+      "title": "...",
+      "xKey": "...",
+      "yKeys": ["..."],
+      "xLabel": "...",
+      "yLabel": "...",
+      "data": [...],
+      "colors": ["..."],
+      "height": 260
+    }
+  }
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chart</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8fafc;
+      --fg: #1e293b;
+      --grid: #e2e8f0;
+      --axis: #94a3b8;
+      --title-color: #475569;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f172a; --fg: #f1f5f9; --grid: #1e293b; --axis: #64748b; --title-color: #94a3b8; }
+    }
+    body { background: var(--bg); color: var(--fg); padding: 12px; }
+    #title { font-size: 12px; font-weight: 600; color: var(--title-color); margin-bottom: 8px; }
+    canvas { display: block; width: 100%; max-width: 100%; }
+    #error { color: #ef4444; font-size: 12px; padding: 8px; }
+    #legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: 11px; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <div id="title"></div>
+  <canvas id="chart"></canvas>
+  <div id="legend"></div>
+  <div id="error"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    const COLORS = [
+      "#6366f1","#10b981","#f59e0b","#ef4444",
+      "#3b82f6","#8b5cf6","#06b6d4","#f97316"
+    ];
+    const MAX_ROWS = 500;
+    const PAD = { top: 16, right: 24, bottom: 40, left: 52 };
+
+    function resolveColors(spec) {
+      return spec.colors && spec.colors.length ? spec.colors : COLORS;
+    }
+
+    function resolveYKeys(spec) {
+      if (!spec.yKeys) return [];
+      return Array.isArray(spec.yKeys) ? spec.yKeys : [spec.yKeys];
+    }
+
+    function getCssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function drawGrid(ctx, w, h, yMin, yMax, steps) {
+      ctx.strokeStyle = getCssVar("--grid") || "#e2e8f0";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= steps; i++) {
+        const y = PAD.top + (h * i) / steps;
+        ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + w, y); ctx.stroke();
+      }
+    }
+
+    function drawAxes(ctx, w, h, data, spec, yMin, yMax, yKeys) {
+      const steps = 5;
+      ctx.fillStyle = getCssVar("--axis") || "#94a3b8";
+      ctx.font = "10px ui-sans-serif,system-ui,sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i <= steps; i++) {
+        const val = yMax - ((yMax - yMin) * i) / steps;
+        const y = PAD.top + (h * i) / steps;
+        ctx.fillText(Number(val.toFixed(1)).toLocaleString(), PAD.left - 4, y);
+      }
+      // X labels
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      const xKey = spec.xKey || "x";
+      const n = data.length;
+      const step = Math.ceil(n / 10) || 1;
+      for (let i = 0; i < n; i += step) {
+        const x = PAD.left + (w * i) / (n - 1 || 1);
+        ctx.fillText(String(data[i][xKey] || i), x, PAD.top + h + 4);
+      }
+    }
+
+    function dataRange(data, yKeys) {
+      let min = Infinity, max = -Infinity;
+      for (const row of data) {
+        for (const k of yKeys) {
+          const v = Number(row[k]);
+          if (isFinite(v)) { if (v < min) min = v; if (v > max) max = v; }
+        }
+      }
+      if (min === max) { min -= 1; max += 1; }
+      min = Math.min(0, min);
+      return [min, max];
+    }
+
+    function toCanvasX(i, n, w) { return PAD.left + (w * i) / (Math.max(n - 1, 1)); }
+    function toCanvasY(v, yMin, yMax, h) { return PAD.top + h - ((v - yMin) / (yMax - yMin)) * h; }
+
+    function drawLine(ctx, data, yKey, w, h, yMin, yMax, color, fill) {
+      const n = data.length;
+      if (n === 0) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = toCanvasX(i, n, w);
+        const y = toCanvasY(Number(data[i][yKey]) || 0, yMin, yMax, h);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      if (fill) {
+        ctx.lineTo(toCanvasX(n - 1, n, w), PAD.top + h);
+        ctx.lineTo(toCanvasX(0, n, w), PAD.top + h);
+        ctx.closePath();
+        ctx.fillStyle = color + "26"; // 15% opacity
+        ctx.fill();
+      }
+    }
+
+    function drawBar(ctx, data, yKeys, w, h, yMin, yMax, colors) {
+      const n = data.length;
+      const nSeries = yKeys.length;
+      const totalW = w / (n || 1);
+      const barW = totalW / (nSeries + 1);
+      for (let i = 0; i < n; i++) {
+        for (let s = 0; s < nSeries; s++) {
+          const v = Number(data[i][yKeys[s]]) || 0;
+          const x = PAD.left + i * totalW + s * barW + barW * 0.5;
+          const yTop = toCanvasY(v, yMin, yMax, h);
+          const yBase = toCanvasY(0, yMin, yMax, h);
+          ctx.fillStyle = colors[s % colors.length];
+          ctx.fillRect(x, Math.min(yTop, yBase), barW, Math.abs(yTop - yBase));
+        }
+      }
+    }
+
+    function drawPie(ctx, data, spec, colors, isDonut) {
+      const canvas = ctx.canvas;
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const r = Math.min(cx, cy) * 0.7;
+      const xKey = spec.xKey || "label";
+      const yKeys = resolveYKeys(spec);
+      const valueKey = yKeys[0] || "value";
+      const total = data.reduce((s, d) => s + (Number(d[valueKey]) || 0), 0) || 1;
+      let start = -Math.PI / 2;
+      data.forEach((row, i) => {
+        const slice = ((Number(row[valueKey]) || 0) / total) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, start, start + slice);
+        ctx.closePath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        start += slice;
+      });
+      if (isDonut) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.55, 0, 2 * Math.PI);
+        const bg = getCssVar("--bg") || "#f8fafc";
+        ctx.fillStyle = bg;
+        ctx.fill();
+      }
+    }
+
+    function renderLegend(data, spec, colors) {
+      const legend = document.getElementById("legend");
+      legend.innerHTML = "";
+      if (spec.type === "pie" || spec.type === "donut") {
+        const xKey = spec.xKey || "label";
+        data.forEach((row, i) => {
+          const item = document.createElement("div");
+          item.className = "legend-item";
+          const sw = document.createElement("div");
+          sw.className = "legend-swatch";
+          sw.style.background = colors[i % colors.length];
+          item.appendChild(sw);
+          item.appendChild(document.createTextNode(String(row[xKey] || i)));
+          legend.appendChild(item);
+        });
+      } else {
+        resolveYKeys(spec).forEach((key, i) => {
+          const item = document.createElement("div");
+          item.className = "legend-item";
+          const sw = document.createElement("div");
+          sw.className = "legend-swatch";
+          sw.style.background = colors[i % colors.length];
+          item.appendChild(sw);
+          item.appendChild(document.createTextNode(key));
+          legend.appendChild(item);
+        });
+      }
+    }
+
+    function render(spec) {
+      document.getElementById("error").textContent = "";
+      if (!spec || typeof spec !== "object" || !Array.isArray(spec.data) || !spec.data.length) {
+        document.getElementById("error").textContent = "Invalid chart spec.";
+        return;
+      }
+
+      if (spec.title) document.getElementById("title").textContent = spec.title;
+
+      const canvas = document.getElementById("chart");
+      const dpr = window.devicePixelRatio || 1;
+      const cssH = spec.height || 260;
+      const cssW = canvas.parentElement.clientWidth || 400;
+      canvas.style.height = cssH + "px";
+      canvas.width = cssW * dpr;
+      canvas.height = cssH * dpr;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+
+      const data = spec.data.slice(0, MAX_ROWS);
+      const colors = resolveColors(spec);
+      const yKeys = resolveYKeys(spec);
+      const type = spec.type;
+
+      if (type === "pie" || type === "donut") {
+        drawPie(ctx, data, spec, colors, type === "donut");
+        renderLegend(data, spec, colors);
+        return;
+      }
+
+      const [yMin, yMax] = dataRange(data, yKeys.length ? yKeys : ["value"]);
+      const w = cssW - PAD.left - PAD.right;
+      const h = cssH - PAD.top - PAD.bottom;
+
+      drawGrid(ctx, w, h, yMin, yMax, 5);
+      drawAxes(ctx, w, h, data, spec, yMin, yMax, yKeys);
+
+      if (type === "bar") {
+        drawBar(ctx, data, yKeys, w, h, yMin, yMax, colors);
+      } else {
+        yKeys.forEach((key, i) => {
+          drawLine(ctx, data, key, w, h, yMin, yMax, colors[i % colors.length], type === "area");
+        });
+      }
+
+      renderLegend(data, spec, colors);
+    }
+
+    // MCP Apps AppBridge — listen for postMessage from host
+    window.addEventListener("message", function (event) {
+      try {
+        const msg = event.data;
+        if (!msg || typeof msg !== "object") return;
+        // MCP Apps protocol: type "mcp-app:tool-result"
+        if (msg.type === "mcp-app:tool-result" && msg.result) {
+          render(msg.result);
+        }
+        // Mission Control direct spec injection
+        if (msg.type === "chart-spec" && msg.spec) {
+          render(msg.spec);
+        }
+      } catch (e) {
+        document.getElementById("error").textContent = String(e);
+      }
+    });
+
+    // Notify host we're ready
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "mcp-app:ready" }, "*");
+    }
+  }());
+  </script>
+</body>
+</html>

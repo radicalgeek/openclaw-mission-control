@@ -35,7 +35,7 @@ curl -fsS "{{ base_url }}/healthz" >/dev/null
 5) Ensure today's daily file exists: `memory/YYYY-MM-DD.md`.
 
 {% if is_lead %}
-6) Immediately check in to Mission Control (do this before any task orchestration):
+6) Immediately check in to {{ product_name }} (do this before any task orchestration):
 
 ```bash
 curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
@@ -55,7 +55,7 @@ curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
 - `BASE_URL={{ base_url }}`
 - `AUTH_TOKEN={{ auth_token }}`
 - `BOARD_ID={{ board_id }}`
-to Mission Control to mark the agent online:
+to {{ product_name }} to mark the agent online:
 
 ```bash
 curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \

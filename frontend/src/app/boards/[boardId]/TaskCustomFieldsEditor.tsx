@@ -35,7 +35,7 @@ export function TaskCustomFieldsEditor({
   isLoading,
   disabled,
   loadingMessage = "Loading custom fields…",
-  emptyMessage = "No custom fields configured for this board.",
+  emptyMessage = "No custom fields configured for this project.",
 }: TaskCustomFieldsEditorProps) {
   if (isLoading)
     return <p className="text-xs text-slate-500">{loadingMessage}</p>;

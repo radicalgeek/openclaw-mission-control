@@ -87,11 +87,11 @@ export default function BoardGroupsPage() {
     <>
       <DashboardPageLayout
         signedOut={{
-          message: "Sign in to view board groups.",
+          message: "Sign in to view project groups.",
           forceRedirectUrl: "/board-groups",
         }}
-        title="Board groups"
-        description={`Group boards so agents can see related work. ${groups.length} group${groups.length === 1 ? "" : "s"} total.`}
+        title="Project groups"
+        description={`Group projects so agents can see related work. ${groups.length} group${groups.length === 1 ? "" : "s"} total.`}
         headerActions={
           <Link
             href="/board-groups/new"
@@ -114,7 +114,7 @@ export default function BoardGroupsPage() {
             emptyState={{
               title: "No groups yet",
               description:
-                "Create a board group to increase cross-board visibility for agents.",
+                "Create a project group to increase cross-project visibility for agents.",
               actionHref: "/board-groups/new",
               actionLabel: "Create your first group",
             }}
@@ -134,11 +134,11 @@ export default function BoardGroupsPage() {
             setDeleteTarget(null);
           }
         }}
-        ariaLabel="Delete board group"
-        title="Delete board group"
+        ariaLabel="Delete project group"
+        title="Delete project group"
         description={
           <>
-            This will remove {deleteTarget?.name}. Boards will be ungrouped.
+            This will remove {deleteTarget?.name}. Projects will be ungrouped.
             This action cannot be undone.
           </>
         }

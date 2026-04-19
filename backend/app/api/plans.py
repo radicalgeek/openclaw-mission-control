@@ -33,6 +33,7 @@ from app.schemas.plans import (
     PlanUpdate,
 )
 from app.services.activity_log import record_activity
+from app.services.openclaw.planning_service import PlanningMessagingService
 from app.services.planning import (
     build_decompose_prompt,
     build_plan_system_prompt,
@@ -41,7 +42,6 @@ from app.services.planning import (
     extract_plan_content,
     generate_slug,
 )
-from app.services.openclaw.planning_service import PlanningMessagingService
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
@@ -407,7 +407,12 @@ async def agent_update_plan(
 
     messages: list[dict[str, object]] = list(plan.messages or [])
     if reply:
-        messages.append({"role": "assistant", "content": reply})
+        assistant_msg: dict[str, object] = {"role": "assistant", "content": reply}
+        if payload.content_type and payload.content_type != "text":
+            assistant_msg["content_type"] = payload.content_type
+        if payload.app_metadata:
+            assistant_msg["metadata"] = payload.app_metadata
+        messages.append(assistant_msg)
 
     # Prefer explicitly pushed content; otherwise try extracting from reply.
     new_content: str | None = None
@@ -461,17 +466,31 @@ async def promote_plan(
             detail="This plan has already been promoted to a task.",
         )
 
+    from app.schemas.tasks import priority_to_score  # noqa: PLC0415
+
     task_title = payload.task_title or plan.title
+    # Resolve priority_score: use explicit score from payload, else derive from priority label
+    resolved_priority_score = payload.task_priority_score
+    if resolved_priority_score == 50:  # default: auto-set from priority label
+        resolved_priority_score = priority_to_score(payload.task_priority)
+    # Determine target status: "inbox" (on-board) or "backlog" (off-board)
+    target_status = (
+        payload.target_status if payload.target_status in {"inbox", "backlog"} else "inbox"
+    )
+    is_backlog_task = target_status == "backlog"
     task = Task(
         board_id=board.id,
         title=task_title,
         description=plan.content or f"See plan: {plan.title}",
-        status="inbox",
+        status=target_status,
         priority=payload.task_priority,
+        priority_score=resolved_priority_score,
+        estimate_minutes=payload.estimate_minutes,
         assigned_agent_id=payload.assigned_agent_id,
         created_by_user_id=auth.user.id if auth.user else None,
         auto_created=True,
         auto_reason="promoted_from_plan",
+        is_backlog=is_backlog_task,
     )
     session.add(task)
     await session.flush()  # populate task.id

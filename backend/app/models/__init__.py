@@ -1,11 +1,8 @@
 """Model exports for SQLAlchemy/SQLModel metadata discovery."""
 
-from app.models.channel import Channel
-from app.models.channel_subscription import ChannelSubscription
-from app.models.thread import Thread
-from app.models.thread_message import ThreadMessage
-from app.models.user_channel_state import UserChannelState
 from app.models.activity_events import ActivityEvent
+from app.models.agent_board_access import AgentBoardAccess
+from app.models.agent_webhooks import AgentWebhook, AgentWebhookPayload
 from app.models.agents import Agent
 from app.models.approval_task_links import ApprovalTaskLink
 from app.models.approvals import Approval
@@ -16,6 +13,8 @@ from app.models.board_onboarding import BoardOnboardingSession
 from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.board_webhooks import BoardWebhook
 from app.models.boards import Board
+from app.models.channel import Channel
+from app.models.channel_subscription import ChannelSubscription
 from app.models.gateways import Gateway
 from app.models.organization_board_access import OrganizationBoardAccess
 from app.models.organization_invite_board_access import OrganizationInviteBoardAccess
@@ -23,8 +22,8 @@ from app.models.organization_invites import OrganizationInvite
 from app.models.organization_members import OrganizationMember
 from app.models.organizations import Organization
 from app.models.skills import GatewayInstalledSkill, MarketplaceSkill, SkillPack
-from app.models.sprints import Sprint, SprintTicket
 from app.models.sprint_webhooks import SprintWebhook
+from app.models.sprints import Sprint, SprintTicket
 from app.models.tag_assignments import TagAssignment
 from app.models.tags import Tag
 from app.models.task_custom_fields import (
@@ -35,6 +34,9 @@ from app.models.task_custom_fields import (
 from app.models.task_dependencies import TaskDependency
 from app.models.task_fingerprints import TaskFingerprint
 from app.models.tasks import Task
+from app.models.thread import Thread
+from app.models.thread_message import ThreadMessage
+from app.models.user_channel_state import UserChannelState
 from app.models.users import User
 
 __all__ = [
@@ -45,6 +47,9 @@ __all__ = [
     "UserChannelState",
     "ActivityEvent",
     "Agent",
+    "AgentBoardAccess",
+    "AgentWebhook",
+    "AgentWebhookPayload",
     "ApprovalTaskLink",
     "Approval",
     "BoardGroupMemory",

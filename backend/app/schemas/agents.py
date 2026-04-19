@@ -7,11 +7,45 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from sqlmodel import SQLModel
 from sqlmodel._compat import SQLModelConfig
 
+from app.models.agents import (
+    AGENT_TYPE_BOARD_LEAD,
+    AGENT_TYPE_BOARD_WORKER,
+    AGENT_TYPE_GATEWAY_MAIN,
+    AGENT_TYPE_STANDALONE,
+)
 from app.schemas.common import NonEmptyStr
+
+VALID_AGENT_TYPES = frozenset(
+    {AGENT_TYPE_BOARD_WORKER, AGENT_TYPE_BOARD_LEAD, AGENT_TYPE_GATEWAY_MAIN, AGENT_TYPE_STANDALONE}
+)
+
+VALID_ROLE_TEMPLATES = frozenset({
+    # Delivery specialists (board_worker, pre-board lifecycle)
+    "triager",
+    "planner",
+    "estimator",
+    # Board specialists (board_worker, Kanban task execution)
+    "test_agent",
+    "merger",
+    "ui_test",
+    "visual_regression",
+    # Cross-board reviewers (standalone, webhook-driven)
+    "quality_reviewer",
+    "security_reviewer",
+    "architecture_reviewer",
+})
+
+STANDALONE_ROLE_TEMPLATES = frozenset({
+    "quality_reviewer",
+    "security_reviewer",
+    "architecture_reviewer",
+})
+
+BOARD_WORKER_ROLE_TEMPLATES = VALID_ROLE_TEMPLATES - STANDALONE_ROLE_TEMPLATES
 
 _RUNTIME_TYPE_REFERENCES = (datetime, UUID, NonEmptyStr)
 
@@ -72,6 +106,11 @@ class AgentBase(SQLModel):
         description="Board id that scopes this agent. Omit only when policy allows global agents.",
         examples=["11111111-1111-1111-1111-111111111111"],
     )
+    agent_type: str = Field(
+        default=AGENT_TYPE_BOARD_WORKER,
+        description="Agent type: board_worker, board_lead, gateway_main, or standalone.",
+        examples=[AGENT_TYPE_BOARD_WORKER, AGENT_TYPE_STANDALONE],
+    )
     name: NonEmptyStr = Field(
         description="Human-readable agent display name.",
         examples=["Ops triage lead"],
@@ -102,6 +141,16 @@ class AgentBase(SQLModel):
         examples=["When critical blockers appear, escalate in plain language."],
     )
 
+    @field_validator("agent_type")
+    @classmethod
+    def validate_agent_type(cls, value: str) -> str:
+        """Reject unknown agent_type values."""
+        if value not in VALID_AGENT_TYPES:
+            raise ValueError(
+                f"Invalid agent_type '{value}'. Must be one of: {sorted(VALID_AGENT_TYPES)}"
+            )
+        return value
+
     @field_validator("identity_template", "soul_template", mode="before")
     @classmethod
     def normalize_templates(cls, value: object) -> object | None:
@@ -126,44 +175,86 @@ class AgentBase(SQLModel):
 class AgentCreate(AgentBase):
     """Payload for creating a new agent."""
 
+    @model_validator(mode="after")
+    def validate_standalone_board_id(self) -> "AgentCreate":
+        """Enforce board_id presence/absence based on agent_type."""
+        boardless_types = {AGENT_TYPE_STANDALONE, AGENT_TYPE_GATEWAY_MAIN}
+        if self.agent_type in boardless_types and self.board_id is not None:
+            raise ValueError(f"{self.agent_type} agents must not have a board_id")
+        if self.agent_type not in boardless_types and self.board_id is None:
+            raise ValueError(f"{self.agent_type} agents must have a board_id")
+        return self
+
+    @model_validator(mode="after")
+    def validate_role_template(self) -> "AgentCreate":
+        """Validate role_template in identity_profile against the closed allowed set."""
+        profile = self.identity_profile or {}
+        role_template = profile.get("role_template")
+        if role_template is None:
+            return self
+        if role_template not in VALID_ROLE_TEMPLATES:
+            raise ValueError(
+                f"Invalid role_template '{role_template}'. "
+                f"Must be one of: {sorted(VALID_ROLE_TEMPLATES)}"
+            )
+        if role_template in STANDALONE_ROLE_TEMPLATES and self.agent_type != AGENT_TYPE_STANDALONE:
+            raise ValueError(
+                f"role_template '{role_template}' requires agent_type 'standalone'"
+            )
+        if role_template in BOARD_WORKER_ROLE_TEMPLATES and self.agent_type != AGENT_TYPE_BOARD_WORKER:
+            raise ValueError(
+                f"role_template '{role_template}' requires agent_type 'board_worker'"
+            )
+        return self
+
+    gateway_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Gateway UUID for standalone agents. Required when agent_type is 'standalone'. "
+            "Ignored for board-scoped agents (gateway is derived from the board)."
+        ),
+        examples=["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"],
+    )
     auth_profile: dict[str, Any] | None = Field(
         default=None,
         description=(
             "Full auth-profiles.json content written to the agent workspace at provision time. "
             "Supports multiple providers (Anthropic, GitHub Copilot, etc.). "
             "Written as auth-profiles.json — not stored on the agent record. "
-            "Example: {\"version\": 1, \"profiles\": {\"anthropic:main\": {\"type\": \"token\", "
-            "\"provider\": \"anthropic\", \"token\": \"sk-ant-...\"}}, "
-            "\"order\": {\"anthropic\": [\"anthropic:main\"]}, \"lastGood\": {}, \"usageStats\": {}}."
+            'Example: {"version": 1, "profiles": {"anthropic:main": {"type": "token", '
+            '"provider": "anthropic", "token": "sk-ant-..."}}, '
+            '"order": {"anthropic": ["anthropic:main"]}, "lastGood": {}, "usageStats": {}}.'
         ),
-        examples=[{
-            "version": 1,
-            "profiles": {
-                "anthropic:main": {
-                    "type": "token",
-                    "provider": "anthropic",
-                    "token": "sk-ant-oat01-...",
-                    "expires": 1803423216508,
+        examples=[
+            {
+                "version": 1,
+                "profiles": {
+                    "anthropic:main": {
+                        "type": "token",
+                        "provider": "anthropic",
+                        "token": "sk-ant-oat01-...",
+                        "expires": 1803423216508,
+                    },
+                    "github-copilot:github": {
+                        "type": "token",
+                        "provider": "github-copilot",
+                        "token": "ghu_...",
+                    },
                 },
-                "github-copilot:github": {
-                    "type": "token",
-                    "provider": "github-copilot",
-                    "token": "ghu_...",
+                "order": {
+                    "anthropic": ["anthropic:main"],
+                    "github-copilot": ["github-copilot:github"],
                 },
-            },
-            "order": {
-                "anthropic": ["anthropic:main"],
-                "github-copilot": ["github-copilot:github"],
-            },
-            "lastGood": {},
-            "usageStats": {},
-        }],
+                "lastGood": {},
+                "usageStats": {},
+            }
+        ],
     )
     skill_env: dict[str, dict[str, str]] = Field(
         default_factory=dict,
         description=(
             "Per-skill credential overrides written to skills/<slug>/config.env at provision time. "
-            "Example: {\"plane-workflow\": {\"PLANE_API_KEY\": \"plane_api_xxx\"}}. "
+            'Example: {"plane-workflow": {"PLANE_API_KEY": "plane_api_xxx"}}. '
             "Values are write-only and not stored on the agent record."
         ),
         examples=[{"hoofer-k8s": {"GITLAB_TOKEN": "glpat-xxx"}}],
@@ -175,7 +266,9 @@ class AgentCreate(AgentBase):
             "Use for custom API instructions, endpoints, or usage notes specific to this agent. "
             "Write-only — not stored on the agent record."
         ),
-        examples=["## Plane\nPLANE_API_URL=https://plane.example.com\nUse the plane-workflow skill for ticket management."],
+        examples=[
+            "## Plane\nPLANE_API_URL=https://plane.example.com\nUse the plane-workflow skill for ticket management."
+        ],
     )
     is_board_lead: bool = Field(
         default=False,
@@ -184,6 +277,14 @@ class AgentCreate(AgentBase):
             "When true, the agent will be assigned the board lead session key and role. "
             "Only one board lead is allowed per board."
         ),
+    )
+    installed_skills: list[str] | None = Field(
+        default=None,
+        description=(
+            "Per-agent skill allowlist pushed to gateway agents.list[].skills. "
+            'None = inherit gateway defaults. [] = no skills. ["a","b"] = explicit list.'
+        ),
+        examples=[["github", "weather"]],
     )
 
 
@@ -250,6 +351,11 @@ class AgentUpdate(SQLModel):
         description="Optional replacement soul template.",
         examples=["Escalate only after checking all known mitigations."],
     )
+    installed_skills: list[str] | None = Field(
+        default=None,
+        description="Optional replacement for agent skill allowlist.",
+        examples=[["github", "weather"]],
+    )
 
     @field_validator("identity_template", "soul_template", mode="before")
     @classmethod
@@ -270,6 +376,26 @@ class AgentUpdate(SQLModel):
     ) -> dict[str, str] | None:
         """Normalize identity-profile values into trimmed string mappings."""
         return _normalize_identity_profile(value)
+
+    @model_validator(mode="after")
+    def validate_role_template(self) -> "AgentUpdate":
+        """Reject unknown role_template values at update time.
+
+        Cross-type validation (e.g. reviewer on board_worker) requires the
+        persisted agent_type and is enforced in the service layer.
+        """
+        profile = self.identity_profile
+        if profile is None:
+            return self
+        role_template = profile.get("role_template")
+        if role_template is None:
+            return self
+        if role_template not in VALID_ROLE_TEMPLATES:
+            raise ValueError(
+                f"Invalid role_template '{role_template}'. "
+                f"Must be one of: {sorted(VALID_ROLE_TEMPLATES)}"
+            )
+        return self
 
 
 class AgentRead(AgentBase):
@@ -295,6 +421,10 @@ class AgentRead(AgentBase):
     is_gateway_main: bool = Field(
         default=False,
         description="Whether this agent is the primary gateway agent.",
+    )
+    installed_skills: list[str] | None = Field(
+        default=None,
+        description="Per-agent skill allowlist (gateway agents.list[].skills). None = gateway defaults.",
     )
     openclaw_session_id: str | None = Field(
         default=None,

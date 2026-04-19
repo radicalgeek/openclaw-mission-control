@@ -1,6 +1,6 @@
 # Backend Templates (Product Documentation)
 
-This folder contains the Markdown templates Mission Control syncs into OpenClaw agent workspaces.
+This folder contains the Markdown templates Product Foundry syncs into OpenClaw agent workspaces.
 
 - Location in repo: `backend/templates/`
 - Runtime location in backend container: `/app/templates`

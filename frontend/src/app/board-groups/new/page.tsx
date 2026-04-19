@@ -125,11 +125,11 @@ export default function NewBoardGroupPage() {
   return (
     <DashboardPageLayout
       signedOut={{
-        message: "Sign in to create a board group.",
+        message: "Sign in to create a project group.",
         forceRedirectUrl: "/board-groups/new",
       }}
-      title="Create board group"
-      description="Groups help agents discover related work across boards."
+      title="Create project group"
+      description="Groups help agents discover related work across projects."
     >
       <form
         onSubmit={handleSubmit}
@@ -156,7 +156,7 @@ export default function NewBoardGroupPage() {
           <Textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="What ties these boards together? What should agents coordinate on?"
+            placeholder="What ties these projects together? What should agents coordinate on?"
             className="min-h-[120px]"
             disabled={isCreating}
           />
@@ -164,7 +164,7 @@ export default function NewBoardGroupPage() {
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="text-sm font-medium text-slate-900">Boards</label>
+            <label className="text-sm font-medium text-slate-900">Projects</label>
             <span className="text-xs text-slate-500">
               {selectedBoardIds.size} selected
             </span>
@@ -172,13 +172,13 @@ export default function NewBoardGroupPage() {
           <Input
             value={boardSearch}
             onChange={(event) => setBoardSearch(event.target.value)}
-            placeholder="Search boards..."
+            placeholder="Search projects..."
             disabled={isCreating}
           />
           <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-slate-50/40">
             {boardsQuery.isLoading ? (
               <div className="px-4 py-6 text-sm text-slate-500">
-                Loading boards…
+                Loading projects…
               </div>
             ) : boardsQuery.error ? (
               <div className="px-4 py-6 text-sm text-rose-700">
@@ -186,7 +186,7 @@ export default function NewBoardGroupPage() {
               </div>
             ) : boards.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">
-                No boards found.
+                No projects found.
               </div>
             ) : (
               <ul className="divide-y divide-slate-200">
@@ -245,8 +245,8 @@ export default function NewBoardGroupPage() {
             )}
           </div>
           <p className="text-xs text-slate-500">
-            Optional. Selected boards will be assigned to this group after
-            creation. You can change membership later in group edit or board
+            Optional. Selected projects will be assigned to this group after
+            creation. You can change membership later in group edit or project
             settings.
           </p>
         </div>
@@ -268,12 +268,12 @@ export default function NewBoardGroupPage() {
         </div>
 
         <div className="border-t border-slate-100 pt-4 text-xs text-slate-500">
-          Want to assign boards later? Update each board in{" "}
+          Want to assign projects later? Update each project in{" "}
           <Link
             href="/boards"
             className="font-medium text-blue-600 hover:text-blue-700"
           >
-            Boards
+            Projects
           </Link>{" "}
           and pick this group.
         </div>

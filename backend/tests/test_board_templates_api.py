@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from uuid import UUID, uuid4
+
 import pytest
 from fastapi import HTTPException
 
 from app.api import board_templates as board_templates_api
-from app.services.openclaw.provisioning_db import fetch_db_template_overrides
 from app.models.board_templates import BoardTemplate
-from uuid import UUID, uuid4
-
+from app.services.openclaw.provisioning_db import fetch_db_template_overrides
 
 # ---------------------------------------------------------------------------
 # _validate_jinja_syntax
@@ -18,9 +18,7 @@ from uuid import UUID, uuid4
 
 def test_validate_jinja_syntax_accepts_valid_template() -> None:
     """Normal Jinja2 template should not raise."""
-    board_templates_api._validate_jinja_syntax(
-        "Hello {{ agent_name }}! Board: {{ board_name }}."
-    )
+    board_templates_api._validate_jinja_syntax("Hello {{ agent_name }}! Board: {{ board_name }}.")
 
 
 def test_validate_jinja_syntax_raises_on_invalid_template() -> None:
@@ -108,7 +106,11 @@ class _FakeSession:
 async def test_fetch_db_template_overrides_org_only() -> None:
     """With no board_id only org-wide overrides are returned."""
     org_id = uuid4()
-    org_rows = [_FakeBoardTemplate(file_name="SOUL.md", template_content="# org soul", board_id=None, org_id=org_id)]
+    org_rows = [
+        _FakeBoardTemplate(
+            file_name="SOUL.md", template_content="# org soul", board_id=None, org_id=org_id
+        )
+    ]
     session = _FakeSession(org_rows=org_rows, board_rows=[])
     result = await fetch_db_template_overrides(
         session, board_id=None, organization_id=org_id  # type: ignore[arg-type]
@@ -121,8 +123,19 @@ async def test_fetch_db_template_overrides_board_overrides_org() -> None:
     """Board-level entry should override the matching org-level entry."""
     org_id = uuid4()
     board_id = uuid4()
-    org_rows = [_FakeBoardTemplate(file_name="IDENTITY.md", template_content="# org identity", board_id=None, org_id=org_id)]
-    board_rows = [_FakeBoardTemplate(file_name="IDENTITY.md", template_content="# board identity", board_id=board_id, org_id=org_id)]
+    org_rows = [
+        _FakeBoardTemplate(
+            file_name="IDENTITY.md", template_content="# org identity", board_id=None, org_id=org_id
+        )
+    ]
+    board_rows = [
+        _FakeBoardTemplate(
+            file_name="IDENTITY.md",
+            template_content="# board identity",
+            board_id=board_id,
+            org_id=org_id,
+        )
+    ]
     session = _FakeSession(org_rows=org_rows, board_rows=board_rows)
     result = await fetch_db_template_overrides(
         session, board_id=board_id, organization_id=org_id  # type: ignore[arg-type]
@@ -135,8 +148,19 @@ async def test_fetch_db_template_overrides_merges_distinct_keys() -> None:
     """Org entry for SOUL.md + board entry for IDENTITY.md should both appear."""
     org_id = uuid4()
     board_id = uuid4()
-    org_rows = [_FakeBoardTemplate(file_name="SOUL.md", template_content="# org soul", board_id=None, org_id=org_id)]
-    board_rows = [_FakeBoardTemplate(file_name="IDENTITY.md", template_content="# board identity", board_id=board_id, org_id=org_id)]
+    org_rows = [
+        _FakeBoardTemplate(
+            file_name="SOUL.md", template_content="# org soul", board_id=None, org_id=org_id
+        )
+    ]
+    board_rows = [
+        _FakeBoardTemplate(
+            file_name="IDENTITY.md",
+            template_content="# board identity",
+            board_id=board_id,
+            org_id=org_id,
+        )
+    ]
     session = _FakeSession(org_rows=org_rows, board_rows=board_rows)
     result = await fetch_db_template_overrides(
         session, board_id=board_id, organization_id=org_id  # type: ignore[arg-type]

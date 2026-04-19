@@ -137,7 +137,7 @@ export function UserMenu({
               onClick={() => setOpen(false)}
             >
               <Trello className="h-4 w-4 text-[color:var(--neutral-700,var(--text-quiet))]" />
-              Open boards
+              Open projects
             </Link>
             <Link
               href="/boards/new"
@@ -145,7 +145,7 @@ export function UserMenu({
               onClick={() => setOpen(false)}
             >
               <Plus className="h-4 w-4 opacity-90" />
-              Create board
+              Create project
             </Link>
           </div>
 

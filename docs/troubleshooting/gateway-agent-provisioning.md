@@ -4,17 +4,17 @@ This guide explains how agent provisioning converges to a healthy state, and how
 
 ## Fast Convergence Policy
 
-Mission Control now uses a fast convergence policy for wake/check-in:
+Product Foundry now uses a fast convergence policy for wake/check-in:
 
 - Check-in deadline after each wake: **30 seconds**
 - Maximum wake attempts without check-in: **3**
 - If no check-in after the third attempt: agent is marked **offline** and provisioning escalation stops
 
-This applies to both gateway-main and board agents.
+This applies to both gateway-main and project agents.
 
 ## Expected Lifecycle
 
-1. Mission Control provisions/updates the agent and sends wake.
+1. Product Foundry provisions/updates the agent and sends wake.
 2. A delayed reconcile task is queued for the check-in deadline.
 3. Agent should call heartbeat quickly after startup/bootstrap.
 4. If heartbeat arrives:
@@ -32,8 +32,8 @@ This applies to both gateway-main and board agents.
 Templates now explicitly require immediate first-cycle check-in:
 
 - Main agent heartbeat instructions require immediate check-in after wake/bootstrap.
-- Board lead bootstrap requires heartbeat check-in before orchestration.
-- Board worker bootstrap already included immediate check-in.
+- Project lead bootstrap requires heartbeat check-in before orchestration.
+- Project worker bootstrap already included immediate check-in.
 
 If a gateway still has older templates, run template sync and reprovision/wake.
 
@@ -67,7 +67,7 @@ Actions:
 
 1. Confirm current templates were synced to gateway.
 2. Re-run provisioning/update to trigger a fresh wake.
-3. Verify agent can reach Mission Control API and send heartbeat with `X-Agent-Token`.
+3. Verify agent can reach Product Foundry API and send heartbeat with `X-Agent-Token`.
 
 ### Agent stays provisioning/updating with no retries
 
@@ -95,7 +95,7 @@ Actions:
 
 1. Ensure queue worker is running.
 2. Sync templates for the gateway.
-3. Trigger agent update/provision from Mission Control.
+3. Trigger agent update/provision from Product Foundry.
 4. Watch logs for:
    - `lifecycle.queue.enqueued`
    - `lifecycle.reconcile.retriggered` (if needed)
@@ -105,13 +105,13 @@ Actions:
    - worker logs around lifecycle events
    - agent `last_provision_error`, `wake_attempts`, `last_seen_at`
 
-## Re-syncing auth tokens when Mission Control and OpenClaw have drifted
+## Re-syncing auth tokens when Product Foundry and OpenClaw have drifted
 
-Mission Control stores a hash of each agent’s token and provisions OpenClaw by writing templates (e.g. `TOOLS.md`) that include `AUTH_TOKEN`. If the token on the gateway and the backend hash drift (e.g. after a reinstall, token change, or manual edit), heartbeats can fail with 401 and the agent may appear offline.
+Product Foundry stores a hash of each agent’s token and provisions OpenClaw by writing templates (e.g. `TOOLS.md`) that include `AUTH_TOKEN`. If the token on the gateway and the backend hash drift (e.g. after a reinstall, token change, or manual edit), heartbeats can fail with 401 and the agent may appear offline.
 
 To re-sync:
 
-1. Ensure Mission Control is running (API and queue worker).
+1. Ensure Product Foundry is running (API and queue worker).
 2. Run **template sync with token rotation** so the backend issues new agent tokens and rewrites `AUTH_TOKEN` into the gateway’s agent files.
 
 **Via API (curl):**
@@ -129,4 +129,4 @@ Replace `GATEWAY_ID` (from the Gateways list or gateway URL in the UI) and `YOUR
 cd backend && uv run python scripts/sync_gateway_templates.py --gateway-id GATEWAY_ID --rotate-tokens
 ```
 
-After a successful sync, OpenClaw agents will have new `AUTH_TOKEN` values in their workspace files; the next heartbeat or bootstrap will use the new token. If the gateway was offline, trigger a wake/update from Mission Control so agents restart and pick up the new token.
+After a successful sync, OpenClaw agents will have new `AUTH_TOKEN` values in their workspace files; the next heartbeat or bootstrap will use the new token. If the gateway was offline, trigger a wake/update from Product Foundry so agents restart and pick up the new token.

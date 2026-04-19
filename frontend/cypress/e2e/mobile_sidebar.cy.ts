@@ -131,7 +131,7 @@ describe("/dashboard - mobile sidebar", () => {
 
     // Click a navigation link inside the sidebar
     cy.get("aside").within(() => {
-      cy.contains("a", "Boards").click();
+      cy.contains("a", "Task Board").click();
     });
 
     // Sidebar should close after navigation

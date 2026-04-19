@@ -12,10 +12,20 @@ RUNTIME_ANNOTATION_TYPES = (datetime, UUID)
 
 
 class ThreadMessageCreate(SQLModel):
-    """Payload for posting a message to a thread."""
+    """Payload for posting a message to a thread.
+
+    Supported ``content_type`` values:
+    - ``"text"`` — plain text / Markdown (default)
+    - ``"webhook_event"`` — inbound webhook payload rendered as WebhookEventCard
+    - ``"agent_response"`` — agent reply (rendered differently in chat UI)
+    - ``"system_notification"`` — system messages (e.g. thread created)
+    - ``"mcp_app_result"`` — structured MCP App result; ``event_metadata`` must
+      contain at least ``{"app": "<app-name>", ...}``.
+    """
 
     content: str
     content_type: str = "text"
+    event_metadata: dict[str, Any] | None = None
 
 
 class ThreadMessageUpdate(SQLModel):

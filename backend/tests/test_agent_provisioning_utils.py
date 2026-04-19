@@ -38,6 +38,7 @@ class _AgentStub:
     identity_profile: dict | None = None
     identity_template: str | None = None
     soul_template: str | None = None
+    agent_type: str = "gateway_main"
 
 
 def test_agent_key_uses_session_key_when_present():

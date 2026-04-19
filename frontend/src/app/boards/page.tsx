@@ -58,19 +58,19 @@ export default function BoardsPage() {
   return (
     <DashboardPageLayout
       signedOut={{
-        message: "Sign in to view boards.",
+        message: "Sign in to view projects.",
         forceRedirectUrl: "/boards",
         signUpForceRedirectUrl: "/boards",
       }}
-      title="Boards"
-      description="Create your first board to start routing tasks and monitoring work across agents."
+      title="Projects"
+      description="Create your first project to start routing tasks and monitoring work across agents."
       headerActions={
         isAdmin ? (
           <Link
             href="/boards/new"
             className={buttonVariants({ size: "md", variant: "primary" })}
           >
-            Create board
+            Create project
           </Link>
         ) : null
       }
@@ -78,14 +78,14 @@ export default function BoardsPage() {
     >
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <p className="text-slate-500 text-sm mb-4">
-          No boards have been created yet.
+          No projects have been created yet.
         </p>
         {isAdmin && (
           <Link
             href="/boards/new"
             className={buttonVariants({ size: "md", variant: "primary" })}
           >
-            Create your first board
+            Create your first project
           </Link>
         )}
       </div>

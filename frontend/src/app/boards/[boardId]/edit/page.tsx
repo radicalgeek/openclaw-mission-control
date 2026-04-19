@@ -434,7 +434,7 @@ export default function EditBoardPage() {
       onError: (err) => {
         const errorMessage = err.message || "Something went wrong.";
         if (err.status === 409 && errorMessage.toLowerCase().includes("platform")) {
-          setError("Only one board can be designated as the platform board. Please unset the current platform board first.");
+          setError("Only one project can be designated as the platform project. Please unset the current platform project first.");
         } else {
           setError(errorMessage);
         }
@@ -625,7 +625,7 @@ export default function EditBoardPage() {
     if (!isSignedIn || !boardId) return;
     const trimmedName = resolvedName.trim();
     if (!trimmedName) {
-      setError("Board name is required.");
+      setError("Project name is required.");
       return;
     }
     const resolvedGatewayId = displayGatewayId;
@@ -635,7 +635,7 @@ export default function EditBoardPage() {
     }
     const trimmedDescription = resolvedDescription.trim();
     if (!trimmedDescription) {
-      setError("Board description is required.");
+      setError("Project description is required.");
       return;
     }
     if (!Number.isInteger(resolvedMaxAgents) || resolvedMaxAgents < 0) {
@@ -768,14 +768,14 @@ export default function EditBoardPage() {
     <>
       <DashboardPageLayout
         signedOut={{
-          message: "Sign in to edit boards.",
+          message: "Sign in to edit projects.",
           forceRedirectUrl: `/boards/${boardId}/edit`,
           signUpForceRedirectUrl: `/boards/${boardId}/edit`,
         }}
-        title="Edit board"
-        description="Update board settings and gateway."
+        title="Edit project"
+        description="Update project settings and gateway."
         isAdmin={isAdmin}
-        adminOnlyMessage="Only organization owners and admins can edit board settings."
+        adminOnlyMessage="Only organization owners and admins can edit project settings."
         mainRef={mainRef}
       >
         <div className="space-y-6">
@@ -808,12 +808,12 @@ export default function EditBoardPage() {
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-900">
-                  Board name <span className="text-red-500">*</span>
+                  Project name <span className="text-red-500">*</span>
                 </label>
                 <Input
                   value={resolvedName}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="Board name"
+                  placeholder="Project name"
                   disabled={isLoading || !baseBoard}
                 />
               </div>
@@ -839,11 +839,11 @@ export default function EditBoardPage() {
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-900">
-                  Board type
+                  Project type
                 </label>
                 <Select value={resolvedBoardType} onValueChange={setBoardType}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select board type" />
+                    <SelectValue placeholder="Select project type" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="goal">Goal</SelectItem>
@@ -873,10 +873,10 @@ export default function EditBoardPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-900">
-                  Board group
+                  Project group
                 </label>
                 <SearchableSelect
-                  ariaLabel="Select board group"
+                  ariaLabel="Select project group"
                   value={resolvedBoardGroupId}
                   onValueChange={setBoardGroupId}
                   options={groupOptions}
@@ -889,7 +889,7 @@ export default function EditBoardPage() {
                   disabled={isLoading}
                 />
                 <p className="text-xs text-slate-500">
-                  Boards in the same group can share cross-board context for
+                  Projects in the same group can share cross-project context for
                   agents.
                 </p>
               </div>
@@ -933,7 +933,7 @@ export default function EditBoardPage() {
                   <Textarea
                     value={resolvedObjective}
                     onChange={(event) => setObjective(event.target.value)}
-                    placeholder="What should this board achieve?"
+                    placeholder="What should this project achieve?"
                     className="min-h-[120px]"
                     disabled={isLoading}
                   />
@@ -969,7 +969,7 @@ export default function EditBoardPage() {
                   Rules
                 </h2>
                 <p className="text-xs text-slate-600">
-                  Configure board-level workflow enforcement.
+                  Configure project-level workflow enforcement.
                 </p>
               </div>
               <div className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3">
@@ -1142,7 +1142,7 @@ export default function EditBoardPage() {
                     Only lead can change status
                   </span>
                   <span className="block text-xs text-slate-600">
-                    Restrict status changes to the board lead.
+                    Restrict status changes to the project lead.
                   </span>
                 </span>
               </div>
@@ -1151,7 +1151,7 @@ export default function EditBoardPage() {
                   type="button"
                   role="switch"
                   aria-checked={resolvedIsPlatform}
-                  aria-label="Platform board"
+                  aria-label="Platform project"
                   onClick={() =>
                     setIsPlatform(!resolvedIsPlatform)
                   }
@@ -1173,10 +1173,10 @@ export default function EditBoardPage() {
                 <span className="space-y-1">
                   <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
                     <Shield className="h-4 w-4" />
-                    Platform board
+                    Platform project
                   </span>
                   <span className="block text-xs text-slate-600">
-                    Designate this as the organization's platform/infrastructure board. Only one board can be the platform board. Adds a cross-board Support channel.
+                    Designate this as the organization's platform/infrastructure project. Only one project can be the platform project. Adds a cross-project Support channel.
                   </span>
                 </span>
               </div>
@@ -1321,7 +1321,7 @@ export default function EditBoardPage() {
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Templates</h2>
                 <p className="text-xs text-slate-600">
-                  Customise the Jinja2 workspace templates applied to agents on this board. Board overrides take precedence over org-wide defaults and built-in templates.
+                  Customise the Jinja2 workspace templates applied to agents on this project. Project overrides take precedence over org-wide defaults and built-in templates.
                 </p>
               </div>
               <BoardTemplateEditor boardId={boardId} />
@@ -1331,7 +1331,7 @@ export default function EditBoardPage() {
       </DashboardPageLayout>
       <Dialog open={isOnboardingOpen} onOpenChange={setIsOnboardingOpen}>
         <DialogContent
-          aria-label="Board onboarding"
+          aria-label="Project onboarding"
           onPointerDownOutside={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
         >

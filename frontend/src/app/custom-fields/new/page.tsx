@@ -75,7 +75,7 @@ export default function NewCustomFieldPage() {
         signUpForceRedirectUrl: "/custom-fields",
       }}
       title="Add custom field"
-      description="Create an organization-level custom field and bind it to one or more boards."
+      description="Create an organization-level custom field and bind it to one or more projects."
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can manage custom fields."
       stickyHeader

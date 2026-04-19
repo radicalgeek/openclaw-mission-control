@@ -60,9 +60,7 @@ async def _seed_board(session: AsyncSession) -> Board:
     return board
 
 
-async def _seed_channel_and_thread(
-    session: AsyncSession, board: Board
-) -> tuple[Channel, Thread]:
+async def _seed_channel_and_thread(session: AsyncSession, board: Board) -> tuple[Channel, Thread]:
     channel = Channel(
         board_id=board.id,
         name="Build Alerts",
@@ -207,7 +205,9 @@ async def test_thread_auto_resolved_when_task_moves_to_done() -> None:
         # Verify system message was created
         from sqlmodel import select
 
-        messages = (await session.exec(select(ThreadMessage).where(ThreadMessage.thread_id == thread.id))).all()
+        messages = (
+            await session.exec(select(ThreadMessage).where(ThreadMessage.thread_id == thread.id))
+        ).all()
         assert len(messages) == 1
         system_msg = messages[0]
         assert system_msg.sender_type == "system"
@@ -250,7 +250,9 @@ async def test_thread_auto_resolve_idempotent() -> None:
         # Verify only one system message was created
         from sqlmodel import select
 
-        messages = (await session.exec(select(ThreadMessage).where(ThreadMessage.thread_id == thread.id))).all()
+        messages = (
+            await session.exec(select(ThreadMessage).where(ThreadMessage.thread_id == thread.id))
+        ).all()
         assert len(messages) == 1
 
     await engine.dispose()

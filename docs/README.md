@@ -1,6 +1,6 @@
-# Mission Control docs
+# Product Foundry docs
 
-This folder is the documentation home for **OpenClaw Mission Control**.
+This folder is the documentation home for **OpenClaw Product Foundry**.
 
 ## Start here
 

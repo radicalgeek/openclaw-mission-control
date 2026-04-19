@@ -1,4 +1,9 @@
+"use client";
+
+import { useBranding } from "@/lib/branding";
+
 export default function Loading() {
+  const branding = useBranding();
   return (
     <div
       data-cy="route-loader"
@@ -6,7 +11,7 @@ export default function Loading() {
     >
       <div className="flex flex-col items-center gap-3">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--accent)]" />
-        <p className="text-sm text-slate-500">Loading ProductFoundry...</p>
+        <p className="text-sm text-slate-500">Loading {branding.productName}...</p>
       </div>
     </div>
   );

@@ -163,7 +163,7 @@ export default function EditBoardGroupPage() {
   } | null> => {
     if (!isSignedIn || !groupId) return null;
     if (groupBoardsQuery.data?.status !== 200) {
-      setAssignmentsError("Group boards are not loaded yet.");
+      setAssignmentsError("Group projects are not loaded yet.");
       return null;
     }
 
@@ -211,7 +211,7 @@ export default function EditBoardGroupPage() {
     setAssignmentsResult({ updated, failed: failures.length });
     if (failures.length > 0) {
       setAssignmentsError(
-        `Failed to update ${failures.length} board assignment${
+        `Failed to update ${failures.length} project assignment${
           failures.length === 1 ? "" : "s"
         }.`,
       );
@@ -280,11 +280,11 @@ export default function EditBoardGroupPage() {
   return (
     <DashboardPageLayout
       signedOut={{
-        message: "Sign in to edit board groups.",
+        message: "Sign in to edit project groups.",
         forceRedirectUrl: `/board-groups/${groupId ?? ""}/edit`,
       }}
       title={title}
-      description="Update the shared context that connects boards in this group."
+      description="Update the shared context that connects projects in this group."
     >
       <form
         onSubmit={handleSubmit}
@@ -292,7 +292,7 @@ export default function EditBoardGroupPage() {
       >
         {assignFailedCount && Number.isFinite(assignFailedCount) ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
-            Group was created, but {assignFailedCount} board assignment
+            Group was created, but {assignFailedCount} project assignment
             {assignFailedCount === 1 ? "" : "s"} failed. You can retry below.
           </div>
         ) : null}
@@ -317,7 +317,7 @@ export default function EditBoardGroupPage() {
           <Textarea
             value={resolvedDescription}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="What ties these boards together?"
+            placeholder="What ties these projects together?"
             className="min-h-[120px]"
             disabled={isLoading || !baseGroup}
           />
@@ -326,9 +326,9 @@ export default function EditBoardGroupPage() {
         <div className="space-y-2 border-t border-slate-100 pt-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-medium text-slate-900">Boards</p>
+              <p className="text-sm font-medium text-slate-900">Projects</p>
               <p className="mt-1 text-xs text-slate-500">
-                Assign boards to this group to share context across related
+                Assign projects to this group to share context across related
                 work.
               </p>
             </div>
@@ -340,14 +340,14 @@ export default function EditBoardGroupPage() {
           <Input
             value={boardSearch}
             onChange={(event) => setBoardSearch(event.target.value)}
-            placeholder="Search boards..."
+            placeholder="Search projects..."
             disabled={isLoading || !baseGroup}
           />
 
           <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-slate-50/40">
             {boardsLoading && boards.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">
-                Loading boards…
+                Loading projects…
               </div>
             ) : boardsError ? (
               <div className="px-4 py-6 text-sm text-rose-700">
@@ -355,7 +355,7 @@ export default function EditBoardGroupPage() {
               </div>
             ) : boards.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">
-                No boards found.
+                No projects found.
               </div>
             ) : (
               <ul className="divide-y divide-slate-200">
@@ -421,7 +421,7 @@ export default function EditBoardGroupPage() {
           ) : null}
           {assignmentsResult ? (
             <p className="text-sm text-slate-700">
-              Updated {assignmentsResult.updated} board
+              Updated {assignmentsResult.updated} project
               {assignmentsResult.updated === 1 ? "" : "s"}, failed{" "}
               {assignmentsResult.failed}.
             </p>

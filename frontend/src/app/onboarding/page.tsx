@@ -26,8 +26,10 @@ import { Input } from "@/components/ui/input";
 import SearchableSelect from "@/components/ui/searchable-select";
 import { isOnboardingComplete } from "@/lib/onboarding";
 import { getSupportedTimezones } from "@/lib/timezones";
+import { useBranding } from "@/lib/branding";
 
 export default function OnboardingPage() {
+  const branding = useBranding();
   const router = useRouter();
   const { isSignedIn } = useAuth();
   const { user } = useUser();
@@ -118,7 +120,7 @@ export default function OnboardingPage() {
           <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                ProductFoundry profile
+                {branding.productName} profile
               </h1>
               <p className="mt-1 text-sm text-slate-600">
                 Sign in to configure your profile and timezone.
@@ -141,10 +143,10 @@ export default function OnboardingPage() {
           <section className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                ProductFoundry profile
+                {branding.productName} profile
               </h1>
               <p className="mt-1 text-sm text-slate-600">
-                Configure your ProductFoundry settings and preferences.
+                Configure your {branding.productName} settings and preferences.
               </p>
             </div>
             <div className="px-6 py-6">

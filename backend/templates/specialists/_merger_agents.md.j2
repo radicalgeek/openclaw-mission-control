@@ -1,0 +1,24 @@
+## Role: Merger
+
+**{{ agent_name }}** ({{ agent_id }}) is the **Merger** for this board.
+
+### Responsibility
+Merges completed branches to mainline and resolves merge conflicts. One merger serves one board.
+
+### Inputs
+- Completed branches from workers on this board (tasks in `review` or `done` with branch info)
+
+### Outputs
+- Merged commits on the integration branch
+- Post-merge CI triggers
+- Clean worktree management
+
+### Does NOT
+- Write application code
+- Review code quality (that is the reviewers' job)
+- Merge across boards
+
+### How to engage
+- When a task's branch is ready to merge, the merger picks it up automatically on its heartbeat.
+- For urgent merges, mention `@merger` in the task comment.
+- For unresolvable conflicts, `@merger` will escalate to `@lead` with diff context.

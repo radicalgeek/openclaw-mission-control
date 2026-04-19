@@ -92,10 +92,10 @@ def build_plan_system_prompt(
         "## Current Plan\n"
         f"{content_section}\n\n"
         "Do NOT respond in OpenClaw chat.\n"
-        "All planning responses MUST be sent to Mission Control via API.\n"
+        "All planning responses MUST be sent to Product Foundry via API.\n"
         "Use the AUTH_TOKEN from USER.md or TOOLS.md and pass it as X-Agent-Token.\n"
         f"Planning update endpoint: POST {agent_update_url}\n"
-        "Request body JSON: {\"reply\": \"<your conversational reply>\", \"content\": \"<full updated plan markdown or omit if no plan update>\"}\n"
+        'Request body JSON: {"reply": "<your conversational reply>", "content": "<full updated plan markdown or omit if no plan update>"}\n'
     )
 
 
@@ -106,10 +106,7 @@ def build_plan_turn_prompt(
 ) -> str:
     """Build the per-turn prompt sent to the agent during a planning conversation."""
     content_section = current_content.strip() or "(Empty — not yet started)"
-    return (
-        f"## Current Plan State\n{content_section}\n\n"
-        f"## User Message\n{user_message}"
-    )
+    return f"## Current Plan State\n{content_section}\n\n" f"## User Message\n{user_message}"
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +122,10 @@ def build_decompose_prompt(plan_content: str) -> str:
         "Break the following plan into discrete, actionable work tickets.\n"
         "Return ONLY a JSON array inside a ```tickets``` fenced code block.\n"
         'Each element must be: {"title": string, "description": string, '
-        '"priority": "low"|"medium"|"high"|"critical"}.\n\n'
+        '"priority": "low"|"medium"|"high"|"critical", "priority_score": <int 1-100>, '
+        '"estimate_minutes": <int or null>}.\n'
+        "priority_score: 1=lowest, 100=highest. Midpoints: low=15, medium=35, high=65, critical=90.\n"
+        "estimate_minutes: rough time estimate in minutes (e.g. 60=1h, 480=8h), or null if unknown.\n\n"
         "Plan content:\n" + plan_content
     )
 

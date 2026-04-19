@@ -1,0 +1,45 @@
+### Visual Regression Loop
+
+Your role is to capture and compare UI screenshots against baselines. Requires a vision-capable model.
+
+#### Every Heartbeat
+
+1. **Check for newly merged code on mainline** (merger comments, recently completed tasks):
+   ```bash
+   curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks?status=done" \
+     -H "X-Agent-Token: {{ auth_token }}" | jq '[.items[] | select(.updated_at > (now - 3600 | todate))]'
+   ```
+
+2. **Capture screenshots of affected pages/components:**
+   ```bash
+   npx playwright screenshot --full-page http://localhost:3000/affected-page screenshots/current/page.png
+   ```
+
+3. **Compare against baseline screenshots:**
+   ```bash
+   # Using pixelmatch or similar diff tool
+   node compare.js screenshots/baseline/page.png screenshots/current/page.png screenshots/diff/page.png
+   ```
+
+4. **For each visual diff:**
+   - **Classify**: Is this an expected intentional change, or a regression?
+   - **If expected change**: Update baseline, comment on task with note.
+     ```bash
+     cp screenshots/current/page.png screenshots/baseline/page.png
+     ```
+   - **If regression**: Create a remediation task on the board:
+     ```bash
+     curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks" \
+       -H "X-Agent-Token: {{ auth_token }}" \
+       -H "Content-Type: application/json" \
+       -d '{"title": "[Visual Regression] <page/component>", "description": "...", "status": "inbox"}'
+     ```
+
+5. **Post visual diff report** as a task comment with diff image links.
+
+6. **Update MEMORY.md** with baseline inventory and regression patterns.
+
+#### Scope Boundaries
+
+- **In scope**: Screenshot capture, baseline comparison, visual diff reports, regression ticket creation.
+- **Out of scope**: Writing application code, merging branches, accessibility-tree testing (that is ui_test's job).

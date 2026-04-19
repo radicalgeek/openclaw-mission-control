@@ -54,6 +54,8 @@ EXTRA_IDENTITY_PROFILE_FIELDS = {
     "purpose": "identity_purpose",
     "personality": "identity_personality",
     "custom_instructions": "identity_custom_instructions",
+    # Specialist role template — selects Jinja2 heartbeat/agents partials.
+    "role_template": "identity_role_template",
 }
 
 DEFAULT_GATEWAY_FILES = frozenset(
@@ -65,7 +67,7 @@ DEFAULT_GATEWAY_FILES = frozenset(
         "USER.md",
         "HEARTBEAT.md",
         "MEMORY.md",
-        "skills/mission-control-charts/SKILL.md",
+        "skills/product-foundry-charts/SKILL.md",
     },
 )
 
@@ -81,7 +83,7 @@ LEAD_GATEWAY_FILES = frozenset(
         "MEMORY.md",
         "TOOLS.md",
         "HEARTBEAT.md",
-        "skills/mission-control-charts/SKILL.md",
+        "skills/product-foundry-charts/SKILL.md",
     },
 )
 
@@ -117,10 +119,22 @@ BOARD_SHARED_TEMPLATE_MAP = {
     "HEARTBEAT.md": "BOARD_HEARTBEAT.md.j2",
     "USER.md": "BOARD_USER.md.j2",
     "TOOLS.md": "BOARD_TOOLS.md.j2",
-    "skills/mission-control-charts/SKILL.md": "BOARD_CHARTS_SKILL.md.j2",
+    "skills/product-foundry-charts/SKILL.md": "BOARD_CHARTS_SKILL.md.j2",
 }
 
 LEAD_TEMPLATE_MAP: dict[str, str] = {}
+
+# Template map for standalone agents (not attached to any board).
+# Reuses BOARD_* templates which already branch on is_main / agent_type.
+STANDALONE_TEMPLATE_MAP = {
+    "AGENTS.md": "BOARD_AGENTS.md.j2",
+    "IDENTITY.md": "BOARD_IDENTITY.md.j2",
+    "SOUL.md": "BOARD_SOUL.md.j2",
+    "MEMORY.md": "BOARD_MEMORY.md.j2",
+    "HEARTBEAT.md": "BOARD_HEARTBEAT.md.j2",
+    "USER.md": "BOARD_USER.md.j2",
+    "TOOLS.md": "BOARD_TOOLS.md.j2",
+}
 
 _TOOLS_KV_RE = re.compile(r"^(?P<key>[A-Z0-9_]+)=(?P<value>.*)$")
 _NON_TRANSIENT_GATEWAY_ERROR_MARKERS = ("unsupported file",)

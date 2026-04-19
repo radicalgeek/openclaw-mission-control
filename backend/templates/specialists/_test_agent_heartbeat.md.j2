@@ -1,0 +1,44 @@
+### Test Agent Loop
+
+Your role is to write unit tests from acceptance criteria before implementation (ATDD — tests first, implementation second).
+
+#### Every Heartbeat
+
+1. **Check inbox for assigned tasks:**
+   ```bash
+   curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks?status=inbox&assigned_agent_id={{ agent_id }}" \
+     -H "X-Agent-Token: {{ auth_token }}" | jq '.items[]'
+   ```
+
+2. **Continue any in-progress task first:**
+   - Check for tasks with `status=in_progress` assigned to you before picking up new inbox tasks.
+
+3. **For each assigned task:**
+   - Read the acceptance criteria from the task description.
+   - Identify the modules/files under test.
+   - Write unit tests that encode each acceptance criterion as a test case.
+   - **Ensure tests fail** (no implementation yet — red phase of red-green-refactor). Run them to confirm:
+     ```bash
+     # example — adapt to project test runner
+     cd <repo> && python -m pytest path/to/tests/ -x 2>&1 | tail -30
+     ```
+   - Commit test files to the task's feature branch.
+   - Post a task comment summarising tests written and which AC each test covers.
+   - Move task to `review` (tests ready for developer to implement against):
+     ```bash
+     curl -fsS -X PATCH "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks/{task_id}" \
+       -H "X-Agent-Token: {{ auth_token }}" \
+       -H "Content-Type: application/json" \
+       -d '{"status": "review"}'
+     ```
+
+4. **Update MEMORY.md** with test patterns and reusable fixtures.
+
+#### Scope Boundaries
+
+- **In scope**: Writing unit tests from acceptance criteria, committing tests before implementation.
+- **Out of scope**: Writing implementation code, merging branches, reviewing code quality, estimating or planning.
+
+#### Escalation
+
+- Untestable acceptance criteria → comment on task + `@lead` for clarification before proceeding.

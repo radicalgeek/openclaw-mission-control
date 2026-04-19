@@ -14,7 +14,6 @@ from app.models.gateways import Gateway
 from app.schemas.agent_files import AgentFileWrite
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 
-
 # ---------------------------------------------------------------------------
 # Stubs
 # ---------------------------------------------------------------------------
@@ -145,6 +144,7 @@ async def test_require_agent_raises_404_when_not_found(
         return _QuerySet(None)
 
     from app.db import query_manager
+
     monkeypatch.setattr(query_manager.ModelManager, "by_id", _by_id)
 
     with pytest.raises(HTTPException) as exc:
@@ -165,6 +165,7 @@ async def test_require_agent_raises_404_on_wrong_org(
         return _QuerySet(agent)
 
     from app.db import query_manager
+
     monkeypatch.setattr(query_manager.ModelManager, "by_id", _by_id)
 
     with pytest.raises(HTTPException) as exc:
@@ -184,6 +185,7 @@ async def test_require_agent_returns_agent_for_matching_org(
         return _QuerySet(agent)
 
     from app.db import query_manager
+
     monkeypatch.setattr(query_manager.ModelManager, "by_id", _by_id)
     result = await agent_files_api._require_agent(
         str(agent.id), session, gateway.organization_id  # type: ignore[arg-type]

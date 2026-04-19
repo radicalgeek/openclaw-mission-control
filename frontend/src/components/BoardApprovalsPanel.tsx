@@ -375,7 +375,7 @@ const approvalSummary = (approval: Approval, boardLabel?: string | null) => {
   const role = payloadValue(payload, "role");
   const isAssign = approval.action_type.includes("assign");
   const rows: Array<{ label: string; value: string }> = [];
-  if (boardLabel) rows.push({ label: "Board", value: boardLabel });
+  if (boardLabel) rows.push({ label: "Project", value: boardLabel });
   if (taskIds.length === 1) rows.push({ label: "Task", value: taskIds[0] });
   if (taskIds.length > 1)
     rows.push({ label: "Tasks", value: taskIds.join(", ") });
@@ -615,12 +615,12 @@ export function BoardApprovalsPanel({
                 const fallbackRow = summary.rows.find(
                   (row) =>
                     row.label.toLowerCase() !== "title" &&
-                    row.label.toLowerCase() !== "board",
+                    row.label.toLowerCase() !== "project",
                 );
                 const primaryLabel =
                   titleRow?.value ?? fallbackRow?.value ?? "Untitled";
                 const boardRow = summary.rows.find(
-                  (row) => row.label.toLowerCase() === "board",
+                  (row) => row.label.toLowerCase() === "project",
                 );
                 const boardText =
                   boardRow && boardRow.value !== primaryLabel
@@ -655,7 +655,7 @@ export function BoardApprovalsPanel({
                     </p>
                     {boardText ? (
                       <p className="mt-1 text-xs text-slate-500">
-                        Board · {boardText}
+                        Project · {boardText}
                       </p>
                     ) : null}
                     <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">

@@ -67,10 +67,10 @@ describe("UserMenu", () => {
     await user.click(screen.getByRole("button", { name: /open user menu/i }));
 
     expect(
-      screen.getByRole("link", { name: /open boards/i }),
+      screen.getByRole("link", { name: /open projects/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /create board/i }),
+      screen.getByRole("link", { name: /create project/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /sign out/i }),

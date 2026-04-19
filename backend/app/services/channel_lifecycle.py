@@ -290,9 +290,7 @@ async def on_board_deleted(
     if not settings.channels_enabled:
         return
 
-    channels = (
-        await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
-    ).all()
+    channels = (await session.exec(select(Channel).where(col(Channel.board_id) == board.id))).all()
 
     if not channels:
         return
@@ -302,9 +300,7 @@ async def on_board_deleted(
 
         # Collect thread IDs for this board's channels
         thread_ids_rows = (
-            await session.exec(
-                select(Thread.id).where(col(Thread.channel_id).in_(channel_ids))
-            )
+            await session.exec(select(Thread.id).where(col(Thread.channel_id).in_(channel_ids)))
         ).all()
         thread_ids = list(thread_ids_rows)
 
@@ -562,9 +558,7 @@ async def on_board_unmarked_platform(
 
         # Remove cross-board subscriptions (agents not on this board)
         board_agent_ids_rows = (
-            await session.exec(
-                select(Agent.id).where(col(Agent.board_id) == board.id)
-            )
+            await session.exec(select(Agent.id).where(col(Agent.board_id) == board.id))
         ).all()
         board_agent_ids = set(board_agent_ids_rows)
 
@@ -593,7 +587,7 @@ async def sync_platform_support_subscribers(
     gateway_id: UUID,
 ) -> None:
     """Subscribe all board leads in gateway to platform Support channel.
-    
+
     Called after board creation, lead changes, or platform status changes.
     """
     if not settings.channels_enabled:

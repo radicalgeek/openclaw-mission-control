@@ -34,6 +34,11 @@ class Sprint(TenantScoped, table=True):
         foreign_key="users.id",
         index=True,
     )
+    # Velocity snapshots (written by sprint lifecycle service at start/complete time)
+    committed_minutes: int | None = Field(default=None)  # sum of estimates at sprint start
+    completed_minutes: int | None = Field(default=None)  # sum of done-ticket estimates at end
+    actual_minutes: int | None = Field(default=None)  # sum of done-ticket actuals at end
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 

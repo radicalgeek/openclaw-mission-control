@@ -82,7 +82,7 @@ async def list_souls_directory_refs(
     if client is None:
         client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, connect=5.0),
-            headers={"User-Agent": "openclaw-mission-control/1.0"},
+            headers={"User-Agent": "product-foundry/1.0"},
         )
     try:
         resp = await client.get(SOULS_DIRECTORY_SITEMAP_URL)
@@ -113,7 +113,7 @@ async def fetch_soul_markdown(
     if client is None:
         client = httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=5.0),
-            headers={"User-Agent": "openclaw-mission-control/1.0"},
+            headers={"User-Agent": "product-foundry/1.0"},
         )
     try:
         resp = await client.get(url)

@@ -146,12 +146,14 @@ class SprintService:
         board: Board,
     ) -> None:
         """Start a sprint: validate, set active, push tickets to inbox."""
-        from app.models.sprints import Sprint as _Sprint, SprintTicket  # noqa: PLC0415
+        from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
+        from app.models.sprints import SprintTicket
         from app.models.tasks import Task  # noqa: PLC0415
         from app.services.activity_log import record_activity  # noqa: PLC0415
 
         if sprint.status not in _SPRINT_ALLOWED_START_STATUSES:
-            from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+            from fastapi import HTTPException
+            from fastapi import status as http_status  # noqa: PLC0415
 
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
@@ -168,7 +170,8 @@ class SprintService:
             )
         ).first()
         if existing_active is not None:
-            from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+            from fastapi import HTTPException
+            from fastapi import status as http_status  # noqa: PLC0415
 
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
@@ -182,11 +185,10 @@ class SprintService:
 
         # Push sprint tickets to inbox on the board
         tickets = (
-            await session.exec(
-                select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id)
-            )
+            await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id))
         ).all()
 
+        committed = 0
         for ticket in tickets:
             task = await session.get(Task, ticket.task_id)
             if task is not None:
@@ -194,6 +196,11 @@ class SprintService:
                 task.status = "inbox"
                 task.updated_at = utcnow()
                 session.add(task)
+                committed += task.estimate_minutes or 0
+
+        # Snapshot committed_minutes = sum of estimate_minutes for all sprint tickets
+        sprint.committed_minutes = committed if committed > 0 else None
+        session.add(sprint)
 
         record_activity(
             session,
@@ -219,9 +226,10 @@ class SprintService:
         board_id: UUID,
     ) -> None:
         """Check if the active sprint is complete; if so, complete it."""
-        from app.models.sprints import Sprint as _Sprint, SprintTicket  # noqa: PLC0415
-        from app.models.tasks import Task  # noqa: PLC0415
         from app.models.boards import Board as _Board  # noqa: PLC0415
+        from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
+        from app.models.sprints import SprintTicket
+        from app.models.tasks import Task  # noqa: PLC0415
 
         sprint = (
             await session.exec(
@@ -235,9 +243,7 @@ class SprintService:
             return
 
         tickets = (
-            await session.exec(
-                select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id)
-            )
+            await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id))
         ).all()
 
         if not tickets:
@@ -263,12 +269,14 @@ class SprintService:
         board: Board,
     ) -> None:
         """Complete a sprint: archive done tickets, optionally auto-advance."""
-        from app.models.sprints import Sprint as _Sprint, SprintTicket  # noqa: PLC0415
+        from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
+        from app.models.sprints import SprintTicket
         from app.models.tasks import Task  # noqa: PLC0415
         from app.services.activity_log import record_activity  # noqa: PLC0415
 
         if sprint.status != "active":
-            from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+            from fastapi import HTTPException
+            from fastapi import status as http_status  # noqa: PLC0415
 
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
@@ -281,19 +289,27 @@ class SprintService:
         session.add(sprint)
 
         tickets = (
-            await session.exec(
-                select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id)
-            )
+            await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id))
         ).all()
 
         tickets_done = 0
+        completed_estimate = 0
+        completed_actual = 0
         for ticket in tickets:
             task = await session.get(Task, ticket.task_id)
             if task is not None and task.status == "done":
-                task.is_backlog = True  # Archive off the board
+                task.is_backlog = True  # Legacy flag
+                task.status = "archived"  # Move off the board
                 task.updated_at = utcnow()
                 session.add(task)
                 tickets_done += 1
+                completed_estimate += task.estimate_minutes or 0
+                completed_actual += task.actual_minutes or 0
+
+        # Snapshot velocity fields
+        sprint.completed_minutes = completed_estimate if completed_estimate > 0 else None
+        sprint.actual_minutes = completed_actual if completed_actual > 0 else None
+        session.add(sprint)
 
         record_activity(
             session,
@@ -347,7 +363,8 @@ class SprintService:
 
         allowed_statuses = frozenset({"draft", "queued", "active"})
         if sprint.status not in allowed_statuses:
-            from fastapi import HTTPException, status as http_status  # noqa: PLC0415
+            from fastapi import HTTPException
+            from fastapi import status as http_status  # noqa: PLC0415
 
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
@@ -359,9 +376,7 @@ class SprintService:
         session.add(sprint)
 
         tickets = (
-            await session.exec(
-                select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id)
-            )
+            await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id))
         ).all()
 
         for ticket in tickets:
@@ -369,9 +384,10 @@ class SprintService:
             if task is not None:
                 if task.status != "done":
                     task.is_backlog = True
-                    task.status = "inbox"
+                    task.status = "backlog"  # Return to off-board backlog for re-planning
                 else:
-                    task.is_backlog = True  # Archive completed work
+                    task.is_backlog = True
+                    task.status = "archived"  # Archive completed work
                 task.updated_at = utcnow()
                 session.add(task)
 

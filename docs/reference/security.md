@@ -1,6 +1,6 @@
 # Security reference
 
-This page consolidates security-relevant behaviors and configuration for Mission Control.
+This page consolidates security-relevant behaviors and configuration for Product Foundry.
 
 ## Security response headers
 

@@ -817,7 +817,7 @@ def _install_instruction(*, skill: MarketplaceSkill, gateway: Gateway) -> str:
     safe_name = _sanitize_field(skill.name)
     safe_url = _sanitize_field(skill.source_url or "")
     return (
-        "MISSION CONTROL SKILL INSTALL REQUEST\n\n"
+        "PRODUCT FOUNDRY SKILL INSTALL REQUEST\n\n"
         "Actions:\n"
         "1. Ensure the install destination exists.\n"
         "2. Install or update the skill from the source URL into the destination.\n"
@@ -836,7 +836,7 @@ def _uninstall_instruction(*, skill: MarketplaceSkill, gateway: Gateway) -> str:
     safe_name = _sanitize_field(skill.name)
     safe_url = _sanitize_field(skill.source_url or "")
     return (
-        "MISSION CONTROL SKILL UNINSTALL REQUEST\n\n"
+        "PRODUCT FOUNDRY SKILL UNINSTALL REQUEST\n\n"
         "Actions:\n"
         "1. Remove the skill assets previously installed from this source URL.\n"
         "2. Ensure the skill is no longer discoverable by the runtime.\n"

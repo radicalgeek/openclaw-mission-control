@@ -20,14 +20,16 @@ from app.api.deps import ActorContext, get_board_or_404, get_task_or_404
 from app.core.agent_auth import AgentAuthContext, get_agent_auth_context
 from app.db.pagination import paginate
 from app.db.session import get_session
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.tags import Tag
 from app.models.task_dependencies import TaskDependency
 from app.models.tasks import Task
+from app.schemas.agent_webhooks import AgentWebhookRead
 from app.schemas.agents import (
+    STANDALONE_ROLE_TEMPLATES,
     AgentCreate,
     AgentHeartbeat,
     AgentNudge,
@@ -218,8 +220,23 @@ def _payload_preview_with_limit(
     return _truncate_preview(raw, max_chars), True
 
 
-def _guard_board_access(agent_ctx: AgentAuthContext, board: Board) -> None:
-    allowed = not (agent_ctx.agent.board_id and agent_ctx.agent.board_id != board.id)
+async def _guard_board_access(db: AsyncSession, agent_ctx: AgentAuthContext, board: Board) -> None:
+    from app.models.agent_board_access import AgentBoardAccess
+    from app.models.agents import AGENT_TYPE_STANDALONE
+
+    agent = agent_ctx.agent
+    if agent.agent_type == AGENT_TYPE_STANDALONE:
+        grant = (
+            await db.exec(
+                select(AgentBoardAccess).where(
+                    col(AgentBoardAccess.agent_id) == agent.id,
+                    col(AgentBoardAccess.board_id) == board.id,
+                )
+            )
+        ).first()
+        OpenClawAuthorizationPolicy.require_board_write_access(allowed=grant is not None)
+        return
+    allowed = not (agent.board_id and agent.board_id != board.id)
     OpenClawAuthorizationPolicy.require_board_write_access(allowed=allowed)
 
 
@@ -227,6 +244,30 @@ def _require_board_lead(agent_ctx: AgentAuthContext) -> Agent:
     return OpenClawAuthorizationPolicy.require_board_lead_actor(
         actor_agent=agent_ctx.agent,
         detail="Only board leads can perform this action",
+    )
+
+
+def _require_task_creation_permission(
+    agent_ctx: AgentAuthContext,
+    board: Board,
+) -> None:
+    """Allow board leads OR reviewer standalone agents (with board access) to create tasks."""
+    from fastapi import HTTPException, status as http_status
+
+    agent = agent_ctx.agent
+    # Board lead on this specific board: always allowed
+    if agent.is_board_lead and agent.board_id == board.id:
+        return
+    # Standalone reviewer with board access (already validated by _guard_board_access)
+    profile = agent.identity_profile or {}
+    if (
+        agent.agent_type == AGENT_TYPE_STANDALONE
+        and profile.get("role_template") in STANDALONE_ROLE_TEMPLATES
+    ):
+        return
+    raise HTTPException(
+        status_code=http_status.HTTP_403_FORBIDDEN,
+        detail="Agent lacks task creation permission",
     )
 
 
@@ -438,8 +479,9 @@ async def list_boards(
         ],
     },
 )
-def get_board(
+async def get_board(
     board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
     agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
 ) -> Board:
     """Return one board if the authenticated agent can access it.
@@ -447,7 +489,7 @@ def get_board(
     Use this when an agent needs board metadata (objective, status, target date)
     before planning or posting updates.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return board
 
 
@@ -576,7 +618,7 @@ async def list_tasks(
     - worker: fetch assigned inbox/in-progress tasks
     - lead: fetch unassigned inbox tasks for delegation
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return await tasks_api.list_tasks(
         status_filter=filters.status_filter,
         assigned_agent_id=filters.assigned_agent_id,
@@ -616,7 +658,7 @@ async def list_tags(
 
     Use returned ids in task create/update payloads (`tag_ids`).
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     tags = (
         await session.exec(
             select(Tag)
@@ -680,7 +722,7 @@ async def get_webhook_payload(
     the response payload is returned as a truncated string preview.
     """
 
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
 
     payload = (
         await session.exec(
@@ -788,8 +830,8 @@ async def create_task(
     Lead-only endpoint. Supports dependency-aware creation via
     `depends_on_task_ids`, optional `tag_ids`, and `custom_field_values`.
     """
-    _guard_board_access(agent_ctx, board)
-    _require_board_lead(agent_ctx)
+    await _guard_board_access(session, agent_ctx, board)
+    _require_task_creation_permission(agent_ctx, board)
     data = payload.model_dump(
         exclude={"depends_on_task_ids", "tag_ids", "custom_field_values"},
     )
@@ -800,7 +842,15 @@ async def create_task(
     task = Task.model_validate(data)
     task.board_id = board.id
     task.auto_created = True
-    task.auto_reason = f"lead_agent:{agent_ctx.agent.id}"
+    _profile = agent_ctx.agent.identity_profile or {}
+    task.auto_reason = (
+        f"reviewer_agent:{agent_ctx.agent.id}"
+        if (
+            agent_ctx.agent.agent_type == AGENT_TYPE_STANDALONE
+            and _profile.get("role_template") in STANDALONE_ROLE_TEMPLATES
+        )
+        else f"lead_agent:{agent_ctx.agent.id}"
+    )
 
     normalized_deps = await validate_dependency_update(
         session,
@@ -1092,7 +1142,7 @@ async def list_board_memory(
 
     Use `is_chat=false` for durable context and `is_chat=true` for board chat.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return await board_memory_api.list_board_memory(
         is_chat=is_chat,
         board=board,
@@ -1134,7 +1184,7 @@ async def create_board_memory(
 
     Use tags to indicate purpose (e.g. `chat`, `decision`, `plan`, `handoff`).
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return await board_memory_api.create_board_memory(
         payload=payload,
         board=board,
@@ -1174,7 +1224,7 @@ async def list_approvals(
 
     Use status filtering to process pending approvals efficiently.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return await approvals_api.list_approvals(
         status_filter=status_filter,
         board=board,
@@ -1214,7 +1264,7 @@ async def create_approval(
 
     Include `task_id` or `task_ids` to scope the decision precisely.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return await approvals_api.create_approval(
         payload=payload,
         board=board,
@@ -1253,7 +1303,7 @@ async def update_onboarding(
 
     Used during structured objective/success-metric intake loops.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     return await onboarding_api.agent_onboarding_update(
         payload=payload,
         board=board,
@@ -1434,7 +1484,7 @@ async def nudge_agent(
 
     Lead-only endpoint for stale or blocked in-progress work.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     _require_board_lead(agent_ctx)
     coordination = GatewayCoordinationService(session)
     await coordination.nudge_board_agent(
@@ -1554,7 +1604,7 @@ async def get_agent_soul(
 
     Allowed for board lead, or for an agent reading its own SOUL.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     OpenClawAuthorizationPolicy.require_board_lead_or_same_actor(
         actor_agent=agent_ctx.agent,
         target_agent_id=agent_id,
@@ -1668,7 +1718,7 @@ async def update_agent_soul(
 
     Lead-only endpoint. Persists as `soul_template` for future reprovisioning.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     _require_board_lead(agent_ctx)
     coordination = GatewayCoordinationService(session)
     await coordination.update_agent_soul(
@@ -1759,7 +1809,7 @@ async def delete_board_agent(
 
     Cleans up runtime/session state through lifecycle services.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     _require_board_lead(agent_ctx)
     service = AgentLifecycleService(session)
     return await service.delete_agent_as_lead(
@@ -1849,7 +1899,7 @@ async def ask_user_via_gateway_main(
 
     Lead-only endpoint for situations where board chat is not responsive.
     """
-    _guard_board_access(agent_ctx, board)
+    await _guard_board_access(session, agent_ctx, board)
     _require_board_lead(agent_ctx)
     coordination = GatewayCoordinationService(session)
     return await coordination.ask_user_via_gateway_main(
@@ -2033,3 +2083,125 @@ async def broadcast_gateway_lead_message(
         actor_agent=agent_ctx.agent,
         payload=payload,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — standalone-agent self-introspection routes
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/self",
+    response_model=AgentRead,
+    tags=AGENT_ALL_ROLE_TAGS,
+    summary="Fetch caller's own agent record",
+    description=(
+        "Return the authenticated agent's own record.\n\n"
+        "Useful for standalone agents that need to inspect their own "
+        "metadata, type, gateway binding, or installed skills."
+    ),
+    openapi_extra={
+        "x-llm-intent": "agent_self_inspect",
+        "x-when-to-use": [
+            "Agent needs its own id or gateway_id at the start of a session",
+            "Standalone agent needs to confirm its type and installed skills",
+        ],
+        "x-when-not-to-use": [
+            "Listing other agents — use /agent/agents instead",
+        ],
+        "x-required-actor": "any_agent",
+    },
+)
+async def get_self(
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> AgentRead:
+    """Return the authenticated agent's own record."""
+    return AgentRead.model_validate(agent_ctx.agent, from_attributes=True)
+
+
+@router.get(
+    "/self/webhooks",
+    response_model=list[AgentWebhookRead],  # typed properly below
+    tags=AGENT_ALL_ROLE_TAGS,
+    summary="List webhooks for the current agent",
+    description=(
+        "Return webhooks registered for the authenticated standalone agent.\n\n"
+        "Non-standalone agents will receive an empty list."
+    ),
+    openapi_extra={
+        "x-llm-intent": "agent_self_webhooks",
+        "x-when-to-use": [
+            "Standalone agent needs to inspect its registered inbound webhooks",
+        ],
+        "x-required-actor": "any_agent",
+    },
+    include_in_schema=True,
+)
+async def list_self_webhooks(
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> object:
+    """Return webhooks registered for the authenticated agent."""
+    from app.models.agent_webhooks import AgentWebhook
+
+    webhooks = list(
+        (
+            await session.exec(
+                select(AgentWebhook).where(
+                    col(AgentWebhook.agent_id) == agent_ctx.agent.id,
+                )
+            )
+        ).all()
+    )
+    return [AgentWebhookRead.model_validate(wh, from_attributes=True) for wh in webhooks]
+
+
+@router.get(
+    "/self/boards",
+    response_model=DefaultLimitOffsetPage[BoardRead],
+    tags=AGENT_ALL_ROLE_TAGS,
+    summary="List boards accessible to the current standalone agent",
+    description=(
+        "Return boards the authenticated standalone agent has explicit access grants for.\n\n"
+        "Board-scoped agents will receive their own board. "
+        "Main gateway agents see all org boards."
+    ),
+    openapi_extra={
+        "x-llm-intent": "agent_self_boards",
+        "x-when-to-use": [
+            "Standalone agent needs to discover which boards it can interact with",
+        ],
+        "x-required-actor": "any_agent",
+    },
+)
+async def list_self_boards(
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> LimitOffsetPage[BoardRead]:
+    """Return boards accessible to the authenticated agent based on agent type."""
+    from app.models.agent_board_access import AgentBoardAccess
+    from app.models.agents import AGENT_TYPE_STANDALONE
+
+    agent = agent_ctx.agent
+    if agent.board_id:
+        # Board-scoped agent — sees only its own board
+        stmt = select(Board).where(col(Board.id) == agent.board_id)
+    elif agent.agent_type == AGENT_TYPE_STANDALONE:
+        # Standalone agent — sees boards it has explicit access grants for
+        stmt = (
+            select(Board)
+            .join(AgentBoardAccess, col(AgentBoardAccess.board_id) == col(Board.id))
+            .where(col(AgentBoardAccess.agent_id) == agent.id)
+        )
+    else:
+        # Main gateway agent — sees all org boards scoped by gateway
+        gateway = await Gateway.objects.by_id(agent.gateway_id).first(session)
+        if gateway is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Agent gateway not found; cannot determine organization scope.",
+            )
+        stmt = select(Board).where(col(Board.organization_id) == gateway.organization_id)
+
+    stmt = stmt.order_by(col(Board.created_at).desc())
+    return await paginate(session, stmt)

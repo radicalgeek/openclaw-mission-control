@@ -1,4 +1,4 @@
-"""Authentication bootstrap endpoints for the Mission Control API."""
+"""Authentication bootstrap endpoints for the Product Foundry API."""
 
 from __future__ import annotations
 

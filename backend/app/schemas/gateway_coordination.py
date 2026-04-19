@@ -236,7 +236,7 @@ class GatewayMainAskUserRequest(SQLModel):
         examples=["chat", "email"],
     )
 
-    # How the main agent should reply back into Mission Control
+    # How the main agent should reply back into Product Foundry
     # (defaults interpreted by templates).
     reply_tags: list[str] = Field(
         default_factory=_user_reply_tags,

@@ -111,7 +111,7 @@ describe("AgentsTable", () => {
     expect(headers.slice(0, 4)).toEqual([
       "Updated",
       "Agent",
-      "Board",
+      "Project",
       "Last seen",
     ]);
   });

@@ -1,6 +1,6 @@
 # Operations
 
-Runbooks and operational notes for running Mission Control.
+Runbooks and operational notes for running Product Foundry.
 
 ## Health checks
 

@@ -68,7 +68,7 @@ export function BoardsTable({
   columnOrder,
   disableSorting = false,
   onDelete,
-  emptyMessage = "No boards found.",
+  emptyMessage = "No projects found.",
   emptyState,
 }: BoardsTableProps) {
   const [internalSorting, setInternalSorting] = useState<SortingState>([
@@ -99,7 +99,7 @@ export function BoardsTable({
     const baseColumns: ColumnDef<BoardRead>[] = [
       {
         accessorKey: "name",
-        header: "Board",
+        header: "Project",
         cell: ({ row }) =>
           linkifyCell({
             href: `/boards/${row.original.id}`,

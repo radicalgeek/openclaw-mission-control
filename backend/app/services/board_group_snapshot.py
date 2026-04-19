@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
 
 _STATUS_ORDER = {"in_progress": 0, "review": 1, "inbox": 2, "done": 3}
-_PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+# Note: _PRIORITY_ORDER string map is replaced by numeric priority_score sort below
 _RUNTIME_TYPE_REFERENCES = (UUID, AsyncSession)
 
 
@@ -38,9 +38,9 @@ def _status_weight_expr() -> ColumnElement[int]:
 
 
 def _priority_weight_expr() -> ColumnElement[int]:
-    """Return a SQL expression that sorts task priorities by configured order."""
-    whens = [(col(Task.priority) == key, weight) for key, weight in _PRIORITY_ORDER.items()]
-    return case(*whens, else_=99)
+    """Return a SQL expression that sorts tasks by numeric priority_score descending."""
+    # Higher priority_score = higher priority = lower sort weight
+    return func.coalesce(col(Task.priority_score), 35) * -1  # type: ignore[no-any-return]
 
 
 async def _boards_for_group(
@@ -86,13 +86,18 @@ async def _ordered_tasks_for_boards(
     include_done: bool,
 ) -> list[Task]:
     """Return sorted tasks for boards, optionally excluding completed tasks."""
-    task_statement = select(Task).where(col(Task.board_id).in_(board_ids))
+    _board_statuses = {"inbox", "in_progress", "review", "done"}
+    task_statement = (
+        select(Task)
+        .where(col(Task.board_id).in_(board_ids))
+        .where(col(Task.status).in_(sorted(_board_statuses)))  # exclude off-board statuses
+    )
     if not include_done:
         task_statement = task_statement.where(col(Task.status) != "done")
     task_statement = task_statement.order_by(
         col(Task.board_id).asc(),
         _status_weight_expr().asc(),
-        _priority_weight_expr().asc(),
+        _priority_weight_expr().asc(),  # lower = higher priority (negative score)
         col(Task.updated_at).desc(),
         col(Task.created_at).desc(),
     )

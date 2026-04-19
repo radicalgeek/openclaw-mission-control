@@ -1,11 +1,208 @@
-# Mission Control Charts Skill
+# {{ product_name }} Charts Skill
 
-This skill enables you to render interactive charts in any Mission Control chat
+This skill enables you to render interactive charts in any {{ product_name }} chat
 surface: board chat, group chat, channel threads, and planning chat.
 
-The Mission Control UI interprets a fenced `json:chart` code block inside any
-message and renders it as an interactive chart. The rest of the message is
-rendered as normal Markdown.
+There are **two methods** for posting charts. Use the **structured method** (Method A)
+whenever possible — it is more reliable, validated server-side, and works on every
+surface. The legacy fenced-block method (Method B) still works as a fallback.
+
+---
+
+## Supported chart types
+
+| `type`   | Description                                                |
+|----------|------------------------------------------------------------|
+| `line`   | Line chart — burndowns, trends, cumulative flow            |
+| `area`   | Area (filled) chart — velocity, throughput over time       |
+| `bar`    | Bar chart — workload by agent, task counts, comparisons    |
+| `pie`    | Pie chart — status breakdown, priority split               |
+| `donut`  | Donut chart — same as pie, with a centred value label      |
+
+---
+
+## Chart spec reference
+
+```json
+{
+  "type":   "<line|area|bar|pie|donut>",
+  "title":  "<optional heading shown above chart>",
+  "xKey":   "<field name used as X axis or pie label>",
+  "yKeys":  "<field name, or array of field names, for Y values>",
+  "xLabel": "<optional X axis label>",
+  "yLabel": "<optional Y axis label>",
+  "data":   [ { "<xKey>": "...", "<yKey>": 0 } ],
+  "colors": ["<optional hex or CSS colour overrides, one per series>"],
+  "height": 260
+}
+```
+
+**Required fields**: `type`, `xKey`, `yKeys`, `data`.
+
+All values mapped by `yKeys` **must be numbers**. The `xKey` dimension is the
+category/label (string or number both fine).
+
+---
+
+## Method A — Structured chart result (preferred)
+
+Post with `content_type: "mcp_app_result"` and `metadata.app: "chart"`. The UI
+renders the chart automatically without requiring a fenced-block inside the message.
+
+**Required metadata shape**:
+```json
+{
+  "app": "chart",
+  "spec": { <chart spec — see above> }
+}
+```
+
+### Board chat
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/memory" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Sprint burndown for current sprint.",
+    "tags": ["chat"],
+    "content_type": "mcp_app_result",
+    "app_metadata": {
+      "app": "chart",
+      "spec": {
+        "type": "line",
+        "title": "Sprint Burndown",
+        "xKey": "day",
+        "yKeys": ["remaining", "ideal"],
+        "data": [
+          {"day": "Mon", "remaining": 24, "ideal": 20},
+          {"day": "Fri", "remaining":  4, "ideal":  4}
+        ]
+      }
+    }
+  }'
+```
+
+### Group chat (via board context)
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/group-memory" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Team velocity this quarter.",
+    "tags": ["chat"],
+    "content_type": "mcp_app_result",
+    "app_metadata": {
+      "app": "chart",
+      "spec": {
+        "type": "bar",
+        "title": "Open Tasks per Agent",
+        "xKey": "agent",
+        "yKeys": ["tasks"],
+        "data": [
+          {"agent": "Alice", "tasks": 4},
+          {"agent": "Bob",   "tasks": 7}
+        ]
+      }
+    }
+  }'
+```
+
+### Channel thread
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/threads/{thread_id}/messages" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Deployment timeline.",
+    "content_type": "mcp_app_result",
+    "event_metadata": {
+      "app": "chart",
+      "spec": {
+        "type": "area",
+        "title": "Sprint Velocity",
+        "xKey": "sprint",
+        "yKeys": ["completed", "committed"],
+        "data": [
+          {"sprint": "S1", "completed": 900,  "committed": 1200},
+          {"sprint": "S2", "completed": 1320, "committed": 1320}
+        ]
+      }
+    }
+  }'
+```
+
+### Planning agent reply
+When calling the plan agent-update endpoint, set `content_type` and `app_metadata`
+alongside `reply`:
+```json
+{
+  "reply": "Here is the burndown chart for the sprint.",
+  "content_type": "mcp_app_result",
+  "app_metadata": {
+    "app": "chart",
+    "spec": {
+      "type": "line",
+      "title": "Sprint Burndown",
+      "xKey": "day",
+      "yKeys": ["remaining"],
+      "data": [{"day": "Mon", "remaining": 24}]
+    }
+  }
+}
+```
+
+---
+
+## Method B — Fenced block fallback (still supported)
+
+If Method A is not available, embed a `json:chart` code block in any message.
+The UI intercepts it in Markdown and renders the chart.
+
+````
+```json:chart
+{
+  "type": "line",
+  "title": "Sprint Burndown",
+  "xKey": "day",
+  "yKeys": ["remaining", "ideal"],
+  "data": [
+    {"day": "Mon", "remaining": 24, "ideal": 20},
+    {"day": "Fri", "remaining":  4, "ideal":  4}
+  ]
+}
+```
+````
+
+---
+
+## Data sources
+
+Always query the {{ product_name }} API to collect real data before composing a
+chart. Useful endpoints:
+
+| Data needed | API path |
+|---|---|
+| Task list with statuses | `GET /api/v1/agent/boards/{{ board_id }}/tasks` |
+| Sprint list | `GET /api/v1/agent/boards/{{ board_id }}/sprints` |
+| Sprint tickets and estimates | `GET /api/v1/agent/boards/{{ board_id }}/sprints/{sprint_id}/tickets` |
+| Board activity events | `GET /api/v1/agent/boards/{{ board_id }}/activity` |
+| Velocity & estimation accuracy | `GET /api/v1/boards/{{ board_id }}/velocity` |
+
+For velocity charts, use `estimate_minutes` and `actual_minutes` from sprint tickets or the velocity
+endpoint. Aggregate and convert to hours for display (divide by 60).
+Use `jq` to aggregate counts from the task list before building your `data` array.
+
+---
+
+## Rules
+
+- **Never fabricate data.** Always query the API and aggregate before charting.
+- **Numbers only** for Y-axis values. Strings cause the chart to fall back gracefully.
+- **Limit `data` to ≤ 500 rows.** Aggregate/summarise larger datasets first.
+- Use **Method A** (structured) as the primary approach. Use **Method B** (fenced block)
+  only as a fallback when the endpoint does not yet support `content_type`.
+- The backend validates `metadata` for `mcp_app_result` — it will return 422 if
+  `metadata.app` is missing or not a string.
 
 ---
 
@@ -82,8 +279,11 @@ category/label (string or number both fine).
   "data": [
     {"status": "done",        "count": 12},
     {"status": "in_progress", "count":  5},
-    {"status": "open",        "count":  8},
-    {"status": "blocked",     "count":  2}
+    {"status": "inbox",       "count":  8},
+    {"status": "review",      "count":  2},
+    {"status": "backlog",     "count":  6},
+    {"status": "triage",      "count":  3},
+    {"status": "archived",    "count": 24}
   ]
 }
 ```
@@ -113,16 +313,16 @@ category/label (string or number both fine).
 ```json:chart
 {
   "type": "area",
-  "title": "Sprint Velocity",
+  "title": "Sprint Velocity (Minutes)",
   "xKey": "sprint",
-  "yKeys": ["completed", "planned"],
+  "yKeys": ["committed", "completed", "actual"],
   "xLabel": "Sprint",
-  "yLabel": "Story Points",
+  "yLabel": "Minutes",
   "data": [
-    {"sprint": "S1", "completed": 18, "planned": 20},
-    {"sprint": "S2", "completed": 22, "planned": 20},
-    {"sprint": "S3", "completed": 17, "planned": 24},
-    {"sprint": "S4", "completed": 25, "planned": 24}
+    {"sprint": "S1", "committed": 1200, "completed": 900,  "actual": 1050},
+    {"sprint": "S2", "committed": 1320, "completed": 1320, "actual": 1200},
+    {"sprint": "S3", "committed": 1020, "completed": 840,  "actual": 1140},
+    {"sprint": "S4", "committed": 1500, "completed": 1470, "actual": 1440}
   ]
 }
 ```
@@ -132,44 +332,17 @@ category/label (string or number both fine).
 
 ## Data sources
 
-Always query the Mission Control API to collect real data before composing a
+Always query the {{ product_name }} API to collect real data before composing a
 chart. Useful endpoints:
 
 | Data needed | API path |
 |---|---|
 | Task list with statuses | `GET /api/v1/agent/boards/{{ board_id }}/tasks` |
 | Sprint list | `GET /api/v1/agent/boards/{{ board_id }}/sprints` |
-| Sprint tickets | `GET /api/v1/agent/boards/{{ board_id }}/sprints/{sprint_id}/tickets` |
+| Sprint tickets and estimates | `GET /api/v1/agent/boards/{{ board_id }}/sprints/{sprint_id}/tickets` |
 | Board activity events | `GET /api/v1/agent/boards/{{ board_id }}/activity` |
+| Velocity & estimation accuracy | `GET /api/v1/boards/{{ board_id }}/velocity` |
 
+For velocity charts, use `estimate_minutes` and `actual_minutes` from sprint tickets or the velocity
+endpoint. Aggregate and convert to hours for display (divide by 60).
 Use `jq` to aggregate counts from the task list before building your `data` array.
-
----
-
-## Posting a chart
-
-Send a normal chat message that includes a `json:chart` fenced block. The block
-can appear anywhere in the message body. Example (board chat):
-
-```bash
-curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/memory" \
-  -H "X-Agent-Token: {{ auth_token }}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Here is the sprint burndown:\n\n```json:chart\n{\"type\":\"line\",\"title\":\"Sprint Burndown\",\"xKey\":\"day\",\"yKeys\":[\"remaining\",\"ideal\"],\"data\":[{\"day\":\"Mon\",\"remaining\":24,\"ideal\":20}]}\n```",
-    "tags": ["chat"]
-  }'
-```
-
-For channel threads, POST to `{{ base_url }}/api/v1/threads/{thread_id}/messages`.
-
----
-
-## Rules
-
-- **Never fabricate data.** Always query the API and aggregate before charting.
-- **Numbers only** for Y-axis values. Strings cause the chart to fall back to a
-  code block without crashing.
-- **Limit `data` to ≤ 500 rows.** Aggregate/summarise larger datasets first.
-- A malformed JSON spec gracefully falls back to a styled code block in the UI —
-  the user sees the raw JSON rather than an error.

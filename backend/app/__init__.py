@@ -1,1 +1,1 @@
-"""OpenClaw Mission Control backend application package."""
+"""Product Foundry backend application package."""

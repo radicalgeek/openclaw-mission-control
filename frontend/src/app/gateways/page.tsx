@@ -24,10 +24,12 @@ import { createOptimisticListDeleteMutation } from "@/lib/list-delete";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import type { GatewayRead } from "@/api/generated/model";
 import { useUrlSorting } from "@/lib/use-url-sorting";
+import { useBranding } from "@/lib/branding";
 
 const GATEWAY_SORTABLE_COLUMNS = ["name", "workspace_root", "updated_at"];
 
 export default function GatewaysPage() {
+  const branding = useBranding();
   const { isSignedIn } = useAuth();
   const queryClient = useQueryClient();
   const { sorting, onSortingChange } = useUrlSorting({
@@ -95,7 +97,7 @@ export default function GatewaysPage() {
           forceRedirectUrl: "/gateways",
         }}
         title="Gateways"
-        description="Manage AxiaCraft gateway connections used by boards"
+        description={`Manage ${branding.companyName} gateway connections used by projects`}
         headerActions={
           isAdmin && gateways.length > 0 ? (
             <Link
@@ -125,7 +127,7 @@ export default function GatewaysPage() {
             emptyState={{
               title: "No gateways yet",
               description:
-                "Create your first gateway to connect boards and start managing your AxiaCraft connections.",
+                "Create your first gateway to connect projects and start managing your " + branding.companyName + " connections.",
               actionHref: "/gateways/new",
               actionLabel: "Create your first gateway",
             }}
@@ -145,7 +147,7 @@ export default function GatewaysPage() {
         title="Delete gateway?"
         description={
           <>
-            This removes the gateway connection from ProductFoundry. Boards
+            This removes the gateway connection from {branding.productName}. Projects
             using it will need a new gateway assigned.
           </>
         }

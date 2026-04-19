@@ -99,9 +99,7 @@ async def test_platform_board_creates_support_channel() -> None:
         await on_board_created(session, platform_board, lead_agent_id=lead.id)
 
         channels = (
-            await session.exec(
-                select(Channel).where(col(Channel.board_id) == platform_board.id)
-            )
+            await session.exec(select(Channel).where(col(Channel.board_id) == platform_board.id))
         ).all()
 
         # 9 default + 1 Support channel
@@ -139,9 +137,7 @@ async def test_non_platform_board_no_support_channel() -> None:
         await on_board_created(session, regular_board, lead_agent_id=lead.id)
 
         channels = (
-            await session.exec(
-                select(Channel).where(col(Channel.board_id) == regular_board.id)
-            )
+            await session.exec(select(Channel).where(col(Channel.board_id) == regular_board.id))
         ).all()
 
         # Only 9 default channels
@@ -214,9 +210,7 @@ async def test_on_board_marked_platform_creates_support() -> None:
 
         # Initially no Support channel
         channels_before = (
-            await session.exec(
-                select(Channel).where(col(Channel.board_id) == board.id)
-            )
+            await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
         ).all()
         assert len(channels_before) == 9
 

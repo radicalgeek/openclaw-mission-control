@@ -25,4 +25,8 @@ class BoardGroupMemory(QueryModel, table=True):
     tags: list[str] | None = Field(default=None, sa_column=Column(JSON))
     is_chat: bool = Field(default=False, index=True)
     source: str | None = None
+    content_type: str = Field(default="text")
+    app_metadata: dict[str, object] | None = Field(
+        default=None, sa_column=Column(JSON, name="metadata")
+    )
     created_at: datetime = Field(default_factory=utcnow)

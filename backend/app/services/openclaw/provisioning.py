@@ -17,11 +17,13 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
+from app.core.branding import get_branding
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
+from app.models.organizations import Organization
 from app.services import souls_directory
 from app.services.openclaw.constants import (
     BOARD_SHARED_TEMPLATE_MAP,
@@ -37,6 +39,7 @@ from app.services.openclaw.constants import (
     LEAD_TEMPLATE_MAP,
     MAIN_TEMPLATE_MAP,
     PRESERVE_AGENT_EDITABLE_FILES,
+    STANDALONE_TEMPLATE_MAP,
 )
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import (
@@ -401,6 +404,8 @@ def _build_context(
         "auth_token": auth_token,
         "main_session_key": main_session_key,
         "workspace_root": workspace_root,
+        "product_name": get_branding().product_name,
+        "company_name": get_branding().company_name,
         **user_context,
         **identity_context,
     }
@@ -419,11 +424,44 @@ def _build_main_context(
         "agent_name": agent.name,
         "agent_id": str(agent.id),
         "is_main_agent": "true",
+        "is_standalone": "false",
         "session_key": agent.openclaw_session_id or "",
         "base_url": base_url,
         "auth_token": auth_token,
         "main_session_key": GatewayAgentIdentity.session_key(gateway),
         "workspace_root": gateway.workspace_root or "",
+        "product_name": get_branding().product_name,
+        "company_name": get_branding().company_name,
+        **user_context,
+        **identity_context,
+    }
+
+
+def _build_standalone_context(
+    agent: Agent,
+    gateway: Gateway,
+    auth_token: str,
+    user: User | None,
+) -> dict[str, str]:
+    """Build template context for a standalone (boardless, non-main) agent."""
+    base_url = settings.base_url
+    identity_context = _identity_context(agent)
+    user_context = _user_context(user)
+    return {
+        "agent_name": agent.name,
+        "agent_id": str(agent.id),
+        "is_main_agent": "false",
+        "is_standalone": "true",
+        "is_board_lead": "false",
+        "board_id": "",
+        "board_name": "",
+        "session_key": agent.openclaw_session_id or "",
+        "base_url": base_url,
+        "auth_token": auth_token,
+        "main_session_key": GatewayAgentIdentity.session_key(gateway),
+        "workspace_root": gateway.workspace_root or "",
+        "product_name": get_branding().product_name,
+        "company_name": get_branding().company_name,
         **user_context,
         **identity_context,
     }
@@ -794,6 +832,39 @@ class BaseAgentLifecycleManager(ABC):
         self._gateway = gateway
         self._control_plane = control_plane
 
+    async def _resolve_org_branding(self) -> dict[str, str]:
+        """Fetch org branding overrides and merge with deployment defaults.
+
+        Returns a dict with ``product_name`` and ``company_name`` keys, preferring
+        the organization-level override when set.
+        """
+        branding = get_branding()
+        product_name = branding.product_name
+        company_name = branding.company_name
+        try:
+            from app.db.session import async_session_maker
+
+            async with async_session_maker() as session:
+                from sqlmodel import select
+
+                org = (
+                    await session.exec(
+                        select(Organization).where(
+                            Organization.id == self._gateway.organization_id
+                        )
+                    )
+                ).first()
+                if org and org.branding_overrides:
+                    product_name = org.branding_overrides.get(
+                        "product_name", product_name
+                    )
+                    company_name = org.branding_overrides.get(
+                        "company_name", company_name
+                    )
+        except Exception:
+            logger.debug("Failed to resolve org branding overrides, using defaults")
+        return {"product_name": product_name, "company_name": company_name}
+
     @abstractmethod
     def _agent_id(self, agent: Agent) -> str:
         raise NotImplementedError
@@ -860,7 +931,7 @@ class BaseAgentLifecycleManager(ABC):
                 continue
             # Preserve "editable" files only during updates. During first-time provisioning,
             # the gateway may pre-create defaults for USER/MEMORY/etc, and we still want to
-            # apply Mission Control's templates.
+            # apply Product Foundry's templates.
             if action == "update" and not overwrite and name in preserve_files:
                 entry = existing_files.get(name)
                 if entry and not bool(entry.get("missing")):
@@ -946,7 +1017,10 @@ class BaseAgentLifecycleManager(ABC):
             board=board,
         )
         context = await self._augment_context(agent=agent, context=context)
-        # Always attempt to sync Mission Control's full template set.
+        # Merge org-level branding overrides on top of deployment defaults.
+        org_branding = await self._resolve_org_branding()
+        context.update(org_branding)
+        # Always attempt to sync Product Foundry's full template set.
         # Do not introspect gateway defaults (avoids touching gateway "main" agent state).
         file_names = self._file_names(agent)
         existing_files = await self._control_plane.list_agent_files(agent_id)
@@ -1075,7 +1149,7 @@ class BoardAgentLifecycleManager(BaseAgentLifecycleManager):
                 "WORKFLOW.md",
                 "STATUS.md",
                 "APIS.md",
-                "skills/mission-control-charts/SKILL.md",
+                "skills/product-foundry-charts/SKILL.md",
             }
         )
 
@@ -1108,6 +1182,28 @@ class GatewayMainAgentLifecycleManager(BaseAgentLifecycleManager):
         preserved = super()._preserve_files(agent)
         preserved.discard("USER.md")
         return preserved
+
+
+class StandaloneAgentLifecycleManager(BaseAgentLifecycleManager):
+    """Provisioning manager for standalone (boardless) agents."""
+
+    def _agent_id(self, agent: Agent) -> str:
+        return _agent_key(agent)
+
+    def _build_context(
+        self,
+        *,
+        agent: Agent,
+        auth_token: str,
+        user: User | None,
+        board: Board | None,
+    ) -> dict[str, str]:
+        _ = board
+        return _build_standalone_context(agent, self._gateway, auth_token, user)
+
+    def _template_overrides(self, agent: Agent) -> dict[str, str] | None:
+        _ = agent
+        return STANDALONE_TEMPLATE_MAP
 
 
 def _control_plane_for_gateway(gateway: Gateway) -> OpenClawGatewayControlPlane:
@@ -1220,7 +1316,10 @@ class OpenClawGatewayProvisioner:
             if not session_key:
                 msg = "gateway main agent session_key is required"
                 raise ValueError(msg)
-            manager_type: type[BaseAgentLifecycleManager] = GatewayMainAgentLifecycleManager
+            if agent.agent_type == AGENT_TYPE_STANDALONE:
+                manager_type: type[BaseAgentLifecycleManager] = StandaloneAgentLifecycleManager
+            else:
+                manager_type = GatewayMainAgentLifecycleManager
         else:
             session_key = _session_key(agent)
             manager_type = BoardAgentLifecycleManager

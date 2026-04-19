@@ -1,6 +1,6 @@
-# Contributing to OpenClaw Mission Control
+# Contributing to AxiaCraft Product Foundry
 
-Thanks for your interest in improving Mission Control.
+Thanks for your interest in improving AxiaCraft Product Foundry.
 
 This repo welcomes contributions in three broad categories:
 

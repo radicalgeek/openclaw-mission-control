@@ -14,6 +14,12 @@ from app.models.base import QueryModel
 
 RUNTIME_ANNOTATION_TYPES = (datetime,)
 
+# Agent type constants – preferred over a bare string.
+AGENT_TYPE_BOARD_WORKER = "board_worker"
+AGENT_TYPE_BOARD_LEAD = "board_lead"
+AGENT_TYPE_GATEWAY_MAIN = "gateway_main"
+AGENT_TYPE_STANDALONE = "standalone"
+
 
 class Agent(QueryModel, table=True):
     """Agent configuration and lifecycle state persisted in the database."""
@@ -53,5 +59,10 @@ class Agent(QueryModel, table=True):
     checkin_deadline_at: datetime | None = Field(default=None)
     last_provision_error: str | None = Field(default=None, sa_column=Column(Text))
     is_board_lead: bool = Field(default=False, index=True)
+    agent_type: str = Field(default=AGENT_TYPE_BOARD_WORKER, index=True)
+    installed_skills: list[str] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

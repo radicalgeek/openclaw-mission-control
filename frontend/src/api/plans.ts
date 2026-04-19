@@ -14,6 +14,8 @@ export type PlanMessage = {
   role: "user" | "assistant";
   content: string;
   created_at?: string;
+  content_type?: string;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type PlanRead = {
@@ -55,6 +57,9 @@ export type PlanChatResponse = {
 export type PlanPromoteRequest = {
   task_title?: string;
   task_priority?: string;
+  task_priority_score?: number;
+  estimate_minutes?: number | null;
+  target_status?: "triage" | "backlog" | "inbox";
   assigned_agent_id?: string;
 };
 

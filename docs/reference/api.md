@@ -1,6 +1,6 @@
 # API reference (notes + conventions)
 
-Mission Control exposes a JSON HTTP API (FastAPI) under `/api/v1/*`.
+Product Foundry exposes a JSON HTTP API (FastAPI) under `/api/v1/*`.
 
 - Default backend base URL (local): `http://localhost:8000`
 - Health endpoints:
@@ -37,7 +37,7 @@ Notes:
 - The frontend uses the same bearer token scheme in local mode (users paste the token into the UI).
 - Many “agent” endpoints use an agent token header instead (see below).
 
-### Agent auth (Mission Control agents)
+### Agent auth (Product Foundry agents)
 
 Some endpoints are designed for autonomous agents and use an agent token header:
 

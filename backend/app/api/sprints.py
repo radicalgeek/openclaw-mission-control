@@ -58,6 +58,8 @@ class _BatchBacklogTicket(BaseModel):
     title: str
     description: str = ""
     priority: str = "medium"
+    priority_score: int = 35  # numeric 1-100; auto-set from priority if not provided
+    estimate_minutes: int | None = None
     sprint_id: UUID | None = None
     assigned_agent_id: UUID | None = None
 
@@ -88,9 +90,7 @@ async def _sprint_ticket_counts(
 ) -> tuple[int, int]:
     """Return (total_tickets, done_tickets) for a sprint."""
     tickets = (
-        await session.exec(
-            select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id)
-        )
+        await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id))
     ).all()
     total = len(tickets)
     done = 0
@@ -121,6 +121,9 @@ def _sprint_to_read(
         updated_at=sprint.updated_at,
         ticket_count=ticket_count,
         tickets_done_count=tickets_done_count,
+        committed_minutes=sprint.committed_minutes,
+        completed_minutes=sprint.completed_minutes,
+        actual_minutes=sprint.actual_minutes,
     )
 
 
@@ -136,6 +139,10 @@ def _task_to_read(
         description=task.description,
         status=task.status,  # type: ignore[arg-type]
         priority=task.priority,
+        priority_score=task.priority_score,
+        estimate_minutes=task.estimate_minutes,
+        actual_minutes=task.actual_minutes,
+        done_at=task.done_at,
         due_at=task.due_at,
         assigned_agent_id=task.assigned_agent_id,
         depends_on_task_ids=[],
@@ -428,9 +435,7 @@ async def add_sprint_tickets(
             continue
 
         existing_link = (
-            await session.exec(
-                select(SprintTicket).where(col(SprintTicket.task_id) == task_id)
-            )
+            await session.exec(select(SprintTicket).where(col(SprintTicket.task_id) == task_id))
         ).first()
         if existing_link is not None:
             continue
@@ -525,14 +530,24 @@ async def list_backlog(
     _auth: "AuthContext" = USER_AUTH_DEP,
     sprint_id: UUID | None = Query(default=None),
     unassigned: bool = Query(default=False),
+    task_status: str | None = Query(default=None, alias="status"),
 ) -> list[TaskRead]:
     """List all backlog tasks for a board, filterable by sprint or unassigned."""
-    query = (
-        select(Task)
-        .where(col(Task.board_id) == board.id)
-        .where(col(Task.is_backlog).is_(True))
-        .order_by(col(Task.created_at).desc())
-    )
+    from sqlalchemy import or_  # noqa: PLC0415
+
+    query = select(Task).where(col(Task.board_id) == board.id).order_by(col(Task.created_at).desc())
+    if task_status is not None:
+        # Explicit status filter
+        statuses = [s.strip() for s in task_status.split(",") if s.strip()]
+        query = query.where(col(Task.status).in_(statuses))
+    else:
+        # Default: show off-board items — either status-based or legacy is_backlog flag
+        query = query.where(
+            or_(
+                col(Task.status).in_(["triage", "backlog"]),
+                col(Task.is_backlog).is_(True),
+            )
+        )
     if sprint_id is not None:
         query = query.where(col(Task.sprint_id) == sprint_id)
     elif unassigned:
@@ -559,8 +574,9 @@ async def create_backlog_task(
         board_id=board.id,
         title=payload.title,
         description=payload.description,
-        status="inbox",
+        status="backlog",
         priority=payload.priority,
+        priority_score=payload.priority_score if hasattr(payload, "priority_score") else 35,
         due_at=payload.due_at,
         assigned_agent_id=payload.assigned_agent_id,
         created_by_user_id=payload.created_by_user_id or (auth.user.id if auth.user else None),
@@ -582,7 +598,6 @@ async def create_backlog_task(
     return reads[0]
 
 
-
 @router.post("/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED)
 async def batch_create_backlog(
     payload: _BatchBacklogCreate,
@@ -597,8 +612,10 @@ async def batch_create_backlog(
             board_id=board.id,
             title=item.title,
             description=item.description,
-            status="inbox",
+            status="backlog",
             priority=item.priority,
+            priority_score=item.priority_score,
+            estimate_minutes=item.estimate_minutes,
             assigned_agent_id=item.assigned_agent_id,
             created_by_user_id=auth.user.id if auth.user else None,
             is_backlog=True,
@@ -624,3 +641,82 @@ async def batch_create_backlog(
     )
     await session.commit()
     return created
+
+
+# ---------------------------------------------------------------------------
+# Velocity & Accuracy
+# ---------------------------------------------------------------------------
+
+
+class _SprintVelocityItem(BaseModel):
+    sprint_id: str
+    name: str
+    committed_minutes: int | None
+    completed_minutes: int | None
+    actual_minutes: int | None
+    estimation_accuracy: float | None  # completed / actual (closer to 1.0 = better)
+    started_at: str | None
+    completed_at: str | None
+
+
+class _VelocityResponse(BaseModel):
+    sprints: list[_SprintVelocityItem]
+    rolling_velocity_minutes: int | None  # avg completed_minutes over last N sprints
+    rolling_accuracy: float | None  # avg estimation_accuracy over last N sprints
+
+
+@router.get("/velocity", response_model=_VelocityResponse)
+async def board_velocity(
+    board: Board = BOARD_READ_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    _auth: "AuthContext" = USER_AUTH_DEP,
+    window: int = Query(default=5, ge=1, le=20),
+) -> _VelocityResponse:
+    """Return velocity and estimation accuracy for the last N completed sprints."""
+    completed = (
+        await session.exec(
+            select(Sprint)
+            .where(col(Sprint.board_id) == board.id)
+            .where(col(Sprint.status) == "completed")
+            .order_by(col(Sprint.completed_at).desc())
+            .limit(window)
+        )
+    ).all()
+
+    items: list[_SprintVelocityItem] = []
+    velocity_values: list[int] = []
+    accuracy_values: list[float] = []
+
+    for sprint in reversed(list(completed)):
+        acc: float | None = None
+        if sprint.completed_minutes and sprint.actual_minutes:
+            acc = round(sprint.completed_minutes / sprint.actual_minutes, 3)
+        items.append(
+            _SprintVelocityItem(
+                sprint_id=str(sprint.id),
+                name=sprint.name,
+                committed_minutes=sprint.committed_minutes,
+                completed_minutes=sprint.completed_minutes,
+                actual_minutes=sprint.actual_minutes,
+                estimation_accuracy=acc,
+                started_at=sprint.started_at.isoformat() if sprint.started_at else None,
+                completed_at=sprint.completed_at.isoformat() if sprint.completed_at else None,
+            )
+        )
+        if sprint.completed_minutes is not None:
+            velocity_values.append(sprint.completed_minutes)
+        if acc is not None:
+            accuracy_values.append(acc)
+
+    rolling_velocity = (
+        round(sum(velocity_values) / len(velocity_values)) if velocity_values else None
+    )
+    rolling_accuracy = (
+        round(sum(accuracy_values) / len(accuracy_values), 3) if accuracy_values else None
+    )
+
+    return _VelocityResponse(
+        sprints=items,
+        rolling_velocity_minutes=rolling_velocity,
+        rolling_accuracy=rolling_accuracy,
+    )

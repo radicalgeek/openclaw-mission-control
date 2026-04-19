@@ -1,8 +1,8 @@
-# Mission Control Channels
+# Product Foundry Channels
 
-> Zulip-style channel-based messaging for OpenClaw Mission Control.
+> Zulip-style channel-based messaging for OpenClaw Product Foundry.
 
-Channels give agents and operators a shared, threaded messaging space co-located with board tasks.  
+Channels give agents and operators a shared, threaded messaging space co-located with project tasks.  
 Alert channels receive webhook events from CI/CD pipelines, deployment systems, and monitoring tools.  
 Discussion channels are for structured conversation between agents and operators.
 
@@ -22,7 +22,7 @@ Discussion channels are for structured conversation between agents and operators
 
 ### The Unified Thread Model
 
-Every webhook event, alert, and conversation exists as a **thread**. A thread is the atomic unit of communication. The board task view and the channel message view are two *lenses* onto the same underlying data.
+Every webhook event, alert, and conversation exists as a **thread**. A thread is the atomic unit of communication. The task board view and the channel message view are two *lenses* onto the same underlying data.
 
 ```
 WEBHOOK ARRIVES
@@ -31,7 +31,7 @@ WEBHOOK ARRIVES
 ┌─────────────────────────┐
 │  Existing webhook       │
 │  handler creates TASK   │  ← Works today
-│  on the board           │
+│  in the project         │
 └────────────┬────────────┘
              │
       post-create hook
@@ -49,12 +49,12 @@ WEBHOOK ARRIVES
 ┌─────────────────────────────────────────┐
 │  THREAD (linked to task)                │
 │                                         │
-│  board task view → shows thread msgs    │
+│  task board view → shows thread msgs    │
 │  channel view    → shows same thread    │
 └─────────────────────────────────────────┘
 ```
 
-This means there is a **single source of truth** — the thread. No duplication. Comments on the board task *are* the same messages visible in the channel thread.
+This means there is a **single source of truth** — the thread. No duplication. Comments on the project task *are* the same messages visible in the channel thread.
 
 ### Channel Types
 
@@ -116,7 +116,7 @@ On mobile, the panels stack vertically with back-navigation buttons.
 ### Navigating Channels
 
 1. Click **Channels** in the left sidebar.
-2. You will be redirected to your first board's channels page.
+2. You will be redirected to your first project's channels page.
 3. Use the **channel list** (left panel) to switch channels.
 4. Click a thread in the **thread list** (middle panel) to view messages.
 5. Use the filter tabs — **Active / Resolved / Pinned** — to filter threads.
@@ -144,9 +144,9 @@ On mobile, the panels stack vertically with back-navigation buttons.
 
 ### Linked Tasks
 
-When a thread is linked to a board task, a **🔗 Linked Task** badge appears in the thread header. Click **View Task →** to open the task detail panel.
+When a thread is linked to a project task, a **🔗 Linked Task** badge appears in the thread header. Click **View Task →** to open the task detail panel.
 
-Conversely, when viewing a task on the board, a **📌 Linked to channel thread** banner appears if the task has an associated thread. Click **Open in Channels →** to jump to the thread view.
+Conversely, when viewing a task on the task board, a **📌 Linked to channel thread** banner appears if the task has an associated thread. Click **Open in Channels →** to jump to the thread view.
 
 ---
 
@@ -154,7 +154,7 @@ Conversely, when viewing a task on the board, a **📌 Linked to channel thread*
 
 ### How Webhooks Create Channel Threads
 
-When a webhook arrives that creates a board task (via the existing webhook pipeline), the channel system automatically:
+When a webhook arrives that creates a project task (via the existing webhook pipeline), the channel system automatically:
 
 1. Finds the matching alert channel for the webhook type (e.g. build failure → `#build-alerts`).
 2. Creates a thread in that channel with the event as the first message.
@@ -197,7 +197,7 @@ If omitted, severity defaults to `info`.
 
 | Method | Endpoint | Description |
 |--------|---------|-------------|
-| `GET` | `/api/boards/{boardId}/channels` | List all channels for a board |
+| `GET` | `/api/boards/{boardId}/channels` | List all channels for a project |
 | `GET` | `/api/channels/{channelId}` | Get a single channel |
 | `POST` | `/api/channels/{channelId}/mark-read` | Mark channel as read (reset unread count) |
 
@@ -242,7 +242,7 @@ If omitted, severity defaults to `info`.
 
 ### Frontend Feature Flag
 
-The Channels feature is gated by `CHANNELS_ENABLED` in the backend. If the board has no channels (the endpoint returns an empty array), the UI shows an empty state gracefully. No frontend flag is needed.
+The Channels feature is gated by `CHANNELS_ENABLED` in the backend. If the project has no channels (the endpoint returns an empty array), the UI shows an empty state gracefully. No frontend flag is needed.
 
 ### Real-time Updates
 
@@ -253,13 +253,13 @@ The current implementation polls for new messages every **10 seconds** in the `M
 1. Add the type to `ChannelType` in `frontend/src/api/channels.ts`.
 2. Add an icon mapping in `CHANNEL_ICONS` in `ChannelList.tsx`.
 3. Add it to either `ALERT_CHANNEL_TYPES` or `DISCUSSION_CHANNEL_TYPES` in `channels.ts`.
-4. Ensure the backend creates the channel on board initialisation.
+4. Ensure the backend creates the channel on project initialisation.
 
 ### TypeScript Notes
 
 The `MessageRead.metadata` field is typed as `Record<string, unknown> | null` to match the flexible JSON column in the database. Always check for `unknown` types before rendering.
 
-The board task `thread_id` field is not yet in the auto-generated OpenAPI TypeScript types (the codegen runs on the API spec, which must be regenerated after the channels backend is deployed). The board page handles this via a local type augmentation:
+The project task `thread_id` field is not yet in the auto-generated OpenAPI TypeScript types (the codegen runs on the API spec, which must be regenerated after the channels backend is deployed). The task board page handles this via a local type augmentation:
 
 ```typescript
 type Task = ... & {

@@ -10,6 +10,7 @@ import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
 import { useCreateGatewayApiV1GatewaysPost } from "@/api/generated/gateways/gateways";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
+import { useBranding } from "@/lib/branding";
 import { GatewayForm } from "@/components/gateways/GatewayForm";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import {
@@ -24,6 +25,7 @@ export default function NewGatewayPage() {
   const router = useRouter();
 
   const { isAdmin } = useOrganizationMembership(isSignedIn);
+  const branding = useBranding();
 
   const [name, setName] = useState("");
   const [gatewayUrl, setGatewayUrl] = useState("");
@@ -116,7 +118,7 @@ export default function NewGatewayPage() {
         forceRedirectUrl: "/gateways/new",
       }}
       title="Create gateway"
-      description="Configure an AxiaCraft gateway for ProductFoundry."
+      description={`Configure an ${branding.companyName} gateway for ${branding.productName}.`}
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can create gateways."
     >

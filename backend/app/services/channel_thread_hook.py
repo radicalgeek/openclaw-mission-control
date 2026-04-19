@@ -153,6 +153,7 @@ async def on_task_created_by_webhook(
         if event.severity in ("error", "critical"):
             try:
                 from app.services.channel_agent_routing import dispatch_channel_message_to_agents
+
                 await dispatch_channel_message_to_agents(
                     session=session,
                     thread=thread,

@@ -114,7 +114,9 @@ class GitHubActionsClassifier(BaseClassifier):
             topic = f"{repo_name}/{head_branch} — Check #{suite_id}"
             summary = f"{icon} Check {conclusion or 'pending'} on {head_branch}"
             source_ref = f"github:{event_type_header}:{suite_id}"
-            content = f"## {summary}\n\n- **Repository**: {repo_name}\n- **Branch**: {head_branch}\n"
+            content = (
+                f"## {summary}\n\n- **Repository**: {repo_name}\n- **Branch**: {head_branch}\n"
+            )
             if html_url:
                 content += f"\n[View →]({html_url})"
         else:
@@ -204,7 +206,9 @@ class DeploymentClassifier(BaseClassifier):
     def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
         gh_event = headers.get("x-github-event", "")
         repo = payload.get("repository", {})
-        repo_name = repo.get("full_name") or repo.get("name") if isinstance(repo, dict) else "unknown"
+        repo_name = (
+            repo.get("full_name") or repo.get("name") if isinstance(repo, dict) else "unknown"
+        )
 
         if gh_event == "deployment_status":
             dep = payload.get("deployment", {})
@@ -251,11 +255,7 @@ class DeploymentClassifier(BaseClassifier):
             summary = f"{icon} {service} deployment to {env}"
             source_ref = f"deploy:{service}:{env}:{deploy_id}"
 
-        content = (
-            f"## {summary}\n\n"
-            f"- **Service**: {service}\n"
-            f"- **Environment**: {env}\n"
-        )
+        content = f"## {summary}\n\n" f"- **Service**: {service}\n" f"- **Environment**: {env}\n"
         if html_url:
             content += f"\n[View Deployment →]({html_url})"
 
@@ -299,11 +299,7 @@ class TestResultsClassifier(BaseClassifier):
             repo = payload.get("repository", {})
             repo_name = repo.get("full_name") or repo.get("name") or "unknown"
         else:
-            suite_name = (
-                payload.get("suite_name")
-                or payload.get("name")
-                or "Test Suite"
-            )
+            suite_name = payload.get("suite_name") or payload.get("name") or "Test Suite"
             conclusion = payload.get("result") or payload.get("status") or "completed"
             run_id = payload.get("id") or payload.get("run_id", "")
             html_url = payload.get("url")
@@ -323,11 +319,7 @@ class TestResultsClassifier(BaseClassifier):
         summary = f"{icon} {suite_name}: {conclusion}"
         source_ref = f"test:{suite_name}:{run_id or now[:16]}"
 
-        content = (
-            f"## {summary}\n\n"
-            f"- **Suite**: {suite_name}\n"
-            f"- **Result**: {conclusion}\n"
-        )
+        content = f"## {summary}\n\n" f"- **Suite**: {suite_name}\n" f"- **Result**: {conclusion}\n"
         if html_url:
             content += f"\n[View Results →]({html_url})"
 
@@ -363,7 +355,9 @@ class GenericClassifier(BaseClassifier):
         source_ref = f"generic:{payload_hash}"
 
         try:
-            content = f"## {summary}\n\n```json\n{json.dumps(payload, indent=2, default=str)[:1000]}\n```"
+            content = (
+                f"## {summary}\n\n```json\n{json.dumps(payload, indent=2, default=str)[:1000]}\n```"
+            )
         except Exception:
             content = f"## {summary}\n\nRaw event received."
 

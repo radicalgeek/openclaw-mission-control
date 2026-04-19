@@ -30,7 +30,7 @@ const FILE_NAMES = [
 ] as const;
 
 const SOURCE_LABELS: Record<TemplateSource, string> = {
-  board: "Board override",
+  board: "Project override",
   org: "Org-wide override",
   "built-in": "Built-in default",
 };
@@ -44,11 +44,11 @@ const SOURCE_BADGE_CLASSES: Record<TemplateSource, string> = {
 
 const JINJA_CONTEXT_VARS = [
   { name: "agent_name", description: "Agent name" },
-  { name: "board_name", description: "Board name" },
+  { name: "board_name", description: "Project name" },
   { name: "user_name", description: "User display name" },
   { name: "user_email", description: "User email" },
   { name: "role", description: "Agent role / identity profile role" },
-  { name: "board_goal", description: "Board goal / description" },
+  { name: "board_goal", description: "Objective / description" },
   { name: "today", description: "Today's date (UTC)" },
 ];
 
@@ -212,11 +212,11 @@ export function BoardTemplateEditor({ boardId }: BoardTemplateEditorProps) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-strong">
-            Board template overrides
+            Project template overrides
           </p>
           <p className="text-xs text-muted">
             Customise the Jinja2 templates written to agent workspaces on this
-            board. Higher priority than org-wide defaults.
+            project. Higher priority than org-wide defaults.
           </p>
         </div>
         <button
@@ -289,7 +289,7 @@ export function BoardTemplateEditor({ boardId }: BoardTemplateEditorProps) {
                               : SOURCE_BADGE_CLASSES[src]
                           }`}
                         >
-                          {src === "board" ? "board" : "org"}
+                          {src === "board" ? "project" : "org"}
                         </span>
                       ) : null}
                     </button>
@@ -402,7 +402,7 @@ export function BoardTemplateEditor({ boardId }: BoardTemplateEditorProps) {
                 {confirmDelete ? (
                   <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
                     <p className="text-xs font-medium text-rose-700">
-                      Remove the board override for{" "}
+                      Remove the project override for{" "}
                       <strong>{selectedFile}</strong>? The org-wide or built-in
                       template will be used instead.
                     </p>

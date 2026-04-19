@@ -23,12 +23,14 @@ import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { Input } from "@/components/ui/input";
 import SearchableSelect from "@/components/ui/searchable-select";
 import { getSupportedTimezones } from "@/lib/timezones";
+import { useBranding } from "@/lib/branding";
 
 type ClerkGlobal = {
   signOut?: (options?: { redirectUrl?: string }) => Promise<void> | void;
 };
 
 export default function SettingsPage() {
+  const branding = useBranding();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isSignedIn } = useAuth();
@@ -246,7 +248,7 @@ export default function SettingsPage() {
               Delete account
             </h2>
             <p className="mt-1 text-sm text-rose-800">
-              This permanently removes your ProductFoundry account and related
+              This permanently removes your {branding.productName} account and related
               personal data. This action cannot be undone.
             </p>
             <div className="mt-4">

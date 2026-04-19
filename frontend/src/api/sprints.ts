@@ -32,6 +32,9 @@ export type SprintRead = {
   updated_at: string;
   ticket_count: number;
   tickets_done_count: number;
+  committed_minutes: number | null;
+  completed_minutes: number | null;
+  actual_minutes: number | null;
 };
 
 export type SprintCreate = {
@@ -46,19 +49,32 @@ export type SprintUpdate = {
   status?: SprintStatus;
 };
 
+export type TaskStatus =
+  | "triage"
+  | "backlog"
+  | "inbox"
+  | "in_progress"
+  | "review"
+  | "done"
+  | "archived";
+
 export type TaskRead = {
   id: string;
   board_id: string;
   title: string;
   description: string | null;
-  status: string;
+  status: TaskStatus;
   priority: string;
+  priority_score: number;
   due_at: string | null;
   assigned_agent_id: string | null;
   is_backlog: boolean;
   sprint_id: string | null;
   tags: TagRef[];
   tag_ids: string[];
+  estimate_minutes: number | null;
+  actual_minutes: number | null;
+  done_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -67,6 +83,8 @@ export type BacklogTaskCreate = {
   title: string;
   description?: string;
   priority?: "low" | "medium" | "high" | "critical";
+  priority_score?: number;
+  estimate_minutes?: number | null;
   sprint_id?: string;
   assigned_agent_id?: string;
   tag_ids?: string[];
@@ -243,9 +261,12 @@ export type BacklogTaskUpdate = {
   title?: string;
   description?: string | null;
   priority?: string | null;
+  priority_score?: number | null;
+  estimate_minutes?: number | null;
+  actual_minutes?: number | null;
   due_at?: string | null;
   tag_ids?: string[] | null;
-  status?: string | null;
+  status?: TaskStatus | null;
 };
 
 export const updateBacklogTask = (
@@ -256,4 +277,32 @@ export const updateBacklogTask = (
   customFetch<ApiResponse<TaskRead>>(
     `/api/v1/boards/${boardId}/tasks/${taskId}`,
     { method: "PATCH", body: JSON.stringify(payload) },
+  );
+
+// ─── Velocity ─────────────────────────────────────────────────────────────────
+
+export type SprintVelocityItem = {
+  sprint_id: string;
+  name: string;
+  committed_minutes: number | null;
+  completed_minutes: number | null;
+  actual_minutes: number | null;
+  estimation_accuracy: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export type VelocityResponse = {
+  sprints: SprintVelocityItem[];
+  rolling_velocity_minutes: number | null;
+  rolling_accuracy: number | null;
+};
+
+export const getBoardVelocity = (
+  boardId: string,
+  window = 5,
+): Promise<ApiResponse<VelocityResponse>> =>
+  customFetch<ApiResponse<VelocityResponse>>(
+    `/api/v1/boards/${boardId}/sprints/velocity?window=${window}`,
+    { method: "GET" },
   );

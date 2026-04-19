@@ -61,17 +61,17 @@ export function BoardGoalPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-              Board goal
+              Project goal
             </p>
             <p className="mt-1 text-lg font-semibold text-strong">
-              {board ? "Mission overview" : "Loading board goal"}
+              {board ? "Mission overview" : "Loading project goal"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {board ? (
               <>
                 <Badge variant={isGoalBoard ? "accent" : "outline"}>
-                  {isGoalBoard ? "Goal board" : "General board"}
+                  {isGoalBoard ? "Goal project" : "General project"}
                 </Badge>
                 {board.is_platform ? (
                   <Badge className="bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/20">
@@ -91,8 +91,8 @@ export function BoardGoalPanel({
         {board ? (
           <p className="text-sm text-muted">
             {isGoalBoard
-              ? "Track progress against the board objective and keep agents aligned."
-              : "General boards focus on tasks without formal success metrics."}
+              ? "Track progress against the project objective and keep agents aligned."
+              : "General projects focus on tasks without formal success metrics."}
           </p>
         ) : (
           <div className="h-4 w-32 animate-pulse rounded-full bg-[color:var(--surface-muted)]" />
@@ -149,7 +149,7 @@ export function BoardGoalPanel({
             ) : null}
             {onEdit ? (
               <Button variant="secondary" onClick={onEdit}>
-                Edit board
+                Edit project
               </Button>
             ) : null}
           </div>

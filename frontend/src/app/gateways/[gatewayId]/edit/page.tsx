@@ -14,6 +14,7 @@ import {
   useUpdateGatewayApiV1GatewaysGatewayIdPatch,
 } from "@/api/generated/gateways/gateways";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
+import { useBranding } from "@/lib/branding";
 import type { GatewayUpdate } from "@/api/generated/model";
 import { GatewayForm } from "@/components/gateways/GatewayForm";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
@@ -34,6 +35,7 @@ export default function EditGatewayPage() {
     : gatewayIdParam;
 
   const { isAdmin } = useOrganizationMembership(isSignedIn);
+  const branding = useBranding();
 
   const [name, setName] = useState<string | undefined>(undefined);
   const [gatewayUrl, setGatewayUrl] = useState<string | undefined>(undefined);
@@ -165,7 +167,7 @@ export default function EditGatewayPage() {
           ? `Edit gateway — ${resolvedName.trim()}`
           : "Edit gateway"
       }
-      description="Update connection settings for this AxiaCraft gateway."
+      description={`Update connection settings for this ${branding.companyName} gateway.`}
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can edit gateways."
     >

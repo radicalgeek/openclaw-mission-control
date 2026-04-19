@@ -1,6 +1,6 @@
 # Testing
 
-This guide describes how to run Mission Control tests locally.
+This guide describes how to run Product Foundry tests locally.
 
 ## Quick start (repo root)
 

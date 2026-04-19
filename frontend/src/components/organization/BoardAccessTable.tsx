@@ -31,7 +31,7 @@ export function BoardAccessTable({
     () => [
       {
         accessorKey: "name",
-        header: "Board",
+        header: "Project",
         cell: ({ row }) =>
           linkifyCell({
             href: `/boards/${row.original.id}`,

@@ -362,7 +362,9 @@ async def test_support_channel_platform_lead_always_notified() -> None:
         result = await get_agents_to_notify(session, thread, msg, channel)
         agent_ids = {n.agent_id for n in result}
 
-        assert platform_lead.id in agent_ids, "Platform lead must be notified for all Support threads"
+        assert (
+            platform_lead.id in agent_ids
+        ), "Platform lead must be notified for all Support threads"
         # other_lead is the SENDER, so must be excluded
         assert other_lead.id not in agent_ids, "Sender must not be in the notification list"
 
@@ -404,8 +406,12 @@ async def test_support_channel_cross_board_lead_notified_for_own_thread() -> Non
         result = await get_agents_to_notify(session, thread, msg, channel)
         agent_ids = {n.agent_id for n in result}
 
-        assert lead_a.id in agent_ids, "Owner board lead must be notified of replies to their thread"
-        assert platform_lead.id not in agent_ids, "Platform lead (sender) must not receive their own message"
+        assert (
+            lead_a.id in agent_ids
+        ), "Owner board lead must be notified of replies to their thread"
+        assert (
+            platform_lead.id not in agent_ids
+        ), "Platform lead (sender) must not receive their own message"
 
     await engine.dispose()
 
@@ -624,8 +630,8 @@ async def test_mention_by_first_name_matches_multi_word_agent() -> None:
         result = await get_agents_to_notify(session, thread, msg, channel)
         agent_ids = {n.agent_id for n in result}
 
-        assert worker.id in agent_ids, (
-            "Agent with multi-word name must be notified when @mentioned by first name"
-        )
+        assert (
+            worker.id in agent_ids
+        ), "Agent with multi-word name must be notified when @mentioned by first name"
 
     await engine.dispose()

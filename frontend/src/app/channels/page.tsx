@@ -68,10 +68,10 @@ export default function ChannelsIndexPage() {
             ) : boards.length === 0 ? (
               <div className="text-center">
                 <p className="text-sm font-semibold text-slate-700">
-                  No boards found
+                  No projects found
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Create a board to start using channels.
+                  Create a project to start using channels.
                 </p>
               </div>
             ) : (

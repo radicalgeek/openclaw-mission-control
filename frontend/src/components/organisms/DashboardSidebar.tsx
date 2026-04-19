@@ -159,7 +159,7 @@ export function DashboardSidebar() {
                 )}
               >
                 <LayoutGrid className="h-4 w-4" />
-                Boards
+                Task Board
               </Link>
             </div>
           </div>
@@ -258,7 +258,7 @@ export function DashboardSidebar() {
                 )}
               >
                 <Folder className="h-4 w-4" />
-                Board Groups
+                Project Groups
               </Link>
               <Link
                 href="/tags"

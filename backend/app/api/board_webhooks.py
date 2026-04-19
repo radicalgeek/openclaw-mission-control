@@ -625,8 +625,9 @@ async def ingest_board_webhook(
     # ── NEW: Channel thread hook (fail-safe, does not affect webhook response) ──
     if settings.channels_enabled:
         try:
-            from app.services.channel_thread_hook import on_task_created_by_webhook
             from app.models.tasks import Task as _Task
+            from app.services.channel_thread_hook import on_task_created_by_webhook
+
             # Create a minimal stub task to satisfy the hook signature.
             # This is a best-effort channel thread creation for the webhook event;
             # the real task (if any) will be created later by the agent.

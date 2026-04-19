@@ -28,7 +28,10 @@ from app.models.boards import Board  # noqa: E402
 from app.models.gateways import Gateway  # noqa: E402
 from app.models.organizations import Organization  # noqa: E402
 from app.models.tasks import Task  # noqa: E402
-from app.services.channel_lifecycle import get_default_channel_definitions, on_board_created  # noqa: E402
+from app.services.channel_lifecycle import (  # noqa: E402
+    get_default_channel_definitions,
+    on_board_created,
+)
 from app.services.channel_thread_hook import on_task_created_by_webhook  # noqa: E402
 
 
@@ -111,9 +114,7 @@ async def test_hook_creates_thread_for_build_failure() -> None:
         assert build_channel is not None
 
         threads = (
-            await session.exec(
-                select(Thread).where(col(Thread.channel_id) == build_channel.id)
-            )
+            await session.exec(select(Thread).where(col(Thread.channel_id) == build_channel.id))
         ).all()
         assert len(threads) == 1
         assert threads[0].task_id == task.id
@@ -174,9 +175,7 @@ async def test_hook_deduplicates_by_source_ref() -> None:
         assert build_channel is not None
 
         threads = (
-            await session.exec(
-                select(Thread).where(col(Thread.channel_id) == build_channel.id)
-            )
+            await session.exec(select(Thread).where(col(Thread.channel_id) == build_channel.id))
         ).all()
         assert len(threads) == 1  # Only one thread despite two calls
 
@@ -211,9 +210,7 @@ async def test_hook_with_none_task_creates_thread_no_link() -> None:
         assert dep_channel is not None
 
         threads = (
-            await session.exec(
-                select(Thread).where(col(Thread.channel_id) == dep_channel.id)
-            )
+            await session.exec(select(Thread).where(col(Thread.channel_id) == dep_channel.id))
         ).all()
         assert len(threads) == 1
         assert threads[0].task_id is None

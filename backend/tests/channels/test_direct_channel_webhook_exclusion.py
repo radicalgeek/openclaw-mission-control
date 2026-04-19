@@ -107,7 +107,7 @@ async def test_webhook_threads_never_created_in_direct_channels() -> None:
         # CRITICAL TEST: Verify that the channel lookup query would exclude direct channels
         # This is the core fix tested - direct channels must never match webhook source filters
         from sqlmodel import col, select
-        
+
         # Simulate the query from on_task_created_by_webhook with source_category="gitlab"
         matching_channels_with_directexcluded = (
             await session.exec(
@@ -119,7 +119,7 @@ async def test_webhook_threads_never_created_in_direct_channels() -> None:
                 )
             )
         ).all()
-        
+
         # Without the fix, this query might match BOTH channels if direct_channel.webhook_source_filter
         # happened to be "gitlab". With the fix, it only matches alert channels.
         assert alert_channel in matching_channels_with_directexcluded

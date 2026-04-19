@@ -121,16 +121,16 @@ export default function NewBoardPage() {
     const trimmedName = name.trim();
     const resolvedGatewayId = displayGatewayId;
     if (!trimmedName) {
-      setError("Board name is required.");
+      setError("Project name is required.");
       return;
     }
     if (!resolvedGatewayId) {
-      setError("Select a gateway before creating a board.");
+      setError("Select a gateway before creating a project.");
       return;
     }
     const trimmedDescription = description.trim();
     if (!trimmedDescription) {
-      setError("Board description is required.");
+      setError("Project description is required.");
       return;
     }
 
@@ -150,14 +150,14 @@ export default function NewBoardPage() {
   return (
     <DashboardPageLayout
       signedOut={{
-        message: "Sign in to create a board.",
+        message: "Sign in to create a project.",
         forceRedirectUrl: "/boards/new",
         signUpForceRedirectUrl: "/boards/new",
       }}
-      title="Create board"
-      description="Boards organize tasks and agents by mission context."
+      title="Create project"
+      description="Projects organize tasks and agents by mission context."
       isAdmin={isAdmin}
-      adminOnlyMessage="Only organization owners and admins can create boards."
+      adminOnlyMessage="Only organization owners and admins can create projects."
     >
       <form
         onSubmit={handleSubmit}
@@ -167,7 +167,7 @@ export default function NewBoardPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-900">
-                Board name <span className="text-red-500">*</span>
+                Project name <span className="text-red-500">*</span>
               </label>
               <Input
                 value={name}
@@ -198,10 +198,10 @@ export default function NewBoardPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-900">
-                Board group
+                Project group
               </label>
               <SearchableSelect
-                ariaLabel="Select board group"
+                ariaLabel="Select project group"
                 value={boardGroupId}
                 onValueChange={setBoardGroupId}
                 options={groupOptions}
@@ -214,7 +214,7 @@ export default function NewBoardPage() {
                 disabled={isLoading}
               />
               <p className="text-xs text-slate-500">
-                Optional. Groups increase cross-board visibility.
+                Optional. Groups increase cross-project visibility.
               </p>
             </div>
           </div>
@@ -262,7 +262,7 @@ export default function NewBoardPage() {
             Cancel
           </Button>
           <Button type="submit" disabled={isLoading || !isFormReady}>
-            {isLoading ? "Creating…" : "Create board"}
+            {isLoading ? "Creating…" : "Create project"}
           </Button>
         </div>
       </form>

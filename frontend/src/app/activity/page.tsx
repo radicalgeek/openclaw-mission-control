@@ -682,7 +682,7 @@ export default function ActivityPage() {
         board_href: buildBoardHref(routeParams, boardId),
         task_id: null,
         task_title: null,
-        title: command ? "Board command" : "Board chat",
+        title: command ? "Project command" : "Project chat",
         context_href: buildRouteHref("board", routeParams, {
           eventId: memory.id,
           eventType: command ? "board.command" : "board.chat",
@@ -734,7 +734,7 @@ export default function ActivityPage() {
       const stamp = agent.last_seen_at ?? agent.updated_at ?? agent.created_at;
       const message =
         kind === "agent.created"
-          ? `${agent.name} joined this board.`
+          ? `${agent.name} joined this project.`
           : kind === "agent.online"
             ? `${agent.name} is online.`
             : kind === "agent.offline"
@@ -815,7 +815,7 @@ export default function ActivityPage() {
           });
           if (cancelled) return;
           if (result.status !== 200) {
-            throw new Error("Unable to load boards.");
+            throw new Error("Unable to load projects.");
           }
           const items = result.data.items ?? [];
           nextBoards.push(...items);
@@ -1242,11 +1242,11 @@ export default function ActivityPage() {
               },
             );
           if (streamResult.status !== 200) {
-            throw new Error("Unable to connect board chat stream.");
+            throw new Error("Unable to connect project chat stream.");
           }
           const response = streamResult.data as Response;
           if (!(response instanceof Response) || !response.body) {
-            throw new Error("Unable to connect board chat stream.");
+            throw new Error("Unable to connect project chat stream.");
           }
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
@@ -1518,8 +1518,8 @@ export default function ActivityPage() {
                         </h1>
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
-                        Realtime task, approval, agent, and board-chat activity
-                        across all boards.
+                        Realtime task, approval, agent, and project-chat activity
+                        across all projects.
                       </p>
                     </div>
                   </div>

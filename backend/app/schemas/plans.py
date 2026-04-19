@@ -17,7 +17,10 @@ class DecomposedTicket(SQLModel):
 
     title: str
     description: str = ""
-    priority: str = "medium"  # low | medium | high | critical
+    priority: str = "medium"  # low | medium | high | critical (display label)
+    priority_score: int = 35  # 1–100 numeric score (auto-set from priority)
+    estimate_minutes: int | None = None  # Agent-suggested time estimate
+
 
 VALID_PLAN_STATUSES = frozenset({"draft", "active", "completed", "archived"})
 
@@ -74,6 +77,9 @@ class PlanPromoteRequest(SQLModel):
 
     task_title: str | None = None  # Defaults to plan title if not provided
     task_priority: str = Field(default="medium")
+    task_priority_score: int = Field(default=50)  # 1–100 numeric score
+    estimate_minutes: int | None = None  # Optional time estimate for the promoted task
+    target_status: str = Field(default="inbox")  # "inbox" (on-board) or "backlog" (off-board)
     assigned_agent_id: UUID | None = None
 
 
@@ -83,3 +89,5 @@ class PlanAgentUpdateRequest(SQLModel):
     reply: str = ""  # Agent reply text (appended to transcript as assistant message)
     content: str | None = None  # If provided, replaces plan.content
     tickets: list[DecomposedTicket] | None = None  # If provided, stores decomposed tickets
+    content_type: str = "text"  # "text" | "mcp_app_result"
+    app_metadata: dict[str, object] | None = None  # Required when content_type == "mcp_app_result"

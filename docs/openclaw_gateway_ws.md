@@ -2,7 +2,7 @@
 
 ## Connection Types
 
-OpenClaw Mission Control supports both secure (`wss://`) and non-secure (`ws://`) WebSocket connections to gateways.
+OpenClaw Product Foundry supports both secure (`wss://`) and non-secure (`ws://`) WebSocket connections to gateways.
 
 ### Secure Connections (wss://)
 
@@ -16,7 +16,7 @@ You can enable support for self-signed TLS certificates with a toggle:
 2. When creating or editing a gateway, enable: **"Allow self-signed TLS certificates"**
 3. This applies to any `wss://` gateway URL for that gateway configuration.
 
-When enabled, Mission Control skips TLS certificate verification for that gateway connection.
+When enabled, Product Foundry skips TLS certificate verification for that gateway connection.
 
 **Security Warning**: Enabling this weakens transport security and should only be used when you explicitly trust the endpoint and network path. Prefer valid CA-signed certificates for production gateways.
 

@@ -46,6 +46,14 @@ class Task(TenantScoped, table=True):
     # or manually by users linking tasks to channel conversations).
     thread_id: UUID | None = Field(default=None, foreign_key="threads.id", index=True)
 
+    # Priority — string label (display) + numeric score (ordering/calculation)
+    priority_score: int = Field(default=50, index=True)  # 1–100; 1=lowest, 100=highest
+
+    # Estimation & actuals (time-based, stored in minutes)
+    estimate_minutes: int | None = Field(default=None)
+    actual_minutes: int | None = Field(default=None)
+    done_at: datetime | None = None
+
     # Backlog / sprint fields
     is_backlog: bool = Field(default=False, index=True)
     sprint_id: UUID | None = Field(default=None, foreign_key="sprints.id", index=True)

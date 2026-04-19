@@ -24,7 +24,9 @@ class Plan(TenantScoped, table=True):
     title: str
     slug: str = Field(index=True)
     content: str = Field(default="")
-    status: str = Field(default="draft", index=True)  # "draft" | "active" | "completed" | "archived"
+    status: str = Field(
+        default="draft", index=True
+    )  # "draft" | "active" | "completed" | "archived"
 
     created_by_user_id: UUID | None = Field(
         default=None,

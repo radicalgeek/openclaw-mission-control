@@ -48,7 +48,7 @@ describe("TaskCustomFieldsEditor", () => {
     );
 
     expect(
-      screen.getByText("No custom fields configured for this board."),
+      screen.getByText("No custom fields configured for this project."),
     ).toBeInTheDocument();
   });
 

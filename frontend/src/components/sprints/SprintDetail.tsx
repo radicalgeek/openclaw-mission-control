@@ -254,6 +254,38 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
             </div>
           </div>
         )}
+
+        {/* Time stats (committed / completed / actual) */}
+        {(sprint.committed_minutes != null ||
+          sprint.completed_minutes != null ||
+          sprint.actual_minutes != null) && (
+          <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500">
+            {sprint.committed_minutes != null && (
+              <span>
+                <span className="font-semibold text-slate-700">
+                  {sprint.committed_minutes}m
+                </span>{" "}
+                committed
+              </span>
+            )}
+            {sprint.completed_minutes != null && (
+              <span>
+                <span className="font-semibold text-slate-700">
+                  {sprint.completed_minutes}m
+                </span>{" "}
+                completed
+              </span>
+            )}
+            {sprint.actual_minutes != null && (
+              <span>
+                <span className="font-semibold text-slate-700">
+                  {sprint.actual_minutes}m
+                </span>{" "}
+                actual
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Add-ticket picker ── */}

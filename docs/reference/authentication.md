@@ -1,6 +1,6 @@
 # Authentication
 
-Mission Control supports two auth modes via `AUTH_MODE`:
+Product Foundry supports two auth modes via `AUTH_MODE`:
 
 - `local`: shared bearer token auth for self-hosted deployments
 - `clerk`: Clerk JWT auth

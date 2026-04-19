@@ -59,13 +59,13 @@ export default function SprintsIndexPage() {
         <DashboardSidebar />
         <main className="flex min-h-0 flex-1 flex-col items-center justify-center bg-slate-50">
           {boardsQuery.isPending && (
-            <p className="text-sm text-slate-400">Loading boards…</p>
+            <p className="text-sm text-slate-400">Loading projects…</p>
           )}
           {boardsQuery.isSuccess && boards.length === 0 && (
             <div className="flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-slate-500">No boards yet.</p>
+              <p className="text-sm text-slate-500">No projects yet.</p>
               <Button onClick={() => router.push("/boards/new")}>
-                Create a board
+                Create a project
               </Button>
             </div>
           )}

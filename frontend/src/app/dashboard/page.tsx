@@ -1012,7 +1012,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-                  No pending approvals across your boards.
+                  No pending approvals across your projects.
                 </div>
               )}
             </section>
@@ -1026,7 +1026,7 @@ export default function DashboardPage() {
                 <div className="max-h-[310px] space-y-2 overflow-x-hidden overflow-y-auto pr-1">
                   {!hasConfiguredGateways ? (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-                      No gateways are configured for any board yet.
+                      No gateways are configured for any project yet.
                     </div>
                   ) : gatewayStatusesQuery.isLoading ? (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">

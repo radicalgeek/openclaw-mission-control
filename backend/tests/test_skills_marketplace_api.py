@@ -920,15 +920,12 @@ def test_extract_git_stderr_message_empty_returns_empty() -> None:
 
 
 def test_is_branch_not_found_error_detects_remote_branch() -> None:
-    assert _is_branch_not_found_error(
-        "fatal: Remote branch main not found in upstream origin\n"
-    )
+    assert _is_branch_not_found_error("fatal: Remote branch main not found in upstream origin\n")
 
 
 def test_is_branch_not_found_error_detects_ref() -> None:
     assert _is_branch_not_found_error(
-        "error: pathspec 'notexist' did not match\n"
-        "fatal: couldn't find remote ref notexist\n"
+        "error: pathspec 'notexist' did not match\n" "fatal: couldn't find remote ref notexist\n"
     )
 
 

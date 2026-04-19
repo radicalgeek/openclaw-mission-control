@@ -33,11 +33,34 @@ import { useUrlSorting } from "@/lib/use-url-sorting";
 const AGENT_SORTABLE_COLUMNS = [
   "name",
   "status",
+  "agent_type",
   "openclaw_session_id",
   "board_id",
   "last_seen_at",
   "updated_at",
 ];
+
+type AgentTypeFilter = "all" | "standalone" | "board" | "gateway_main";
+
+const TYPE_FILTER_TABS: { key: AgentTypeFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "standalone", label: "Standalone" },
+  { key: "board", label: "Project Agents" },
+  { key: "gateway_main", label: "Gateway Main" },
+];
+
+function filterAgentsByType(agents: AgentRead[], filter: AgentTypeFilter): AgentRead[] {
+  if (filter === "all") return agents;
+  if (filter === "standalone") return agents.filter((a) => a.agent_type === "standalone");
+  if (filter === "gateway_main") return agents.filter((a) => a.agent_type === "gateway_main" || a.is_gateway_main);
+  // "board" = board_worker + board_lead
+  return agents.filter(
+    (a) =>
+      a.agent_type === "board_worker" ||
+      a.agent_type === "board_lead" ||
+      (!a.agent_type && !a.is_gateway_main),
+  );
+}
 
 export default function AgentsPage() {
   const { isSignedIn } = useAuth();
@@ -52,6 +75,7 @@ export default function AgentsPage() {
   });
 
   const [deleteTarget, setDeleteTarget] = useState<AgentRead | null>(null);
+  const [typeFilter, setTypeFilter] = useState<AgentTypeFilter>("all");
 
   const boardsKey = getListBoardsApiV1BoardsGetQueryKey();
   const agentsKey = getListAgentsApiV1AgentsGetQueryKey();
@@ -91,6 +115,23 @@ export default function AgentsPage() {
         ? (agentsQuery.data.data.items ?? [])
         : [],
     [agentsQuery.data],
+  );
+
+  const filteredAgents = useMemo(
+    () => filterAgentsByType(agents, typeFilter),
+    [agents, typeFilter],
+  );
+
+  const typeCounts = useMemo(
+    () => ({
+      all: agents.length,
+      standalone: agents.filter((a) => a.agent_type === "standalone").length,
+      board: agents.filter(
+        (a) => a.agent_type === "board_worker" || a.agent_type === "board_lead" || (!a.agent_type && !a.is_gateway_main),
+      ).length,
+      gateway_main: agents.filter((a) => a.agent_type === "gateway_main" || a.is_gateway_main).length,
+    }),
+    [agents],
   );
 
   const deleteMutation = useDeleteAgentApiV1AgentsAgentIdDelete<
@@ -142,9 +183,37 @@ export default function AgentsPage() {
         adminOnlyMessage="Only organization owners and admins can access agents."
         stickyHeader
       >
+        {agents.length > 0 ? (
+          <div className="flex flex-wrap gap-1 pb-2">
+            {TYPE_FILTER_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setTypeFilter(tab.key)}
+                className={[
+                  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                  typeFilter === tab.key
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                ].join(" ")}
+              >
+                {tab.label}
+                <span
+                  className={[
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none",
+                    typeFilter === tab.key
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-200 text-slate-500",
+                  ].join(" ")}
+                >
+                  {typeCounts[tab.key]}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <AgentsTable
-            agents={agents}
+            agents={filteredAgents}
             boards={boards}
             isLoading={agentsQuery.isLoading}
             sorting={sorting}
@@ -155,7 +224,7 @@ export default function AgentsPage() {
             emptyState={{
               title: "No agents yet",
               description:
-                "Create your first agent to start executing tasks on this board.",
+                "Create your first agent to start executing tasks on this project.",
               actionHref: "/agents/new",
               actionLabel: "Create your first agent",
             }}

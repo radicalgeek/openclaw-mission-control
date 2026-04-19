@@ -194,7 +194,7 @@ export default function EditAgentPage() {
       return;
     }
     if (!resolvedIsGatewayMain && !resolvedBoardId) {
-      setError("Select a board or mark this agent as the gateway main.");
+      setError("Select a project or mark this agent as the gateway main.");
       return;
     }
     if (
@@ -204,7 +204,7 @@ export default function EditAgentPage() {
       !loadedAgent.board_id
     ) {
       setError(
-        "Select a board once so we can resolve the gateway main session key.",
+        "Select a project once so we can resolve the gateway main session key.",
       );
       return;
     }
@@ -316,22 +316,22 @@ export default function EditAgentPage() {
                       }}
                       disabled={isLoading}
                     >
-                      Clear board
+                      Clear project
                     </button>
                   ) : null}
                 </div>
                 <SearchableSelect
-                  ariaLabel="Select board"
+                  ariaLabel="Select project"
                   value={resolvedBoardId}
                   onValueChange={(value) => setBoardId(value)}
                   options={getBoardOptions(boards)}
                   placeholder={
                     resolvedIsGatewayMain
-                      ? "No board (main agent)"
-                      : "Select board"
+                      ? "No project (main agent)"
+                      : "Select project"
                   }
-                  searchPlaceholder="Search boards..."
-                  emptyMessage="No matching boards."
+                  searchPlaceholder="Search projects..."
+                  emptyMessage="No matching projects."
                   triggerClassName="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   contentClassName="rounded-xl border border-slate-200 shadow-lg"
                   itemClassName="px-4 py-3 text-sm text-slate-700 data-[selected=true]:bg-slate-50 data-[selected=true]:text-slate-900"

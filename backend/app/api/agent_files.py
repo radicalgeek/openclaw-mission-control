@@ -150,9 +150,7 @@ async def get_agent_file(
     control_plane, gw_agent_id = await _build_control_plane(agent, session)
 
     try:
-        payload = await control_plane.get_agent_file_payload(
-            agent_id=gw_agent_id, name=file_name
-        )
+        payload = await control_plane.get_agent_file_payload(agent_id=gw_agent_id, name=file_name)
     except OpenClawGatewayError as exc:
         msg = str(exc).lower()
         if any(m in msg for m in ("not found", "no such file", "unknown file")):
@@ -258,9 +256,7 @@ async def set_agent_file(
         try:
             await control_plane.reset_agent_session(agent.openclaw_session_id)
         except OpenClawGatewayError:
-            logger.warning(
-                "agent.file.write.session_reset_failed agent_id=%s", agent.id
-            )
+            logger.warning("agent.file.write.session_reset_failed agent_id=%s", agent.id)
 
     return AgentFileContent(
         agent_id=UUID(agent_id),

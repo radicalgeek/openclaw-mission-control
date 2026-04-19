@@ -479,9 +479,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                               )}
                               <span className="truncate">{ch.name}</span>
                               {showPlatformIndicator && (
-                                <span className="flex items-center gap-1 rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700" title="Cross-board platform support channel">
+                                <span className="flex items-center gap-1 rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700" title="Cross-project platform support channel">
                                   <Shield className="h-2.5 w-2.5" />
-                                  cross-board
+                                  cross-project
                                 </span>
                               )}
                               {(ch.unread_count ?? 0) > 0 && (

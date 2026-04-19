@@ -46,6 +46,10 @@ class SprintRead(SQLModel):
     updated_at: datetime
     ticket_count: int = 0
     tickets_done_count: int = 0
+    # Velocity snapshot fields (populated at sprint start/complete)
+    committed_minutes: int | None = None
+    completed_minutes: int | None = None
+    actual_minutes: int | None = None
 
 
 class SprintTicketRead(SQLModel):

@@ -39,7 +39,8 @@ export type MessageContentType =
   | "text"
   | "webhook_event"
   | "agent_response"
-  | "system_notification";
+  | "system_notification"
+  | "mcp_app_result";
 
 export type MessageSenderType = "user" | "agent" | "webhook" | "system";
 

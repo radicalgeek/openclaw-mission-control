@@ -60,7 +60,7 @@ describe("CustomFieldForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Select at least one board."),
+        screen.getByText("Select at least one project."),
       ).toBeInTheDocument();
     });
     expect(onSubmit).not.toHaveBeenCalled();

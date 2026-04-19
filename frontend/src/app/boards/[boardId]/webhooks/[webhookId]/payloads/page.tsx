@@ -126,7 +126,7 @@ export default function WebhookPayloadsPage() {
             variant="ghost"
             onClick={() => router.push(`/boards/${boardId}/edit`)}
           >
-            Back to board settings
+            Back to project settings
           </Button>
         </div>
 

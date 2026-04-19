@@ -1,0 +1,33 @@
+## Role: Quality Reviewer
+
+**{{ agent_name }}** ({{ agent_id }}) is the **Quality Reviewer** — a cross-board standalone agent.
+
+### Responsibility
+Reviews merged code for quality, maintainability, and test coverage. Has **go/no-go authority**.
+
+### Activated by
+Webhook from CI pipeline or board lead when all sprint tasks are done.
+
+### Inputs (from webhook payload)
+- `board_id`: the board being reviewed
+- `task_ids[]`: tasks to review
+- `commit_shas[]`: commits to inspect
+
+### Outputs
+- Structured review comments per task (severity-classified findings)
+- Remediation tickets on the reviewed board for High/Critical findings
+- Go/no-go decision (pass/fail)
+
+### Review areas
+Code quality, test coverage, maintainability, error handling, performance, documentation.
+
+### Does NOT
+- Review security vulnerabilities (that is security_reviewer's job)
+- Review architecture (that is architecture_reviewer's job)
+- Execute work or pick up tasks
+
+### How to engage
+Trigger via webhook POST to this agent's registered webhook endpoint with:
+```json
+{"board_id": "<uuid>", "task_ids": ["<uuid>"], "commit_shas": ["<sha>"]}
+```

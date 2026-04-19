@@ -46,6 +46,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AgentFilesPanel } from "@/components/agents/AgentFilesPanel";
+import { AgentWebhooksPanel } from "@/components/agents/AgentWebhooksPanel";
+import { AgentSkillsPanel } from "@/components/agents/AgentSkillsPanel";
+import { AgentBoardAccessPanel } from "@/components/agents/AgentBoardAccessPanel";
 
 export default function AgentDetailPage() {
   const { isSignedIn } = useAuth();
@@ -56,9 +59,12 @@ export default function AgentDetailPage() {
 
   const { isAdmin } = useOrganizationMembership(isSignedIn);
 
+  type AgentDetailTab = "overview" | "files" | "webhooks" | "skills" | "board-access";
+
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showFiles, setShowFiles] = useState(false);
+  const [activeTab, setActiveTab] = useState<AgentDetailTab>("overview");
 
   const agentQuery = useGetAgentApiV1AgentsAgentIdGet<
     getAgentApiV1AgentsAgentIdGetResponse,
@@ -190,7 +196,7 @@ export default function AgentDetailPage() {
                 >
                   Back to agents
                 </Button>
-                {agent ? (
+                {agent && agent.agent_type !== "standalone" ? (
                   <Button
                     variant="outline"
                     onClick={() => setShowFiles((v) => !v)}
@@ -226,6 +232,49 @@ export default function AgentDetailPage() {
               </div>
             ) : agent ? (
               <>
+              {agent.agent_type === "standalone" && (
+                <div className="flex gap-1 border-b border-slate-200">
+                  {([
+                    { id: "overview", label: "Overview" },
+                    { id: "files", label: "Files" },
+                    { id: "webhooks", label: "Webhooks" },
+                    { id: "skills", label: "Skills" },
+                    { id: "board-access", label: "Project access" },
+                  ] as { id: AgentDetailTab; label: string }[]).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={[
+                        "px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px",
+                        activeTab === tab.id
+                          ? "border-purple-600 text-purple-700"
+                          : "border-transparent text-slate-500 hover:text-slate-700",
+                      ].join(" ")}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {agent.agent_type === "standalone" && activeTab === "files" ? (
+                <div className="space-y-2">
+                  <AgentFilesPanel agentId={agent.id} isAdmin={isAdmin} />
+                </div>
+              ) : agent.agent_type === "standalone" && activeTab === "webhooks" ? (
+                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
+                  <AgentWebhooksPanel agentId={agent.id} />
+                </div>
+              ) : agent.agent_type === "standalone" && activeTab === "skills" ? (
+                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
+                  <AgentSkillsPanel agentId={agent.id} />
+                </div>
+              ) : agent.agent_type === "standalone" && activeTab === "board-access" ? (
+                <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
+                  <AgentBoardAccessPanel agentId={agent.id} />
+                </div>
+              ) : (
+              <>
               <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
                 <div className="space-y-6">
                   <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
@@ -257,11 +306,11 @@ export default function AgentDetailPage() {
                       </div>
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
-                          Board
+                          Project
                         </p>
                         {agent.is_gateway_main ? (
                           <p className="mt-1 text-sm text-strong">
-                            Gateway main (no board)
+                            Gateway main (no project)
                           </p>
                         ) : linkedBoard ? (
                           <Link
@@ -372,7 +421,7 @@ export default function AgentDetailPage() {
                 </div>
               </div>
 
-              {showFiles ? (
+              {showFiles && agent.agent_type !== "standalone" ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
                     Workspace files
@@ -380,6 +429,8 @@ export default function AgentDetailPage() {
                   <AgentFilesPanel agentId={agent.id} isAdmin={isAdmin} />
                 </div>
               ) : null}
+              </>
+              )}
               </>
             ) : (
               <div className="flex flex-1 items-center justify-center text-sm text-muted">

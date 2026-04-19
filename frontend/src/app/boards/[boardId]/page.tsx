@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { Markdown } from "@/components/atoms/Markdown";
+import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
 import { StatusDot } from "@/components/atoms/StatusDot";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { TaskBoard } from "@/components/organisms/TaskBoard";
@@ -128,6 +129,7 @@ import {
 } from "@/lib/display-name";
 import { AGENT_EMOJI_GLYPHS } from "@/lib/agent-emoji";
 import { cn } from "@/lib/utils";
+import { useBranding } from "@/lib/branding";
 import { usePageActive } from "@/hooks/usePageActive";
 import {
   boardCustomFieldValues,
@@ -290,7 +292,7 @@ const toLiveFeedFromBoardChat = (memory: BoardChatMessage): LiveFeedItem => {
     agent_id: null,
     actor_name: actorName,
     task_id: null,
-    title: isCommand ? "Board command" : "Board chat",
+    title: isCommand ? "Project command" : "Project chat",
     event_type: isCommand ? "board.command" : "board.chat",
   };
 };
@@ -358,7 +360,7 @@ const toLiveFeedFromAgentUpdate = (
   const stamp = agent.last_seen_at ?? agent.updated_at ?? agent.created_at;
   const message =
     eventType === "agent.created"
-      ? `${agent.name} joined this board.`
+      ? `${agent.name} joined this project.`
       : eventType === "agent.online"
         ? `${agent.name} is online.`
         : eventType === "agent.offline"
@@ -647,7 +649,15 @@ const ChatMessageCard = memo(function ChatMessageCard({
         </span>
       </div>
       <div className="mt-2 select-text cursor-text text-sm leading-relaxed text-slate-900 break-words">
-        <Markdown content={message.content} variant="basic" />
+        {message.content_type === "mcp_app_result" ? (
+          <MpcAppResultCard
+            metadata={message.app_metadata ?? null}
+            fallbackContent={message.content}
+            variant="basic"
+          />
+        ) : (
+          <Markdown content={message.content} variant="basic" />
+        )}
       </div>
     </div>
   );
@@ -748,6 +758,7 @@ const LiveFeedCard = memo(function LiveFeedCard({
 LiveFeedCard.displayName = "LiveFeedCard";
 
 export default function BoardDetailPage() {
+  const branding = useBranding();
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
@@ -1252,7 +1263,7 @@ export default function BoardDetailPage() {
   }, [boardCustomFieldDefinitions]);
 
   const titleLabel = useMemo(
-    () => (board ? `${board.name} board` : "Board"),
+    () => (board ? `${board.name} project` : "Project"),
     [board],
   );
 
@@ -1445,11 +1456,11 @@ export default function BoardDetailPage() {
             },
           );
         if (streamResult.status !== 200) {
-          throw new Error("Unable to connect board chat stream.");
+          throw new Error("Unable to connect project chat stream.");
         }
         const response = streamResult.data as Response;
         if (!(response instanceof Response) || !response.body) {
-          throw new Error("Unable to connect board chat stream.");
+          throw new Error("Unable to connect project chat stream.");
         }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -3010,7 +3021,7 @@ export default function BoardDetailPage() {
         if (trimmed) return trimmed;
       }
     }
-    if (agent.is_board_lead) return "Board lead";
+    if (agent.is_board_lead) return "Project lead";
     if (agent.is_gateway_main) return "Gateway main";
     return "Agent";
   };
@@ -3186,7 +3197,7 @@ export default function BoardDetailPage() {
     <DashboardShell>
       <SignedOut>
         <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl surface-panel p-10 text-center">
-          <p className="text-sm text-muted">Sign in to view boards.</p>
+          <p className="text-sm text-muted">Sign in to view projects.</p>
           <SignInButton
             mode="modal"
             forceRedirectUrl="/boards"
@@ -3217,7 +3228,7 @@ export default function BoardDetailPage() {
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h1 className="mt-2 text-2xl font-semibold text-slate-900 tracking-tight">
-                    {board?.name ?? "Board"}
+                    {board?.name ?? "Project"}
                   </h1>
                   <p className="mt-1 text-sm text-slate-500">
                     Keep tasks moving through your workflow.
@@ -3225,7 +3236,7 @@ export default function BoardDetailPage() {
                   {isBoardLeadProvisioning ? (
                     <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
                       <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Provisioning board lead…</span>
+                      <span>Provisioning project lead…</span>
                     </div>
                   ) : null}
                   {sortedAgents.length > 0 ? (
@@ -3254,7 +3265,7 @@ export default function BoardDetailPage() {
                             <span className="max-w-[72px] truncate text-[color:var(--text-muted)] group-hover:text-[color:var(--text)]">
                               {agent.name}
                             </span>
-                            {agentRoleLabel(agent) === "Board lead" ? (
+                            {agentRoleLabel(agent) === "Project lead" ? (
                               <span className="text-[color:var(--accent)] opacity-80">★</span>
                             ) : null}
                           </button>
@@ -3293,7 +3304,7 @@ export default function BoardDetailPage() {
                       )}
                       onClick={() => setViewMode("board")}
                     >
-                      Board
+                      Task Board
                     </button>
                     <button
                       className={cn(
@@ -3372,8 +3383,8 @@ export default function BoardDetailPage() {
                     variant="outline"
                     onClick={openBoardChat}
                     className="h-9 w-9 p-0"
-                    aria-label="Board chat"
-                    title="Board chat"
+                    aria-label="Project chat"
+                    title="Project chat"
                   >
                     <MessageSquare className="h-4 w-4" />
                   </Button>
@@ -3391,8 +3402,8 @@ export default function BoardDetailPage() {
                       type="button"
                       onClick={() => router.push(`/boards/${boardId}/edit`)}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                      aria-label="Board settings"
-                      title="Board settings"
+                      aria-label="Project settings"
+                      title="Project settings"
                     >
                       <Settings className="h-4 w-4" />
                     </button>
@@ -3828,8 +3839,8 @@ export default function BoardDetailPage() {
                 <p className="text-sm text-slate-500">
                   No approvals tied to this task.{" "}
                   {pendingApprovals.length > 0
-                    ? `${pendingApprovals.length} pending on this board.`
-                    : "No pending approvals on this board."}
+                    ? `${pendingApprovals.length} pending on this project.`
+                    : "No pending approvals on this project."}
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -3927,7 +3938,7 @@ export default function BoardDetailPage() {
                 ) : null}
                 {!canWrite ? (
                   <p className="text-xs text-slate-500">
-                    Read-only access. You cannot post comments on this board.
+                    Read-only access. You cannot post comments on this project.
                   </p>
                 ) : null}
               </div>
@@ -3959,6 +3970,17 @@ export default function BoardDetailPage() {
                               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
                                 {msg.content}
                               </span>
+                            </div>
+                          );
+                        }
+                        if (msg.content_type === "mcp_app_result") {
+                          return (
+                            <div key={msg.id} className="w-full">
+                              <MpcAppResultCard
+                                metadata={msg.event_metadata ?? null}
+                                fallbackContent={msg.content}
+                                variant="comment"
+                              />
                             </div>
                           );
                         }
@@ -3999,9 +4021,9 @@ export default function BoardDetailPage() {
                                 })}
                               </span>
                             </div>
-                            <p className="mt-2 text-sm leading-relaxed text-slate-900 break-words">
-                              {msg.content}
-                            </p>
+                            <div className="mt-2 text-sm leading-relaxed text-slate-900 break-words">
+                              <Markdown content={msg.content} variant="comment" />
+                            </div>
                           </div>
                         );
                       })}
@@ -4051,7 +4073,7 @@ export default function BoardDetailPage() {
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 md:px-6 md:py-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Board chat
+                Project chat
               </p>
               <p className="mt-1 text-sm font-medium text-slate-900">
                 Talk to the lead agent. Tag others with @name.
@@ -4061,7 +4083,7 @@ export default function BoardDetailPage() {
               type="button"
               onClick={closeBoardChat}
               className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
-              aria-label="Close board chat"
+              aria-label="Close project chat"
             >
               <X className="h-4 w-4" />
             </button>
@@ -4095,7 +4117,7 @@ export default function BoardDetailPage() {
               mentionSuggestions={boardChatMentionSuggestions}
               placeholder={
                 canWrite
-                  ? "Message the board lead. Tag agents with @name."
+                  ? "Message the project lead. Tag agents with @name."
                   : "Read-only access. Chat is disabled."
               }
             />
@@ -4116,7 +4138,7 @@ export default function BoardDetailPage() {
                 Live feed
               </p>
               <p className="mt-1 text-sm font-medium text-slate-900">
-                Realtime task, approval, agent, and board-chat activity.
+                Realtime task, approval, agent, and project-chat activity.
               </p>
             </div>
             <button
@@ -4688,8 +4710,8 @@ export default function BoardDetailPage() {
               </DialogTitle>
               <DialogDescription>
                 {agentsControlAction === "pause"
-                  ? "Send /pause to every agent on this board."
-                  : "Send /resume to every agent on this board."}
+                  ? "Send /pause to every agent on this project."
+                  : "Send /resume to every agent on this project."}
               </DialogDescription>
             </DialogHeader>
 
@@ -4707,10 +4729,10 @@ export default function BoardDetailPage() {
                   <span className="font-mono">
                     {agentsControlAction === "pause" ? "/pause" : "/resume"}
                   </span>{" "}
-                  to board chat.
+                  to project chat.
                 </li>
                 <li>
-                  ProductFoundry forwards it to all agents on this board.
+                  {branding.productName} forwards it to all agents on this project.
                 </li>
               </ul>
             </div>

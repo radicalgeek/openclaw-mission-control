@@ -11,6 +11,7 @@ import type { ThreadMessageRead, ThreadRead } from "@/api/channels";
 import { createTaskFromThread, getThreadMessages, sendMessage, updateThread } from "@/api/channels";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/atoms/Markdown";
+import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
 import { WebhookEventCard } from "./WebhookEventCard";
 import { LinkedTaskBadge } from "./LinkedTaskBadge";
 import { ApiError } from "@/api/mutator";
@@ -56,6 +57,21 @@ function MessageBubble({
     return (
       <div className="w-full">
         <WebhookEventCard message={message} />
+        <p className="mt-1 text-right text-[10px] text-slate-400">
+          {formatTime(message.created_at)}
+        </p>
+      </div>
+    );
+  }
+
+  if (message.content_type === "mcp_app_result") {
+    return (
+      <div className="w-full">
+        <MpcAppResultCard
+          metadata={message.event_metadata ?? null}
+          fallbackContent={message.content}
+          variant="comment"
+        />
         <p className="mt-1 text-right text-[10px] text-slate-400">
           {formatTime(message.created_at)}
         </p>

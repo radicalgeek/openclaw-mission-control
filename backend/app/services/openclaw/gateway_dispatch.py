@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.services.openclaw.db_service import OpenClawDBService
@@ -29,6 +30,14 @@ class GatewayDispatchService(OpenClawDBService):
         board: Board,
     ) -> GatewayClientConfig | None:
         gateway = await get_gateway_for_board(self.session, board)
+        return optional_gateway_client_config(gateway)
+
+    async def optional_gateway_config_for_agent(
+        self,
+        agent: Agent,
+    ) -> GatewayClientConfig | None:
+        """Resolve gateway config directly from the agent's gateway_id (for standalone agents)."""
+        gateway = await Gateway.objects.by_id(agent.gateway_id).first(self.session)
         return optional_gateway_client_config(gateway)
 
     async def require_gateway_config_for_board(

@@ -45,7 +45,7 @@ const findMentionTarget = (
 };
 
 function BoardChatComposerImpl({
-  placeholder = "Message the board lead. Tag agents with @name.",
+  placeholder = "Message the project lead. Tag agents with @name.",
   isSending = false,
   disabled = false,
   mentionSuggestions,

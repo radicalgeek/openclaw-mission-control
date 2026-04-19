@@ -64,7 +64,7 @@ export default function PlanningIndexPage() {
         <main className="flex min-h-0 flex-1 flex-col items-center justify-center bg-slate-50">
           {boards.length === 0 && boardsQuery.isSuccess ? (
             <p className="text-sm text-slate-500">
-              No boards found. Create a board first.
+              No projects found. Create a project first.
             </p>
           ) : (
             <p className="text-sm text-slate-400">Loading…</p>

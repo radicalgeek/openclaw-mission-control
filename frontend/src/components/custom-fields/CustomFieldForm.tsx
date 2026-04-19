@@ -277,7 +277,7 @@ export function CustomFieldForm({
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Board bindings
+            Project bindings
           </p>
           <span className="text-xs text-slate-500">
             {selectedBoardIds.size} selected
@@ -287,13 +287,13 @@ export function CustomFieldForm({
           <Input
             value={boardSearch}
             onChange={(event) => setBoardSearch(event.target.value)}
-            placeholder="Search boards..."
+            placeholder="Search projects..."
             disabled={isSubmitting}
           />
           <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-slate-50/40">
             {boardsLoading ? (
               <div className="px-4 py-6 text-sm text-slate-500">
-                Loading boards…
+                Loading projects…
               </div>
             ) : boardsError ? (
               <div className="px-4 py-6 text-sm text-rose-700">
@@ -301,7 +301,7 @@ export function CustomFieldForm({
               </div>
             ) : filteredBoards.length === 0 ? (
               <div className="px-4 py-6 text-sm text-slate-500">
-                No boards found.
+                No projects found.
               </div>
             ) : (
               <ul className="divide-y divide-slate-200">
@@ -343,7 +343,7 @@ export function CustomFieldForm({
             )}
           </div>
           <p className="text-xs text-slate-500">
-            Required. The custom field appears on tasks in selected boards.
+            Required. The custom field appears on tasks in selected projects.
           </p>
         </div>
       </div>

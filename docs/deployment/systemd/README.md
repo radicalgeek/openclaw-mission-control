@@ -1,6 +1,6 @@
 # Systemd unit files (local install, run at boot)
 
-Example systemd units for running Mission Control at boot when installed **without Docker** (e.g. local install in a VM).
+Example systemd units for running Product Foundry at boot when installed **without Docker** (e.g. local install in a VM).
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ If you use Docker only for Postgres and/or Redis, start those first (e.g. `docke
 
 Before installing, replace in each unit file:
 
-- `REPO_ROOT` — absolute path to the Mission Control repo (e.g. `/home/user/openclaw-mission-control`). Must not contain spaces (systemd unit values do not support shell-style quoting).
+- `REPO_ROOT` — absolute path to the Product Foundry repo (e.g. `/home/user/openclaw-mission-control`). Must not contain spaces (systemd unit values do not support shell-style quoting).
 - `BACKEND_PORT` — backend port (default `8000`).
 - `FRONTEND_PORT` — frontend port (default `3000`).
 
@@ -52,7 +52,7 @@ sudo systemctl enable --now openclaw-mission-control-backend openclaw-mission-co
 
 ## Order
 
-Start order is not strict between backend, frontend, and worker; all use `After=network-online.target`. Ensure Postgres (and Redis, if used) are running before or with the backend/worker (e.g. start Docker services first, or use system units for Postgres/Redis with the Mission Control units depending on them).
+Start order is not strict between backend, frontend, and worker; all use `After=network-online.target`. Ensure Postgres (and Redis, if used) are running before or with the backend/worker (e.g. start Docker services first, or use system units for Postgres/Redis with the Product Foundry units depending on them).
 
 ## Logs
 

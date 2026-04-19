@@ -1,6 +1,6 @@
 # Deployment
 
-This section covers deploying Mission Control in self-hosted environments.
+This section covers deploying Product Foundry in self-hosted environments.
 
 > **Goal**
 > A simple, reproducible deploy that preserves the Postgres volume and supports safe upgrades.
@@ -118,7 +118,7 @@ This section is intentionally minimal until we standardize a recommended proxy (
 
 ## Run at boot (local install)
 
-If you installed Mission Control **without Docker** (e.g. using `install.sh` with "local" mode, or inside a VM where Docker is not used), the installer does not configure run-at-boot. You can start the stack after each reboot manually, or configure the OS to start it for you.
+If you installed Product Foundry **without Docker** (e.g. using `install.sh` with "local" mode, or inside a VM where Docker is not used), the installer does not configure run-at-boot. You can start the stack after each reboot manually, or configure the OS to start it for you.
 
 ### Linux (systemd)
 

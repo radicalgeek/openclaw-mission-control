@@ -14,12 +14,12 @@ os.environ["BASE_URL"] = "http://localhost:8000"
 
 
 from app.models.channel import Channel  # noqa: E402
+from app.models.channel_subscription import ChannelSubscription  # noqa: E402
 from app.models.thread import Thread  # noqa: E402
 from app.models.thread_message import ThreadMessage  # noqa: E402
-from app.models.channel_subscription import ChannelSubscription  # noqa: E402
 from app.schemas.channels import ChannelCreate, ChannelRead, SubscriptionUpsert  # noqa: E402
-from app.schemas.threads import ThreadCreate, ThreadRead, ThreadUpdate  # noqa: E402
 from app.schemas.thread_messages import ThreadMessageCreate, ThreadMessageRead  # noqa: E402
+from app.schemas.threads import ThreadCreate, ThreadRead, ThreadUpdate  # noqa: E402
 
 
 def test_channel_model_defaults() -> None:

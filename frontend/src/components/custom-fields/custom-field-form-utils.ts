@@ -157,7 +157,7 @@ export const normalizeCustomFieldFormInput = ({
   }
   if (!trimmedLabel) return { value: null, error: "Label is required." };
   if (boardIds.length === 0) {
-    return { value: null, error: "Select at least one board." };
+    return { value: null, error: "Select at least one project." };
   }
   if (
     trimmedValidationRegex &&

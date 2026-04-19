@@ -69,6 +69,7 @@ class _FakeSession:
 @pytest.mark.asyncio
 async def test_delete_board_cleans_org_board_access_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deleting a board should clear org-board access rows before commit."""
+
     async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
         pass
 
@@ -101,8 +102,11 @@ async def test_delete_board_cleans_org_board_access_rows(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_delete_board_cleans_tag_assignments_before_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_delete_board_cleans_tag_assignments_before_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Deleting a board should remove task-linked rows before deleting tasks."""
+
     async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
         pass
 
@@ -137,6 +141,7 @@ async def test_delete_board_cleans_tag_assignments_before_tasks(monkeypatch: pyt
 @pytest.mark.asyncio
 async def test_delete_board_ignores_missing_gateway_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deleting a board should continue when gateway reports agent not found."""
+
     async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
         pass
 

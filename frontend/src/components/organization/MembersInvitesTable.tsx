@@ -47,11 +47,11 @@ const initialsFrom = (value?: string | null) => {
 
 const summarizeAccess = (allRead: boolean, allWrite: boolean) => {
   if (allRead || allWrite) {
-    if (allRead && allWrite) return "All boards: read + write";
-    if (allWrite) return "All boards: write";
-    return "All boards: read";
+    if (allRead && allWrite) return "All projects: read + write";
+    if (allWrite) return "All projects: write";
+    return "All projects: read";
   }
-  return "Selected boards";
+  return "Selected projects";
 };
 
 const memberDisplay = (member: OrganizationMemberRead) => {

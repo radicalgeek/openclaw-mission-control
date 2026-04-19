@@ -30,8 +30,9 @@ if TYPE_CHECKING:
     from app.schemas.auth import AuthContext
 
 if TYPE_CHECKING:
-    from app.core.auth import AuthContext
     from sqlmodel.ext.asyncio.session import AsyncSession
+
+    from app.core.auth import AuthContext
 
 router = APIRouter(tags=["channels"])
 logger = get_logger(__name__)
@@ -134,9 +135,7 @@ async def create_channel_thread(
     if channel.is_archived:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Channel is archived.")
     if channel.is_readonly:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Channel is read-only."
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Channel is read-only.")
 
     thread = Thread(
         channel_id=channel_id,
@@ -157,6 +156,7 @@ async def create_channel_thread(
     # so routing can isolate replies to only the originating board lead.
     if actor_board_id is not None and channel.slug == "support":
         from app.models.boards import Board as BoardModel
+
         channel_board = await session.get(BoardModel, channel.board_id)
         if channel_board is not None and channel_board.is_platform:
             # Only set if this actor is from a *different* board (cross-board thread)
@@ -201,6 +201,7 @@ async def create_channel_thread(
         channel_obj = await session.get(Channel, channel_id)
         if channel_obj:
             from app.services.channel_agent_routing import dispatch_channel_message_to_agents
+
             await dispatch_channel_message_to_agents(session, thread, msg, channel_obj)
     except Exception:  # noqa: BLE001
         logger.exception("channel_routing.dispatch_error thread_id=%s", thread.id)
@@ -339,6 +340,7 @@ async def create_task_from_thread(
         title=thread.topic,
         status="inbox",
         priority="medium",
+        priority_score=35,
         thread_id=thread.id,
         created_by_user_id=created_by_user_id,
     )

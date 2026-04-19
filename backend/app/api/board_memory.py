@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
 from sqlmodel import col
 from sse_starlette.sse import EventSourceResponse
@@ -280,6 +280,17 @@ async def create_board_memory(
 ) -> BoardMemory:
     """Create a board memory entry and notify chat targets when needed."""
     is_chat = payload.tags is not None and "chat" in payload.tags
+    if payload.content_type == "mcp_app_result" and not payload.app_metadata:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="metadata with 'app' key is required when content_type is 'mcp_app_result'",
+        )
+    if payload.content_type == "mcp_app_result" and payload.app_metadata:
+        if not isinstance(payload.app_metadata.get("app"), str):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="metadata must contain 'app' (string) when content_type is 'mcp_app_result'",
+            )
     source = payload.source
     if is_chat and not source:
         if actor.actor_type == "agent" and actor.agent:
@@ -292,6 +303,8 @@ async def create_board_memory(
         tags=payload.tags,
         is_chat=is_chat,
         source=source,
+        content_type=payload.content_type,
+        app_metadata=payload.app_metadata,
     )
     session.add(memory)
     await session.commit()

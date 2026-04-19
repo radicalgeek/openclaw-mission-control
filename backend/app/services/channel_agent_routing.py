@@ -40,7 +40,6 @@ class _AgentNotification:
     board_id: UUID  # agent's own board — used for per-agent gateway config lookup
 
 
-
 async def get_agents_to_notify(
     session: "AsyncSession",
     thread: "Thread",
@@ -78,7 +77,9 @@ async def get_agents_to_notify(
             if sender_agent_id is not None and target_agent_id == sender_agent_id:
                 # Don't dispatch back to the agent who just sent a message
                 return []
-            agent = (await session.exec(select(Agent).where(col(Agent.id) == target_agent_id))).first()
+            agent = (
+                await session.exec(select(Agent).where(col(Agent.id) == target_agent_id))
+            ).first()
             if agent and agent.openclaw_session_id and agent.board_id is not None:
                 _mentions = extract_mentions(message.content)
                 return [
@@ -102,7 +103,7 @@ async def get_agents_to_notify(
     # Determine if this is the platform Support channel.
     # In Support: platform lead always responds; cross-board leads only receive
     # dispatches for threads their board owns OR when @mentioned.
-    is_support_channel = (channel.slug == "support" and board.is_platform)
+    is_support_channel = channel.slug == "support" and board.is_platform
 
     # Get board lead agent (the channel's own board lead)
     lead_agent = (
@@ -118,9 +119,7 @@ async def get_agents_to_notify(
     # Get all subscriptions for this channel
     subscriptions = (
         await session.exec(
-            select(ChannelSubscription).where(
-                col(ChannelSubscription.channel_id) == channel.id
-            )
+            select(ChannelSubscription).where(col(ChannelSubscription.channel_id) == channel.id)
         )
     ).all()
 
@@ -129,7 +128,9 @@ async def get_agents_to_notify(
     # Ensure the board lead is always considered even if not explicitly subscribed
     if lead_agent and lead_agent.id not in sub_by_agent:
         from uuid import uuid4
+
         from app.models.channel_subscription import ChannelSubscription as CS
+
         virtual = CS(
             id=uuid4(),
             channel_id=channel.id,
@@ -231,7 +232,9 @@ async def dispatch_channel_message_to_agents(
 
     # Build context: last 20 messages for context window
     from sqlmodel import asc
+
     from app.models.thread_message import ThreadMessage as TM
+
     recent_msgs = (
         await session.exec(
             select(TM)
@@ -272,9 +275,7 @@ async def dispatch_channel_message_to_agents(
 
         preamble = ""
         if not notification.is_lead and notification.is_mentioned:
-            preamble = (
-                f"You were mentioned in #{channel.name} > \"{thread.topic}\".\n\n"
-            )
+            preamble = f'You were mentioned in #{channel.name} > "{thread.topic}".\n\n'
 
         reply_instructions = (
             f"\n\n---\n"
@@ -282,7 +283,7 @@ async def dispatch_channel_message_to_agents(
             f"  URL: {settings.base_url}/api/v1/threads/{thread.id}/messages\n"
             f"  Header: X-Agent-Token: <your MC agent token from TOOLS.md>\n"
             f"  Header: Content-Type: application/json\n"
-            f"  Body: {{\"content\": \"your reply here\"}}\n"
+            f'  Body: {{"content": "your reply here"}}\n'
             f"\n"
             f"You MUST reply in the thread — do not just reply in this session."
         )

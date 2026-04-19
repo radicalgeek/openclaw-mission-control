@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/select";
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { cn } from "@/lib/utils";
+import { useBranding, useBrandingRefresh, type BrandingConfig } from "@/lib/branding";
 
 type AccessScope = "all" | "custom";
 
@@ -158,7 +159,7 @@ function BoardAccessEditor({
     <div className="space-y-3">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Board access
+          Project access
         </p>
         <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1">
           <button
@@ -220,7 +221,7 @@ function BoardAccessEditor({
         <div>
           {boards.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              {emptyMessage ?? "No boards available yet."}
+              {emptyMessage ?? "No projects available yet."}
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-slate-200">
@@ -318,6 +319,72 @@ export default function OrganizationPage() {
       : null;
   const isOwner = membershipRole === "owner";
   const isAdmin = membershipRole === "admin" || membershipRole === "owner";
+
+  // Branding section state
+  const branding = useBranding();
+  const refreshBranding = useBrandingRefresh();
+  const [brandingForm, setBrandingForm] = useState<Partial<BrandingConfig>>({
+    productName: branding.productName,
+    companyName: branding.companyName,
+    fullTitle: branding.fullTitle,
+    logoPath: branding.logoPath,
+    accentColor: branding.accentColor,
+  });
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [brandingError, setBrandingError] = useState<string | null>(null);
+  const [brandingSuccess, setBrandingSuccess] = useState(false);
+
+  async function handleBrandingSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isAdmin) return;
+    setBrandingSaving(true);
+    setBrandingError(null);
+    setBrandingSuccess(false);
+    try {
+      await customFetch<unknown>("/api/v1/organizations/me/branding", {
+        method: "PATCH",
+        body: JSON.stringify({
+          product_name: brandingForm.productName,
+          company_name: brandingForm.companyName,
+          full_title: brandingForm.fullTitle,
+          logo_path: brandingForm.logoPath,
+          accent_color: brandingForm.accentColor,
+        }),
+      });
+      await refreshBranding();
+      setBrandingSuccess(true);
+      setTimeout(() => setBrandingSuccess(false), 3000);
+    } catch (err) {
+      setBrandingError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setBrandingSaving(false);
+    }
+  }
+
+  async function handleBrandingReset() {
+    if (!isAdmin) return;
+    setBrandingSaving(true);
+    setBrandingError(null);
+    try {
+      await customFetch<unknown>("/api/v1/organizations/me/branding", {
+        method: "DELETE",
+      });
+      await refreshBranding();
+      setBrandingForm({
+        productName: branding.productName,
+        companyName: branding.companyName,
+        fullTitle: branding.fullTitle,
+        logoPath: branding.logoPath,
+        accentColor: branding.accentColor,
+      });
+      setBrandingSuccess(true);
+      setTimeout(() => setBrandingSuccess(false), 3000);
+    } catch (err) {
+      setBrandingError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setBrandingSaving(false);
+    }
+  }
 
   const invitesQuery = useListOrgInvitesApiV1OrganizationsMeInvitesGet<
     listOrgInvitesApiV1OrganizationsMeInvitesGetResponse,
@@ -563,7 +630,7 @@ export default function OrganizationPage() {
       inviteScope === "custom" && inviteAccessList.length > 0;
 
     if (!hasAllAccess && !hasCustomAccess) {
-      setInviteError("Select read or write access for at least one board.");
+      setInviteError("Select read or write access for at least one project.");
       return;
     }
 
@@ -640,7 +707,7 @@ export default function OrganizationPage() {
       resolvedAccessScope === "custom" && accessList.length > 0;
 
     if (!hasAllAccess && !hasCustomAccess) {
-      setAccessError("Select read or write access for at least one board.");
+      setAccessError("Select read or write access for at least one project.");
       return;
     }
 
@@ -720,7 +787,7 @@ export default function OrganizationPage() {
                     </Badge>
                   </div>
                   <p className="mt-1 text-sm text-slate-500">
-                    Manage members and board access across your workspace.
+                    Manage members and project access across your workspace.
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
                     <span>
@@ -776,6 +843,97 @@ export default function OrganizationPage() {
           </div>
 
           <div className="px-4 py-4 md:px-8 md:py-8">
+            {isAdmin && (
+              <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900">
+                      Branding
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Customize names, logo, and accent color for this organization.
+                    </p>
+                  </div>
+                </div>
+                <form onSubmit={(e) => { void handleBrandingSave(e); }} className="px-5 py-5 space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-700">Product name</label>
+                      <Input
+                        value={brandingForm.productName ?? ""}
+                        onChange={(e) => setBrandingForm((f) => ({ ...f, productName: e.target.value }))}
+                        placeholder={branding.productName}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-700">Company name</label>
+                      <Input
+                        value={brandingForm.companyName ?? ""}
+                        onChange={(e) => setBrandingForm((f) => ({ ...f, companyName: e.target.value }))}
+                        placeholder={branding.companyName}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-700">Full title</label>
+                      <Input
+                        value={brandingForm.fullTitle ?? ""}
+                        onChange={(e) => setBrandingForm((f) => ({ ...f, fullTitle: e.target.value }))}
+                        placeholder={branding.fullTitle}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-700">Logo URL</label>
+                      <Input
+                        value={brandingForm.logoPath ?? ""}
+                        onChange={(e) => setBrandingForm((f) => ({ ...f, logoPath: e.target.value }))}
+                        placeholder={branding.logoPath}
+                      />
+                      {brandingForm.logoPath && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={brandingForm.logoPath} alt="Logo preview" className="mt-2 h-10 w-auto object-contain" />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-slate-700">Accent color (hex)</label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={brandingForm.accentColor ?? ""}
+                          onChange={(e) => setBrandingForm((f) => ({ ...f, accentColor: e.target.value }))}
+                          placeholder={branding.accentColor}
+                          className="font-mono"
+                        />
+                        {brandingForm.accentColor && (
+                          <div
+                            className="h-8 w-8 flex-shrink-0 rounded border border-slate-200"
+                            style={{ backgroundColor: brandingForm.accentColor }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {brandingError && (
+                    <p className="text-sm text-red-600">{brandingError}</p>
+                  )}
+                  {brandingSuccess && (
+                    <p className="text-sm text-emerald-600">Branding saved.</p>
+                  )}
+                  <div className="flex gap-3">
+                    <Button type="submit" size="sm" variant="primary" disabled={brandingSaving}>
+                      {brandingSaving ? "Saving…" : "Save branding"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={brandingSaving}
+                      onClick={() => handleBrandingReset()}
+                    >
+                      Reset to defaults
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                 <div>
@@ -868,8 +1026,8 @@ export default function OrganizationPage() {
                 onAccessChange={setInviteAccess}
                 emptyMessage={
                   boardsQuery.isLoading
-                    ? "Loading boards..."
-                    : "Create a board to start assigning access."
+                    ? "Loading projects..."
+                    : "Create a project to start assigning access."
                 }
               />
 
@@ -958,7 +1116,7 @@ export default function OrganizationPage() {
                 access={resolvedAccessMap}
                 onAccessChange={setAccessMap}
                 emptyMessage={
-                  boardsQuery.isLoading ? "Loading boards..." : undefined
+                  boardsQuery.isLoading ? "Loading projects..." : undefined
                 }
               />
 

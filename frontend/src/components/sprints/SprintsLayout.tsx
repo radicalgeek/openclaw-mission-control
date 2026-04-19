@@ -212,7 +212,7 @@ export function SprintsLayout({ boardId }: Props) {
         {/* Board name breadcrumb */}
         {currentBoard && (
           <div className="flex items-center gap-2 border-b border-slate-100 bg-white px-6 py-2.5">
-            <span className="text-xs text-slate-400">Board</span>
+            <span className="text-xs text-slate-400">Project</span>
             <span className="text-xs text-slate-300">/</span>
             <span className="text-xs font-medium text-slate-700">
               {currentBoard.name}

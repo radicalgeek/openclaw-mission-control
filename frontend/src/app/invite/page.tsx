@@ -12,8 +12,10 @@ import { useAcceptOrgInviteApiV1OrganizationsInvitesAcceptPost } from "@/api/gen
 import { BrandMark } from "@/components/atoms/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useBranding } from "@/lib/branding";
 
 function InviteContent() {
+  const branding = useBranding();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isSignedIn } = useAuth();
@@ -82,7 +84,7 @@ function InviteContent() {
               Organization Invite
             </p>
             <h1 className="text-2xl font-semibold text-strong">
-              Join your team in AxiaCraft ProductFoundry
+              Join your team in {branding.fullTitle}
             </h1>
             <p className="text-sm text-muted">{helperText}</p>
           </div>

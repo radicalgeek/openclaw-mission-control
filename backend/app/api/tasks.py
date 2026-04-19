@@ -91,7 +91,9 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/boards/{board_id}/tasks", tags=["tasks"])
 logger = get_logger(__name__)
 
-ALLOWED_STATUSES = {"inbox", "in_progress", "review", "done"}
+ALLOWED_STATUSES = {"triage", "backlog", "inbox", "in_progress", "review", "done", "archived"}
+# Statuses that appear on the Kanban board (vs backlog/off-board)
+BOARD_STATUSES = {"inbox", "in_progress", "review", "done"}
 TASK_EVENT_TYPES = {
     "task.created",
     "task.updated",
@@ -157,6 +159,18 @@ def _approval_required_for_done_error() -> HTTPException:
         detail={
             "message": ("Task can only be marked done when a linked approval has been approved."),
             "blocked_by_task_ids": [],
+        },
+    )
+
+
+def _invalid_status_transition_error(from_status: str, to_status: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "message": f"Invalid status transition: {from_status!r} → {to_status!r}.",
+            "code": "invalid_status_transition",
+            "from_status": from_status,
+            "to_status": to_status,
         },
     )
 
@@ -1234,6 +1248,9 @@ def _task_list_statement(
     statuses = _status_values(status_filter)
     if statuses:
         statement = statement.where(col(Task.status).in_(statuses))
+    else:
+        # Default board view: only show on-board statuses (exclude triage/backlog/archived)
+        statement = statement.where(col(Task.status).in_(sorted(BOARD_STATUSES)))
     if assigned_agent_id is not None:
         statement = statement.where(col(Task.assigned_agent_id) == assigned_agent_id)
     if unassigned:
@@ -1714,8 +1731,10 @@ async def delete_task_and_related_records(
         from app.core.config import settings as _settings  # noqa: PLC0415
 
         if _settings.planning_enabled:
+            from sqlmodel import col as _col
+            from sqlmodel import select as _select  # noqa: PLC0415
+
             from app.models.plans import Plan as _Plan  # noqa: PLC0415
-            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
 
             _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == task.id))
             for _linked_plan in _result.all():
@@ -2041,10 +2060,12 @@ async def _task_read_response(
     channel_info = None
     try:
         from app.core.config import settings as _settings  # noqa: PLC0415
+
         if _settings.channels_enabled and task.thread_id is not None:
             from app.models.channel import Channel as _Channel  # noqa: PLC0415
             from app.models.thread import Thread as _Thread  # noqa: PLC0415
             from app.schemas.tasks import ChannelInfo  # noqa: PLC0415
+
             thread = await session.get(_Thread, task.thread_id)
             if thread is not None:
                 channel = await session.get(_Channel, thread.channel_id)
@@ -2441,10 +2462,14 @@ async def _apply_lead_task_update(
         and update.task.status == "done"
     ):
         try:
-            from app.models.plans import Plan as _Plan  # noqa: PLC0415
-            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+            from sqlmodel import col as _col
+            from sqlmodel import select as _select  # noqa: PLC0415
 
-            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+
+            _result = await session.exec(
+                _select(_Plan).where(_col(_Plan.task_id) == update.task.id)
+            )
             _linked_plan = _result.first()
             if _linked_plan:
                 _linked_plan.status = "completed"
@@ -2461,10 +2486,14 @@ async def _apply_lead_task_update(
         and update.task.status != "done"
     ):
         try:
-            from app.models.plans import Plan as _Plan  # noqa: PLC0415
-            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+            from sqlmodel import col as _col
+            from sqlmodel import select as _select  # noqa: PLC0415
 
-            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+
+            _result = await session.exec(
+                _select(_Plan).where(_col(_Plan.task_id) == update.task.id)
+            )
             _linked_plan = _result.first()
             if _linked_plan and _linked_plan.status == "completed":
                 _linked_plan.status = "active"
@@ -2823,6 +2852,19 @@ async def _finalize_updated_task(
         previous_status=update.previous_status,
         target_status=update.task.status,
     )
+    # Generic status-transition guard (runs after board-specific checks so that
+    # board rules like require_review_before_done produce their own errors first)
+    if "status" in update.updates:
+        target = _required_status_value(update.updates["status"])
+        from app.schemas.tasks import STATUS_TRANSITIONS  # noqa: PLC0415
+
+        allowed_next = STATUS_TRANSITIONS.get(update.previous_status)
+        if (
+            allowed_next is not None
+            and target != update.previous_status
+            and target not in allowed_next
+        ):
+            raise _invalid_status_transition_error(update.previous_status, target)
     update.task.updated_at = utcnow()
 
     status_raw = update.updates.get("status")
@@ -2901,10 +2943,14 @@ async def _finalize_updated_task(
         and update.task.status == "done"
     ):
         try:
-            from app.models.plans import Plan as _Plan  # noqa: PLC0415
-            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+            from sqlmodel import col as _col
+            from sqlmodel import select as _select  # noqa: PLC0415
 
-            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+
+            _result = await session.exec(
+                _select(_Plan).where(_col(_Plan.task_id) == update.task.id)
+            )
             _linked_plan = _result.first()
             if _linked_plan:
                 _linked_plan.status = "completed"
@@ -2921,10 +2967,14 @@ async def _finalize_updated_task(
         and update.task.status != "done"
     ):
         try:
-            from app.models.plans import Plan as _Plan  # noqa: PLC0415
-            from sqlmodel import select as _select, col as _col  # noqa: PLC0415
+            from sqlmodel import col as _col
+            from sqlmodel import select as _select  # noqa: PLC0415
 
-            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == update.task.id))
+            from app.models.plans import Plan as _Plan  # noqa: PLC0415
+
+            _result = await session.exec(
+                _select(_Plan).where(_col(_Plan.task_id) == update.task.id)
+            )
             _linked_plan = _result.first()
             if _linked_plan and _linked_plan.status == "completed":
                 _linked_plan.status = "active"
@@ -2933,6 +2983,12 @@ async def _finalize_updated_task(
                 await session.commit()
         except Exception:
             logger.exception("task.plan_reopen_failed task_id=%s", update.task.id)
+
+    # Track done_at timestamp
+    if update.previous_status != "done" and update.task.status == "done":
+        update.task.done_at = utcnow()
+    elif update.previous_status == "done" and update.task.status != "done":
+        update.task.done_at = None
 
     # Sprint completion check when task transitions to done
     if update.previous_status != "done" and update.task.status == "done":

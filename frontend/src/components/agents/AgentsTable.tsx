@@ -20,6 +20,56 @@ import {
 } from "@/components/tables/cell-formatters";
 import { truncateText as truncate } from "@/lib/formatters";
 
+const AGENT_TYPE_CONFIG: Record<
+  string,
+  { label: string; className: string }
+> = {
+  standalone: {
+    label: "Standalone",
+    className: "bg-purple-100 text-purple-800 border border-purple-200",
+  },
+  board_lead: {
+    label: "Project Lead",
+    className: "bg-blue-100 text-blue-800 border border-blue-200",
+  },
+  board_worker: {
+    label: "Worker",
+    className: "bg-slate-100 text-slate-700 border border-slate-200",
+  },
+  gateway_main: {
+    label: "Gateway Main",
+    className: "bg-amber-100 text-amber-800 border border-amber-200",
+  },
+};
+
+function AgentTypeBadge({
+  agentType,
+  roleTemplate,
+}: {
+  agentType?: string | null;
+  roleTemplate?: string | null;
+}) {
+  const type = agentType ?? "board_worker";
+  const config = AGENT_TYPE_CONFIG[type] ?? {
+    label: type,
+    className: "bg-slate-100 text-slate-700 border border-slate-200",
+  };
+  return (
+    <span className="flex items-center gap-1.5 flex-wrap">
+      <span
+        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${config.className}`}
+      >
+        {config.label}
+      </span>
+      {roleTemplate ? (
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+          {roleTemplate.replace(/_/g, "\u00a0")}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 type AgentsTableEmptyState = {
   title: string;
   description: string;
@@ -112,6 +162,19 @@ export function AgentsTable({
           }),
       },
       {
+        accessorKey: "agent_type",
+        header: "Type",
+        cell: ({ row }) => (
+          <AgentTypeBadge
+            agentType={row.original.agent_type}
+            roleTemplate={
+              (row.original.identity_profile as Record<string, string> | null
+                | undefined)?.["role_template"] ?? null
+            }
+          />
+        ),
+      },
+      {
         accessorKey: "status",
         header: "Status",
         cell: ({ row }) => pillCell(row.original.status),
@@ -127,7 +190,7 @@ export function AgentsTable({
       },
       {
         accessorKey: "board_id",
-        header: "Board",
+        header: "Project",
         cell: ({ row }) => {
           const boardId = row.original.board_id;
           if (!boardId) {

@@ -13,7 +13,14 @@ import { TaskCard } from "@/components/molecules/TaskCard";
 import { parseApiDatetime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 
-type TaskStatus = "inbox" | "in_progress" | "review" | "done";
+type TaskStatus =
+  | "triage"
+  | "backlog"
+  | "inbox"
+  | "in_progress"
+  | "review"
+  | "done"
+  | "archived";
 
 type Task = {
   id: string;
@@ -287,10 +294,13 @@ export const TaskBoard = memo(function TaskBoard({
 
   const grouped = useMemo(() => {
     const buckets: Record<TaskStatus, Task[]> = {
+      triage: [],
+      backlog: [],
       inbox: [],
       in_progress: [],
       review: [],
       done: [],
+      archived: [],
     };
     for (const column of columns) {
       buckets[column.status] = [];

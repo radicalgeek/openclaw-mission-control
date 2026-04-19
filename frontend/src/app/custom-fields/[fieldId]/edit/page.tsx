@@ -123,7 +123,7 @@ export default function EditCustomFieldPage() {
         signUpForceRedirectUrl: "/custom-fields",
       }}
       title="Edit custom field"
-      description="Update custom-field metadata and board bindings."
+      description="Update custom-field metadata and project bindings."
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can manage custom fields."
       stickyHeader

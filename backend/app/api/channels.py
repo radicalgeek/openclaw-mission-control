@@ -79,7 +79,9 @@ async def _require_channel_for_board(
     return channel
 
 
-def _to_channel_read(channel: Channel, *, unread_count: int = 0, last_message_preview: str | None = None) -> ChannelRead:
+def _to_channel_read(
+    channel: Channel, *, unread_count: int = 0, last_message_preview: str | None = None
+) -> ChannelRead:
     return ChannelRead(
         id=channel.id,
         board_id=channel.board_id,
@@ -100,6 +102,7 @@ def _to_channel_read(channel: Channel, *, unread_count: int = 0, last_message_pr
 
 def _slugify(name: str) -> str:
     import re
+
     slug = name.lower().strip()
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
@@ -151,6 +154,7 @@ async def create_board_channel(
     # Auto-subscribe all existing board agents to the new channel
     try:
         from app.services.channel_lifecycle import on_channel_created as _on_channel_created
+
         await _on_channel_created(session, channel)
     except Exception:
         logger.exception("channel_lifecycle.channel_created_failed channel_id=%s", channel.id)
@@ -212,7 +216,9 @@ async def archive_channel(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/channels/{channel_id}/webhook-info", response_model=ChannelWebhookInfo, tags=["channels"])
+@router.get(
+    "/channels/{channel_id}/webhook-info", response_model=ChannelWebhookInfo, tags=["channels"]
+)
 async def get_channel_webhook_info(
     channel_id: UUID,
     session: AsyncSession = SESSION_DEP,
@@ -230,7 +236,11 @@ async def get_channel_webhook_info(
     )
 
 
-@router.post("/channels/{channel_id}/regenerate-webhook-secret", response_model=ChannelWebhookInfo, tags=["channels"])
+@router.post(
+    "/channels/{channel_id}/regenerate-webhook-secret",
+    response_model=ChannelWebhookInfo,
+    tags=["channels"],
+)
 async def regenerate_channel_webhook_secret(
     channel_id: UUID,
     session: AsyncSession = SESSION_DEP,
@@ -239,6 +249,7 @@ async def regenerate_channel_webhook_secret(
     """Regenerate the webhook secret for a channel."""
     _channels_enabled_check()
     import secrets
+
     channel = await _require_channel(session, channel_id)
     channel.webhook_secret = secrets.token_hex(32)
     channel.updated_at = utcnow()
@@ -288,7 +299,9 @@ async def ingest_channel_webhook(
             hashlib.sha256,
         ).hexdigest()
         if not hmac.compare_digest(sig_value.strip().lower(), expected.strip().lower()):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret."
+            )
 
     try:
         import json
@@ -312,7 +325,9 @@ async def ingest_channel_webhook(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/channels/{channel_id}/subscriptions", response_model=list[SubscriptionRead], tags=["channels"])
+@router.get(
+    "/channels/{channel_id}/subscriptions", response_model=list[SubscriptionRead], tags=["channels"]
+)
 async def list_channel_subscriptions(
     channel_id: UUID,
     session: AsyncSession = SESSION_DEP,
@@ -323,9 +338,7 @@ async def list_channel_subscriptions(
     await _require_channel(session, channel_id)
     subs = (
         await session.exec(
-            select(ChannelSubscription).where(
-                col(ChannelSubscription.channel_id) == channel_id
-            )
+            select(ChannelSubscription).where(col(ChannelSubscription.channel_id) == channel_id)
         )
     ).all()
     return [

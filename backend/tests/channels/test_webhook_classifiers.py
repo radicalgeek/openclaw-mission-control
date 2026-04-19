@@ -14,7 +14,6 @@ from app.webhooks.classifier import (
     classify_webhook_event,
 )
 
-
 # ---------------------------------------------------------------------------
 # GitHub Actions
 # ---------------------------------------------------------------------------
@@ -141,7 +140,9 @@ async def test_test_results_classified() -> None:
     event = classify_webhook_event(payload, headers)
     assert event.source_category == "test"
     assert event.severity == "error"
-    assert "integration tests" in event.topic.lower() or "integration tests" in event.summary.lower()
+    assert (
+        "integration tests" in event.topic.lower() or "integration tests" in event.summary.lower()
+    )
 
 
 # ---------------------------------------------------------------------------

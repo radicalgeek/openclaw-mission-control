@@ -131,9 +131,7 @@ async def upsert_board_template(
     if file_name not in VALID_FILE_NAMES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                f"Invalid file_name '{file_name}'. Valid names: {sorted(VALID_FILE_NAMES)}"
-            ),
+            detail=(f"Invalid file_name '{file_name}'. Valid names: {sorted(VALID_FILE_NAMES)}"),
         )
 
     _validate_jinja_syntax(payload.template_content)
@@ -174,9 +172,7 @@ async def upsert_board_template(
         await session.refresh(bt)
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Template already exists."
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Template already exists.")
     return _to_read(bt, source="board")
 
 
@@ -256,7 +252,9 @@ async def delete_board_template(
     return read
 
 
-@router.post("/{board_id}/templates/{file_name}/preview", response_model=BoardTemplatePreviewResponse)
+@router.post(
+    "/{board_id}/templates/{file_name}/preview", response_model=BoardTemplatePreviewResponse
+)
 async def preview_board_template(
     board_id: str,
     file_name: str,

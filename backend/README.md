@@ -1,6 +1,6 @@
-# Mission Control Backend (FastAPI)
+# Product Foundry Backend (FastAPI)
 
-This directory contains the **Mission Control backend API** (FastAPI + SQLModel) and its database migrations (Alembic).
+This directory contains the **Product Foundry backend API** (FastAPI + SQLModel) and its database migrations (Alembic).
 
 - Default API base URL: http://localhost:8000
 - Health endpoints: `/healthz`, `/readyz`
@@ -54,7 +54,7 @@ A starter file exists at `backend/.env.example`.
 - `DATABASE_URL`
   - Default: `postgresql+psycopg://postgres:postgres@localhost:5432/openclaw_agency`
   - Recommended local/dev default (matches `backend/.env.example`):
-    `postgresql+psycopg://postgres:postgres@localhost:5432/mission_control`
+    `postgresql+psycopg://postgres:postgres@localhost:5432/product_foundry`
 - `CORS_ORIGINS` (comma-separated)
   - Example: `http://localhost:3000`
 - `BASE_URL` (required for gateway provisioning/agent heartbeat templates; no fallback)

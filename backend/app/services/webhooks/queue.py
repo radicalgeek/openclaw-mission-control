@@ -14,6 +14,7 @@ from app.services.queue import requeue_if_failed as generic_requeue_if_failed
 
 logger = get_logger(__name__)
 TASK_TYPE = "webhook_delivery"
+AGENT_TASK_TYPE = "agent_webhook_delivery"
 
 
 @dataclass(frozen=True)
@@ -152,3 +153,75 @@ def requeue_if_failed(
             },
         )
         raise
+
+
+# ---------------------------------------------------------------------------
+# Agent webhook queue (standalone agents)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class QueuedAgentWebhookDelivery:
+    """Payload metadata for deferred agent webhook dispatch."""
+
+    agent_id: UUID
+    webhook_id: UUID
+    payload_id: UUID
+    received_at: datetime
+    attempts: int = 0
+
+
+def _agent_task_from_payload(payload: QueuedAgentWebhookDelivery) -> QueuedTask:
+    return QueuedTask(
+        task_type=AGENT_TASK_TYPE,
+        payload={
+            "agent_id": str(payload.agent_id),
+            "webhook_id": str(payload.webhook_id),
+            "payload_id": str(payload.payload_id),
+            "received_at": payload.received_at.isoformat(),
+        },
+        created_at=payload.received_at,
+        attempts=payload.attempts,
+    )
+
+
+def decode_agent_webhook_task(task: QueuedTask) -> QueuedAgentWebhookDelivery:
+    if task.task_type != AGENT_TASK_TYPE:
+        raise ValueError(f"Unexpected task_type={task.task_type!r}; expected {AGENT_TASK_TYPE!r}")
+    p: dict[str, Any] = task.payload
+    received_at = p.get("received_at") or datetime.now(UTC).isoformat()
+    return QueuedAgentWebhookDelivery(
+        agent_id=UUID(p["agent_id"]),
+        webhook_id=UUID(p["webhook_id"]),
+        payload_id=UUID(p["payload_id"]),
+        received_at=datetime.fromisoformat(received_at),
+        attempts=int(p.get("attempts", task.attempts)),
+    )
+
+
+def enqueue_agent_webhook_delivery(payload: QueuedAgentWebhookDelivery) -> bool:
+    """Persist agent webhook metadata in a Redis queue for dispatch."""
+    try:
+        queued = _agent_task_from_payload(payload)
+        enqueue_task(queued, settings.rq_queue_name, redis_url=settings.rq_redis_url)
+        logger.info(
+            "agent_webhook.queue.enqueued",
+            extra={
+                "agent_id": str(payload.agent_id),
+                "webhook_id": str(payload.webhook_id),
+                "payload_id": str(payload.payload_id),
+                "attempt": payload.attempts,
+            },
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "agent_webhook.queue.enqueue_failed",
+            extra={
+                "agent_id": str(payload.agent_id),
+                "webhook_id": str(payload.webhook_id),
+                "payload_id": str(payload.payload_id),
+                "error": str(exc),
+            },
+        )
+        return False

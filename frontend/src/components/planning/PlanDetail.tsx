@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { Markdown } from "@/components/atoms/Markdown";
+import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
 import { cn } from "@/lib/utils";
 import {
   type PlanRead,
@@ -52,7 +53,15 @@ function MessageBubble({ msg }: { msg: PlanMessage }) {
             : "w-full bg-white border border-slate-200 text-slate-800 rounded-bl-sm",
         )}
       >
-        <Markdown content={msg.content} variant="comment" />
+        {!isUser && msg.content_type === "mcp_app_result" ? (
+          <MpcAppResultCard
+            metadata={msg.metadata ?? null}
+            fallbackContent={msg.content}
+            variant="comment"
+          />
+        ) : (
+          <Markdown content={msg.content} variant="comment" />
+        )}
       </div>
     </div>
   );
@@ -463,7 +472,7 @@ export function PlanDetail({
           <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
             {messages.length === 0 && !agentThinking && (
               <p className="text-center text-xs text-slate-400">
-                Chat with the board agent to build your plan.
+                Chat with the project agent to build your plan.
               </p>
             )}
             {messages.map((msg, i) => (

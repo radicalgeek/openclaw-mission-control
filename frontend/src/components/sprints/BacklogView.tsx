@@ -35,13 +35,19 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "bg-red-100 text-red-700",
 };
 
-const STATUS_OPTIONS = ["inbox", "in_progress", "review", "done"] as const;
+const STATUS_OPTIONS = ["triage", "backlog", "inbox", "in_progress", "review", "done", "archived"] as const;
 const STATUS_LABELS: Record<string, string> = {
+  triage: "Triage",
+  backlog: "Backlog",
   inbox: "Inbox",
   in_progress: "In Progress",
   review: "Review",
   done: "Done",
+  archived: "Archived",
 };
+
+/** Statuses shown in the backlog view by default (not on the sprint board) */
+const BACKLOG_STATUSES = new Set(["triage", "backlog"]);
 
 export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props) {
   const [tasks, setTasks] = useState<TaskRead[]>([]);
@@ -51,6 +57,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
     title: "",
     description: "",
     priority: "medium",
+    estimate_minutes: null,
     tag_ids: [],
     due_at: null,
   });
@@ -61,8 +68,8 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
   const [assignPopover, setAssignPopover] = useState<string | null>(null);
   const [assignBusy, setAssignBusy] = useState<string | null>(null);
 
-  // Backlog filter — only show inbox tasks by default
-  const [showNonInbox, setShowNonInbox] = useState(false);
+  // Backlog filter — show triage + backlog tasks by default
+  const [showNonBacklog, setShowNonBacklog] = useState(false);
 
   // Detail panel
   const [selectedTask, setSelectedTask] = useState<TaskRead | null>(null);
@@ -106,7 +113,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
       setFormError(null);
       try {
         await createBacklogTask(boardId, form);
-        setForm({ title: "", description: "", priority: "medium", tag_ids: [], due_at: null });
+        setForm({ title: "", description: "", priority: "medium", estimate_minutes: null, tag_ids: [], due_at: null });
         setShowForm(false);
         await loadTasks();
       } catch (err) {
@@ -251,22 +258,22 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
           <div>
             <h2 className="text-base font-semibold text-slate-800">Backlog</h2>
             {(() => {
-              const inboxCount = tasks.filter((t) => t.status === "inbox").length;
-              const hiddenCount = tasks.length - inboxCount;
+              const backlogCount = tasks.filter((t) => BACKLOG_STATUSES.has(t.status)).length;
+              const hiddenCount = tasks.length - backlogCount;
               return (
                 <div className="flex items-center gap-2">
-                  {inboxCount > 0 && (
+                  {backlogCount > 0 && (
                     <p className="text-xs text-slate-400">
-                      {inboxCount} ticket{inboxCount !== 1 ? "s" : ""}
+                      {backlogCount} ticket{backlogCount !== 1 ? "s" : ""}
                     </p>
                   )}
                   {hiddenCount > 0 && (
                     <button
                       type="button"
-                      onClick={() => setShowNonInbox((v) => !v)}
+                      onClick={() => setShowNonBacklog((v) => !v)}
                       className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline transition"
                     >
-                      {showNonInbox
+                      {showNonBacklog
                         ? `Hide completed (${hiddenCount})`
                         : `Show completed (${hiddenCount})`}
                     </button>
@@ -343,6 +350,25 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                   className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[color:var(--accent)]"
                 />
               </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Estimate
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={15}
+                  value={form.estimate_minutes ?? ""}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      estimate_minutes: e.target.value ? Number(e.target.value) : null,
+                    }))
+                  }
+                  placeholder="mins"
+                  className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[color:var(--accent)]"
+                />
+              </div>
             </div>
             {orgTags.length > 0 && (
               <div className="space-y-1.5">
@@ -389,7 +415,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 type="button"
                 onClick={() => {
                   setShowForm(false);
-                  setForm({ title: "", description: "", priority: "medium", tag_ids: [], due_at: null });
+                  setForm({ title: "", description: "", priority: "medium", estimate_minutes: null, tag_ids: [], due_at: null });
                 }}
                 className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
               >
@@ -422,8 +448,8 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
 
           {!loading &&
             tasks.length > 0 &&
-            tasks.filter((t) => t.status === "inbox").length === 0 &&
-            !showNonInbox &&
+            tasks.filter((t) => BACKLOG_STATUSES.has(t.status)).length === 0 &&
+            !showNonBacklog &&
             !showForm && (
               <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                 <p className="text-sm font-medium text-slate-600">No open tickets</p>
@@ -432,7 +458,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 </p>
                 <button
                   type="button"
-                  onClick={() => setShowNonInbox(true)}
+                  onClick={() => setShowNonBacklog(true)}
                   className="mt-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
                 >
                   Show all ({tasks.length})
@@ -442,7 +468,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
 
           <div className="space-y-2">
             {tasks
-              .filter((t) => showNonInbox || t.status === "inbox")
+              .filter((t) => showNonBacklog || BACKLOG_STATUSES.has(t.status))
               .map((task) => {
                 const assignedSprint = task.sprint_id ? sprintMap[task.sprint_id] : null;
               const dueDate = task.due_at
@@ -471,7 +497,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                   >
                     <TaskCard
                       title={task.title}
-                      status={task.status as "inbox" | "in_progress" | "review" | "done"}
+                      status={task.status}
                       priority={task.priority}
                       due={dueDate}
                       isOverdue={isOverdue}

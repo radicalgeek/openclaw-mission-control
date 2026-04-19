@@ -1,6 +1,6 @@
 """DB-backed gateway resolution helpers.
 
-This module is the narrow boundary between Mission Control's DB models and the
+This module is the narrow boundary between Product Foundry's DB models and the
 DB-free OpenClaw gateway client/provisioning layers.
 
 Goals:

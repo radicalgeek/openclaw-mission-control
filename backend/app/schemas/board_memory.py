@@ -19,6 +19,8 @@ class BoardMemoryCreate(SQLModel):
     content: NonEmptyStr
     tags: list[str] | None = None
     source: str | None = None
+    content_type: str = "text"
+    app_metadata: dict[str, object] | None = None
 
 
 class BoardMemoryRead(SQLModel):
@@ -32,4 +34,6 @@ class BoardMemoryRead(SQLModel):
     tags: list[str] | None = None
     source: str | None = None
     is_chat: bool = False
+    content_type: str = "text"
+    app_metadata: dict[str, object] | None = None
     created_at: datetime

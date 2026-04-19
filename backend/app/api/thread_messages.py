@@ -62,7 +62,9 @@ def _to_message_read(msg: ThreadMessage) -> ThreadMessageRead:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/threads/{thread_id}/messages", response_model=list[ThreadMessageRead], tags=["channels"])
+@router.get(
+    "/threads/{thread_id}/messages", response_model=list[ThreadMessageRead], tags=["channels"]
+)
 async def list_thread_messages(
     thread_id: UUID,
     before: UUID | None = BEFORE_QUERY,
@@ -132,6 +134,18 @@ async def create_thread_message(
                 or "User"
             )
 
+    # Validate mcp_app_result metadata before persisting
+    if payload.content_type == "mcp_app_result":
+        meta = payload.event_metadata
+        if not meta or not isinstance(meta.get("app"), str):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "event_metadata with a string 'app' key is required "
+                    "when content_type is 'mcp_app_result'."
+                ),
+            )
+
     msg = ThreadMessage(
         thread_id=thread_id,
         sender_type=sender_type,
@@ -139,6 +153,7 @@ async def create_thread_message(
         sender_name=sender_name,
         content=payload.content,
         content_type=payload.content_type,
+        event_metadata=payload.event_metadata,
     )
     session.add(msg)
 
@@ -154,6 +169,7 @@ async def create_thread_message(
     try:
         if settings.channels_enabled:
             from app.services.channel_agent_routing import dispatch_channel_message_to_agents
+
             await dispatch_channel_message_to_agents(
                 session=session,
                 thread=thread,

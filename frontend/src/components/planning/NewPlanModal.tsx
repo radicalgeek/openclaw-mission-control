@@ -47,7 +47,7 @@ export function NewPlanModal({ onConfirm, onClose }: Props) {
         </div>
         <p className="mt-1 text-sm text-slate-500">
           Give your plan a name. Optionally describe what you want to plan and
-          the board agent will start drafting.
+          the project agent will start drafting.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">

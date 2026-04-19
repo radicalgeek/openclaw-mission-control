@@ -367,11 +367,11 @@ export function BoardOnboardingChat({
           },
         );
       if (result.status !== 200)
-        throw new Error("Unable to confirm board goal.");
+        throw new Error("Unable to confirm project goal.");
       onConfirmed(result.data);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to confirm board goal.",
+        err instanceof Error ? err.message : "Failed to confirm project goal.",
       );
     } finally {
       setLoading(false);
@@ -381,7 +381,7 @@ export function BoardOnboardingChat({
   return (
     <div className="space-y-4">
       <DialogHeader>
-        <DialogTitle>Board onboarding</DialogTitle>
+        <DialogTitle>Project onboarding</DialogTitle>
       </DialogHeader>
 
       {error ? (
@@ -427,7 +427,7 @@ export function BoardOnboardingChat({
             </pre>
             <p className="mt-3 font-semibold text-slate-900">Target date</p>
             <p className="text-slate-700">{draft.target_date || "—"}</p>
-            <p className="mt-3 font-semibold text-slate-900">Board type</p>
+            <p className="mt-3 font-semibold text-slate-900">Project type</p>
             <p className="text-slate-700">{draft.board_type || "goal"}</p>
             {draft.user_profile ? (
               <>

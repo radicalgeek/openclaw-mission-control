@@ -2,7 +2,7 @@
 
 import { setupCommonPageTestHooks } from "../support/testHooks";
 
-describe("/boards", () => {
+describe("/boards projects landing", () => {
   const apiBase = "**/api/v1";
   const email = "local-auth-user@example.com";
 
@@ -15,7 +15,7 @@ describe("/boards", () => {
     );
   });
 
-  it("happy path: signed-in user sees boards list and create button", () => {
+  it("happy path: signed-in user sees projects list and create button", () => {
     cy.intercept("GET", `${apiBase}/organizations/me/member*`, {
       statusCode: 200,
       body: {
@@ -55,8 +55,8 @@ describe("/boards", () => {
         items: [
           {
             id: "b1",
-            name: "Demo Board",
-            slug: "demo-board",
+            name: "Demo Project",
+            slug: "demo-project",
             description: "Demo",
             gateway_id: "g1",
             board_group_id: null,
@@ -88,8 +88,8 @@ describe("/boards", () => {
 
     cy.wait(["@membership", "@me", "@organizations", "@boards", "@boardGroups"]);
 
-    cy.contains(/boards/i).should("be.visible");
-    cy.contains("Demo Board").should("be.visible");
-    cy.contains("a", /create board/i).should("be.visible");
+    cy.contains(/projects/i).should("be.visible");
+    cy.contains("Demo Project").should("be.visible");
+    cy.contains("a", /create project/i).should("be.visible");
   });
 });

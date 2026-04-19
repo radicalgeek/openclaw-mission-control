@@ -1,12 +1,5 @@
-"use client";
-
-import { LandingHero } from "@/components/organisms/LandingHero";
-import { LandingShell } from "@/components/templates/LandingShell";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return (
-    <LandingShell>
-      <LandingHero />
-    </LandingShell>
-  );
+  redirect("/dashboard");
 }

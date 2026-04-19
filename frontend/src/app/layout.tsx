@@ -8,10 +8,14 @@ import { DM_Serif_Display, Inter, Sora } from "next/font/google";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { GlobalLoader } from "@/components/ui/global-loader";
+import { BrandingProvider } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "AxiaCraft ProductFoundry",
+  title: process.env.NEXT_PUBLIC_APP_TITLE ?? "AxiaCraft Product Foundry",
   description: "AI product engineering command center.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 const bodyFont = Inter({
@@ -41,12 +45,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body
         className={`${bodyFont.variable} ${headingFont.variable} ${displayFont.variable} min-h-screen bg-app text-strong antialiased`}
       >
-        <AuthProvider>
-          <QueryProvider>
-            <GlobalLoader />
-            {children}
-          </QueryProvider>
-        </AuthProvider>
+        <BrandingProvider>
+          <AuthProvider>
+            <QueryProvider>
+              <GlobalLoader />
+              {children}
+            </QueryProvider>
+          </AuthProvider>
+        </BrandingProvider>
       </body>
     </html>
   );

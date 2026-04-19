@@ -13,7 +13,6 @@ from app.models.boards import Board
 from app.models.sprints import Sprint, SprintTicket
 from app.models.tasks import Task
 
-
 # ---------------------------------------------------------------------------
 # Fake session helpers
 # ---------------------------------------------------------------------------

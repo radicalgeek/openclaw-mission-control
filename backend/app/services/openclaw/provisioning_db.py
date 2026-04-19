@@ -28,7 +28,11 @@ from app.db import crud
 from app.db.pagination import paginate
 from app.db.session import async_session_maker
 from app.models.activity_events import ActivityEvent
-from app.models.agents import Agent
+from app.models.agents import (
+    AGENT_TYPE_BOARD_WORKER,
+    AGENT_TYPE_STANDALONE,
+    Agent,
+)
 from app.models.approvals import Approval
 from app.models.board_memory import BoardMemory
 from app.models.board_webhooks import BoardWebhook
@@ -37,6 +41,8 @@ from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
 from app.schemas.agents import (
+    BOARD_WORKER_ROLE_TEMPLATES,
+    STANDALONE_ROLE_TEMPLATES,
     AgentCreate,
     AgentHeartbeat,
     AgentHeartbeatCreate,
@@ -601,20 +607,24 @@ async def fetch_db_template_overrides(
 
     result: dict[str, str] = {}
     # Org-wide defaults (lower priority)
-    org_rows = (await session.exec(
-        select(BoardTemplate)
-        .where(col(BoardTemplate.organization_id) == organization_id)
-        .where(col(BoardTemplate.board_id).is_(None))
-    )).all()
+    org_rows = (
+        await session.exec(
+            select(BoardTemplate)
+            .where(col(BoardTemplate.organization_id) == organization_id)
+            .where(col(BoardTemplate.board_id).is_(None))
+        )
+    ).all()
     for bt in org_rows:
         result[bt.file_name] = bt.template_content
     # Board-specific overrides (higher priority)
     if board_id is not None:
-        board_rows = (await session.exec(
-            select(BoardTemplate)
-            .where(col(BoardTemplate.organization_id) == organization_id)
-            .where(col(BoardTemplate.board_id) == board_id)
-        )).all()
+        board_rows = (
+            await session.exec(
+                select(BoardTemplate)
+                .where(col(BoardTemplate.organization_id) == organization_id)
+                .where(col(BoardTemplate.board_id) == board_id)
+            )
+        ).all()
         for bt in board_rows:
             result[bt.file_name] = bt.template_content
     return result
@@ -803,6 +813,7 @@ class AgentUpdateProvisionTarget:
     is_main_agent: bool
     board: Board | None
     gateway: Gateway
+    is_standalone: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -908,7 +919,11 @@ class AgentLifecycleService(OpenClawDBService):
 
     @staticmethod
     def is_gateway_main(agent: Agent) -> bool:
-        return agent.board_id is None
+        from app.models.agents import AGENT_TYPE_GATEWAY_MAIN
+
+        return agent.agent_type == AGENT_TYPE_GATEWAY_MAIN or (
+            agent.board_id is None and agent.agent_type not in {"standalone"}
+        )
 
     @classmethod
     def to_agent_read(cls, agent: Agent) -> AgentRead:
@@ -1160,7 +1175,7 @@ class AgentLifecycleService(OpenClawDBService):
             target.is_main_agent,
         )
         try:
-            if not target.is_main_agent and target.board is None:
+            if not target.is_main_agent and not target.is_standalone and target.board is None:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="board is required for non-main agent provisioning",
@@ -1277,6 +1292,42 @@ class AgentLifecycleService(OpenClawDBService):
             )
             OpenClawAuthorizationPolicy.require_board_write_access(allowed=allowed)
 
+    def _validate_role_template_cross_type(
+        self,
+        agent: Agent,
+        updates: dict[str, Any],
+    ) -> None:
+        """Reject role_template values that conflict with the agent's agent_type."""
+        profile = updates.get("identity_profile")
+        if not isinstance(profile, dict):
+            return
+        role_template = profile.get("role_template")
+        if role_template is None:
+            return
+        agent_type = agent.agent_type
+        if (
+            role_template in STANDALONE_ROLE_TEMPLATES
+            and agent_type != AGENT_TYPE_STANDALONE
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"role_template '{role_template}' requires agent_type 'standalone', "
+                    f"but this agent is '{agent_type}'"
+                ),
+            )
+        if (
+            role_template in BOARD_WORKER_ROLE_TEMPLATES
+            and agent_type != AGENT_TYPE_BOARD_WORKER
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"role_template '{role_template}' requires agent_type 'board_worker', "
+                    f"but this agent is '{agent_type}'"
+                ),
+            )
+
     async def apply_agent_update_mutations(
         self,
         *,
@@ -1322,6 +1373,7 @@ class AgentLifecycleService(OpenClawDBService):
                     detail="Board gateway_id is required",
                 )
             updates["gateway_id"] = board.gateway_id
+        self._validate_role_template_cross_type(agent, updates)
         for key, value in updates.items():
             setattr(agent, key, value)
 
@@ -1450,6 +1502,7 @@ class AgentLifecycleService(OpenClawDBService):
         # Subscribe the new agent to all board channels
         try:
             from app.services.channel_lifecycle import on_agent_added_to_board as _on_agent_added
+
             await _on_agent_added(self.session, board, agent.id)
         except Exception:
             self.logger.exception("channel_lifecycle.agent_added_failed agent_id=%s", agent.id)
@@ -1626,10 +1679,16 @@ class AgentLifecycleService(OpenClawDBService):
     ) -> AgentRead:
         self.logger.log(
             TRACE_LEVEL,
-            "agent.create.start actor_type=%s board_id=%s",
+            "agent.create.start actor_type=%s board_id=%s agent_type=%s",
             actor.actor_type,
             payload.board_id,
+            payload.agent_type,
         )
+        from app.models.agents import AGENT_TYPE_STANDALONE
+
+        if payload.agent_type == AGENT_TYPE_STANDALONE:
+            return await self._create_standalone_agent(payload=payload, actor=actor)
+
         payload = await self.coerce_agent_create_payload(payload, actor)
 
         board = await self.require_board(
@@ -1639,7 +1698,7 @@ class AgentLifecycleService(OpenClawDBService):
         )
         await self.enforce_board_spawn_limit_for_lead(board=board, actor=actor)
         gateway, _client_config = await self.require_gateway(board)
-        
+
         # Check if this is a board lead creation request
         is_board_lead = payload.is_board_lead
         if is_board_lead:
@@ -1656,14 +1715,14 @@ class AgentLifecycleService(OpenClawDBService):
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Board already has a lead agent: {existing_lead.name} ({existing_lead.id})",
                 )
-        
+
         data = payload.model_dump()
         data["gateway_id"] = gateway.id
-        
+
         # Set the correct session key for board leads
         if is_board_lead:
             data["openclaw_session_id"] = OpenClawProvisioningService.lead_session_key(board)
-        
+
         requested_name = (data.get("name") or "").strip()
         await self.ensure_unique_agent_name(
             board=board,
@@ -1684,10 +1743,87 @@ class AgentLifecycleService(OpenClawDBService):
         # Subscribe the new agent to all board channels
         try:
             from app.services.channel_lifecycle import on_agent_added_to_board as _on_agent_added
+
             await _on_agent_added(self.session, board, agent.id)
         except Exception:
             self.logger.exception("channel_lifecycle.agent_added_failed agent_id=%s", agent.id)
         self.logger.info("agent.create.success agent_id=%s board_id=%s", agent.id, board.id)
+        return self.to_agent_read(self.with_computed_status(agent))
+
+    async def _create_standalone_agent(
+        self,
+        *,
+        payload: AgentCreate,
+        actor: ActorContextLike,
+    ) -> AgentRead:
+        """Create a standalone (boardless) agent on a specific gateway."""
+        from app.models.agents import AGENT_TYPE_STANDALONE
+        from app.services.openclaw.internal.session_keys import standalone_agent_session_key
+
+        # Only org admins can create standalone agents
+        if actor.actor_type != "user":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only org admins can create standalone agents",
+            )
+        ctx = await self.require_user_context(actor.user)
+        OpenClawAuthorizationPolicy.require_org_admin(is_admin=is_org_admin(ctx.member))
+
+        # Resolve gateway
+        gateway_id = getattr(payload, "gateway_id", None)
+        if gateway_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="gateway_id is required for standalone agents",
+            )
+        gateway = await Gateway.objects.by_id(gateway_id).first(self.session)
+        if gateway is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Gateway not found",
+            )
+        OpenClawAuthorizationPolicy.require_gateway_in_org(
+            gateway=gateway,
+            organization_id=ctx.organization.id,
+        )
+
+        data = payload.model_dump(
+            exclude={"auth_profile", "skill_env", "tool_instructions", "gateway_id"}
+        )
+        data.update(
+            {
+                "gateway_id": gateway.id,
+                "board_id": None,
+                "agent_type": AGENT_TYPE_STANDALONE,
+                "is_board_lead": False,
+            }
+        )
+        # We set the session key after we have the agent id
+        agent, raw_token = await self.persist_new_agent(data=data)
+        # Assign deterministic session key now that we have the id
+        agent.openclaw_session_id = standalone_agent_session_key(agent.id)
+        self.session.add(agent)
+        await self.session.commit()
+        await self.session.refresh(agent)
+
+        extra_files = _build_extra_files(payload)
+        await self._apply_gateway_provisioning(
+            agent=agent,
+            target=AgentUpdateProvisionTarget(
+                is_main_agent=False,
+                is_standalone=True,
+                board=None,
+                gateway=gateway,
+            ),
+            auth_token=raw_token,
+            user=actor.user,
+            action="provision",
+            wakeup_verb="provisioned",
+            force_bootstrap=False,
+            raise_gateway_errors=True,
+            extra_files=extra_files,
+        )
+        self.logger.info("agent.create.standalone.success agent_id=%s", agent.id)
         return self.to_agent_read(self.with_computed_status(agent))
 
     async def get_agent(
@@ -1894,7 +2030,9 @@ class AgentLifecycleService(OpenClawDBService):
                     # Gateway cleanup failed — log and continue so the DB record is removed.
                     # The gateway workspace may be orphaned but the agent should be deletable.
                     gateway_cleanup_error = str(exc)
-                    self.record_instruction_failure(self.session, agent, gateway_cleanup_error, "delete")
+                    self.record_instruction_failure(
+                        self.session, agent, gateway_cleanup_error, "delete"
+                    )
                     await self.session.commit()
         else:
             board = await self.require_board(str(agent.board_id))
@@ -1907,17 +2045,24 @@ class AgentLifecycleService(OpenClawDBService):
             except (OpenClawGatewayError, OSError, RuntimeError, ValueError) as exc:
                 # Gateway cleanup failed — log and continue so the DB record is removed.
                 gateway_cleanup_error = str(exc)
-                self.record_instruction_failure(self.session, agent, gateway_cleanup_error, "delete")
+                self.record_instruction_failure(
+                    self.session, agent, gateway_cleanup_error, "delete"
+                )
                 await self.session.commit()
 
         # Remove all channel subscriptions for this agent
         if agent.board_id is not None:
             try:
-                from app.services.channel_lifecycle import on_agent_removed_from_board as _on_agent_removed
+                from app.services.channel_lifecycle import (
+                    on_agent_removed_from_board as _on_agent_removed,
+                )
+
                 _board = await self.require_board(str(agent.board_id))
                 await _on_agent_removed(self.session, _board, agent.id)
             except Exception:
-                self.logger.exception("channel_lifecycle.agent_removed_failed agent_id=%s", agent.id)
+                self.logger.exception(
+                    "channel_lifecycle.agent_removed_failed agent_id=%s", agent.id
+                )
         record_activity(
             self.session,
             event_type="agent.delete.direct",
