@@ -113,7 +113,7 @@ def _sprint_to_read(
         slug=sprint.slug,
         goal=sprint.goal,
         position=sprint.position,
-        status=sprint.status,  # type: ignore[arg-type]
+        status=sprint.status,
         started_at=sprint.started_at,
         completed_at=sprint.completed_at,
         created_by_user_id=sprint.created_by_user_id,
@@ -137,7 +137,7 @@ def _task_to_read(
         board_id=task.board_id,
         title=task.title,
         description=task.description,
-        status=task.status,  # type: ignore[arg-type]
+        status=task.status,
         priority=task.priority,
         priority_score=task.priority_score,
         estimate_minutes=task.estimate_minutes,
@@ -170,7 +170,7 @@ async def _tasks_to_read_with_tags(
     )
     result: list[TaskRead] = []
     for task in tasks:
-        state = tag_state_map.get(task.id)  # type: ignore[arg-type]
+        state = tag_state_map.get(task.id)
         result.append(
             _task_to_read(
                 task,

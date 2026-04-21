@@ -1,6 +1,7 @@
 """Model exports for SQLAlchemy/SQLModel metadata discovery."""
 
 from app.models.activity_events import ActivityEvent
+from app.models.agent_audit_log import AgentAuditLog
 from app.models.agent_board_access import AgentBoardAccess
 from app.models.agent_webhooks import AgentWebhook, AgentWebhookPayload
 from app.models.agents import Agent
@@ -36,6 +37,7 @@ from app.models.task_fingerprints import TaskFingerprint
 from app.models.tasks import Task
 from app.models.thread import Thread
 from app.models.thread_message import ThreadMessage
+from app.models.usage_snapshots import UsageSnapshot
 from app.models.user_channel_state import UserChannelState
 from app.models.users import User
 
@@ -80,4 +82,6 @@ __all__ = [
     "Sprint",
     "SprintTicket",
     "SprintWebhook",
+    "AgentAuditLog",
+    "UsageSnapshot",
 ]

@@ -19,8 +19,8 @@ from app.api.agent_webhooks import ingest_router as agent_webhook_ingest_router
 from app.api.agent_webhooks import router as agent_webhooks_router
 from app.api.agents import router as agents_router
 from app.api.approvals import router as approvals_router
+from app.api.audit import router as audit_router
 from app.api.auth import router as auth_router
-from app.api.branding import router as branding_router
 from app.api.board_group_memory import router as board_group_memory_router
 from app.api.board_groups import router as board_groups_router
 from app.api.board_memory import router as board_memory_router
@@ -29,9 +29,13 @@ from app.api.board_templates import org_router as org_templates_router
 from app.api.board_templates import router as board_templates_router
 from app.api.board_webhooks import router as board_webhooks_router
 from app.api.boards import router as boards_router
+from app.api.branding import router as branding_router
 from app.api.channels import router as channels_router
 from app.api.gateway import router as gateway_router
 from app.api.gateways import router as gateways_router
+from app.api.governance import router as governance_router
+from app.api.ingest import router as telemetry_ingest_router
+from app.api.mcp_proxy import router as mcp_proxy_router
 from app.api.metrics import router as metrics_router
 from app.api.organizations import router as organizations_router
 from app.api.plans import router as plans_router
@@ -44,6 +48,7 @@ from app.api.task_custom_fields import router as task_custom_fields_router
 from app.api.tasks import router as tasks_router
 from app.api.thread_messages import router as thread_messages_router
 from app.api.threads import router as threads_router
+from app.api.usage import router as usage_router
 from app.api.users import router as users_router
 from app.core.branding import get_branding
 from app.core.config import settings
@@ -54,6 +59,7 @@ from app.core.rate_limit_backend import RateLimitBackend
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import init_db
 from app.schemas.health import HealthStatusResponse
+from app.services.telemetry.usage_poll_queue import enqueue_usage_poll
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -84,6 +90,13 @@ OPENAPI_TAGS = [
     {
         "name": "gateways",
         "description": "Gateway management, synchronization, and runtime control operations.",
+    },
+    {
+        "name": "mcp",
+        "description": (
+            "MCP Apps proxy: tool discovery, tool execution, and resource fetching via "
+            "the gateway protocol."
+        ),
     },
     {
         "name": "metrics",
@@ -154,6 +167,22 @@ OPENAPI_TAGS = [
         "description": "Board planning documents, chat sessions, and task promotion.",
     },
     {
+        "name": "audit",
+        "description": "Agent audit trail listing, filtering, and compliance export endpoints.",
+    },
+    {
+        "name": "usage",
+        "description": "Token/cost usage dashboard and per-agent usage history endpoints.",
+    },
+    {
+        "name": "governance",
+        "description": "Governance policy CRUD, budget controls, and role-capability management.",
+    },
+    {
+        "name": "agent-ingest",
+        "description": "Ingest endpoints for command-logger output and agent self-reported usage.",
+    },
+    {
         "name": "agent",
         "description": (
             "Agent-scoped API surface. All endpoints require `X-Agent-Token` and are "
@@ -188,6 +217,7 @@ _OPENAPI_EXAMPLE_TAGS = {
     "agents",
     "activity",
     "gateways",
+    "mcp",
     "metrics",
     "organizations",
     "souls-directory",
@@ -467,6 +497,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.info("app.lifecycle.rate_limit backend=redis")
     else:
         logger.info("app.lifecycle.rate_limit backend=memory")
+    usage_poll_seeded = enqueue_usage_poll()
+    logger.info("app.lifecycle.usage_poll_seeded ok=%s", usage_poll_seeded)
     logger.info("app.lifecycle.started")
     try:
         yield
@@ -577,6 +609,7 @@ api_v1.include_router(agent_skills_router)
 api_v1.include_router(activity_router)
 api_v1.include_router(gateway_router)
 api_v1.include_router(gateways_router)
+api_v1.include_router(mcp_proxy_router)
 api_v1.include_router(metrics_router)
 api_v1.include_router(organizations_router)
 api_v1.include_router(souls_directory_router)
@@ -596,6 +629,10 @@ api_v1.include_router(tasks_router)
 api_v1.include_router(task_custom_fields_router)
 api_v1.include_router(tags_router)
 api_v1.include_router(users_router)
+api_v1.include_router(audit_router)
+api_v1.include_router(usage_router)
+api_v1.include_router(telemetry_ingest_router)
+api_v1.include_router(governance_router)
 app.include_router(api_v1)
 app.include_router(branding_router, prefix="/api/v1")
 

@@ -41,6 +41,7 @@ CONTROL_UI_CLIENT_ID = "openclaw-control-ui"
 CONTROL_UI_CLIENT_MODE = "ui"
 GatewayConnectMode = Literal["device", "control_ui"]
 
+
 # Origin header sent on every WebSocket upgrade.  The gateway validates the
 # Origin against its controlUi.allowedOrigins list; this must match.
 # Configurable via GATEWAY_ORIGIN env var; falls back to settings.base_url.
@@ -51,10 +52,7 @@ def _get_gateway_origin() -> str:
         return settings.gateway_origin
     if settings.base_url:
         return settings.base_url
-    msg = (
-        "GATEWAY_ORIGIN or BASE_URL must be set. "
-        "No hardcoded fallback domain is used."
-    )
+    msg = "GATEWAY_ORIGIN or BASE_URL must be set. " "No hardcoded fallback domain is used."
     raise RuntimeError(msg)
 
 
@@ -151,6 +149,7 @@ GATEWAY_METHODS = [
     "chat.send",
     # MCP Apps transport (gateway protocol v3+; feature-detected via mcp.resources.read)
     "mcp.tools.list",
+    "mcp.tools.list_all",
     "mcp.tools.call",
     "mcp.resources.list",
     "mcp.resources.read",
@@ -175,6 +174,8 @@ GATEWAY_EVENTS = [
     "voicewake.changed",
     "exec.approval.requested",
     "exec.approval.resolved",
+    # MCP Apps — pushed when an agent completes a tool call asynchronously
+    "mcp.tool.result",
 ]
 
 GATEWAY_METHODS_SET = frozenset(GATEWAY_METHODS)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, Numeric
 from sqlmodel import Field
 
 from app.core.time import utcnow
@@ -47,5 +47,6 @@ class Board(TenantScoped, table=True):
     max_agents: int = Field(default=1)
     is_platform: bool = Field(default=False, index=True)
     auto_advance_sprint: bool = Field(default=False)  # "flow mode" auto-starts next queued sprint
+    budget_usd: float | None = Field(default=None, sa_column=Column(Numeric(12, 6), nullable=True))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -220,7 +220,8 @@ async def on_board_created(
     await session.commit()
 
     # Subscribe this board's lead to existing platform Support channel (if any)
-    await sync_platform_support_subscribers(session, board.gateway_id)
+    if board.gateway_id is not None:
+        await sync_platform_support_subscribers(session, board.gateway_id)
 
     logger.info(
         "channel_lifecycle.board_created board_id=%s channels_created=%s is_platform=%s",
@@ -306,12 +307,18 @@ async def on_board_deleted(
 
         # Delete in FK-safe order: messages → threads → subscriptions → state → channels
         if thread_ids:
-            await session.exec(delete(ThreadMessage).where(col(ThreadMessage.thread_id).in_(thread_ids)))  # type: ignore[call-overload]
-            await session.exec(delete(Thread).where(col(Thread.id).in_(thread_ids)))  # type: ignore[call-overload]
+            await session.exec(
+                delete(ThreadMessage).where(col(ThreadMessage.thread_id).in_(thread_ids))
+            )
+            await session.exec(delete(Thread).where(col(Thread.id).in_(thread_ids)))
 
-        await session.exec(delete(ChannelSubscription).where(col(ChannelSubscription.channel_id).in_(channel_ids)))  # type: ignore[call-overload]
-        await session.exec(delete(UserChannelState).where(col(UserChannelState.channel_id).in_(channel_ids)))  # type: ignore[call-overload]
-        await session.exec(delete(Channel).where(col(Channel.id).in_(channel_ids)))  # type: ignore[call-overload]
+        await session.exec(
+            delete(ChannelSubscription).where(col(ChannelSubscription.channel_id).in_(channel_ids))
+        )
+        await session.exec(
+            delete(UserChannelState).where(col(UserChannelState.channel_id).in_(channel_ids))
+        )
+        await session.exec(delete(Channel).where(col(Channel.id).in_(channel_ids)))
     else:
         for channel in channels:
             channel.is_archived = True
@@ -377,7 +384,8 @@ async def on_board_lead_changed(
     await session.commit()
 
     # Sync platform Support channel subscriptions for the new lead
-    await sync_platform_support_subscribers(session, board.gateway_id)
+    if board.gateway_id is not None:
+        await sync_platform_support_subscribers(session, board.gateway_id)
 
     logger.info(
         "channel_lifecycle.lead_changed board_id=%s old=%s new=%s",
@@ -532,7 +540,8 @@ async def on_board_marked_platform(
         )
 
     # Sync all board leads to this Support channel
-    await sync_platform_support_subscribers(session, board.gateway_id)
+    if board.gateway_id is not None:
+        await sync_platform_support_subscribers(session, board.gateway_id)
 
 
 async def on_board_unmarked_platform(

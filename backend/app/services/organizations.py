@@ -60,7 +60,30 @@ DEFAULT_INSTALLER_SKILL_PACKS = (
     ),
 )
 ADMIN_ROLES = {"owner", "admin"}
-ROLE_RANK = {"member": 0, "admin": 1, "owner": 2}
+ROLE_RANK = {"viewer": -1, "auditor": -1, "member": 0, "operator": 0, "admin": 1, "owner": 2}
+
+# ---------------------------------------------------------------------------
+# Capability constants — prefer these over raw role checks for new code.
+# ---------------------------------------------------------------------------
+# Roles that can perform administrative operations (gateway/agent lifecycle/CRUD)
+CAPABILITY_MANAGE_ORG_ROLES = {"owner", "admin"}
+# Roles that can manage agents within assigned projects
+CAPABILITY_MANAGE_AGENTS_ROLES = {"owner", "admin", "operator"}
+# Roles that can resolve approvals
+CAPABILITY_RESOLVE_APPROVALS_ROLES = {"owner", "admin", "operator"}
+# Roles that can view audit logs and usage data
+CAPABILITY_VIEW_AUDIT_ROLES = {"owner", "admin", "operator", "auditor"}
+# Roles that can export compliance data
+CAPABILITY_EXPORT_COMPLIANCE_ROLES = {"owner", "admin", "auditor"}
+# Roles with board read access (when not using per-board ACL)
+CAPABILITY_READ_BOARDS_ROLES = {"owner", "admin", "operator", "member", "viewer", "auditor"}
+
+VALID_ROLES = {"owner", "admin", "operator", "member", "viewer", "auditor"}
+
+
+def has_capability(member: "OrganizationMember", capability_roles: set[str]) -> bool:
+    """Return True if the member's role is in the provided capability role set."""
+    return member.role in capability_roles
 
 
 @dataclass(frozen=True)
@@ -550,8 +573,14 @@ def normalize_invited_email(email: str) -> str:
 
 
 def normalize_role(role: str) -> str:
-    """Normalize a role string and default empty values to `member`."""
-    return role.strip().lower() or "member"
+    """Normalize a role string, default empty values to `member`, reject unknowns."""
+    normalized = role.strip().lower() or "member"
+    if normalized not in VALID_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid role '{normalized}'. Must be one of: {sorted(VALID_ROLES)}",
+        )
+    return normalized
 
 
 def _role_rank(role: str | None) -> int:

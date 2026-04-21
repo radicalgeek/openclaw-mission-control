@@ -5,18 +5,13 @@ from __future__ import annotations
 import json as _json
 import re
 import uuid
-from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
-
-if TYPE_CHECKING:
-    from app.models.plans import Plan
 
 logger = get_logger(__name__)
 
 _PLAN_BLOCK_RE = re.compile(r"```plan\s*\n(.*?)```", re.DOTALL)
 _SLUG_CLEAN_RE = re.compile(r"[^a-z0-9]+")
-
 
 # ---------------------------------------------------------------------------
 # Slug helpers

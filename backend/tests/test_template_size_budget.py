@@ -28,6 +28,6 @@ def test_specialist_partials_fit_in_size_budget() -> None:
     assert len(partials) >= 20, f"Expected at least 20 specialist partials, found {len(partials)}"
     for partial in partials:
         size = partial.stat().st_size
-        assert size <= SPECIALIST_PARTIAL_LIMIT, (
-            f"{partial.name} is {size} chars (limit {SPECIALIST_PARTIAL_LIMIT})"
-        )
+        assert (
+            size <= SPECIALIST_PARTIAL_LIMIT
+        ), f"{partial.name} is {size} chars (limit {SPECIALIST_PARTIAL_LIMIT})"

@@ -163,6 +163,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   // On mount: load deployment defaults immediately
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDeploymentBranding();
   }, [loadDeploymentBranding]);
 

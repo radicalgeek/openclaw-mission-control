@@ -23,27 +23,31 @@ VALID_AGENT_TYPES = frozenset(
     {AGENT_TYPE_BOARD_WORKER, AGENT_TYPE_BOARD_LEAD, AGENT_TYPE_GATEWAY_MAIN, AGENT_TYPE_STANDALONE}
 )
 
-VALID_ROLE_TEMPLATES = frozenset({
-    # Delivery specialists (board_worker, pre-board lifecycle)
-    "triager",
-    "planner",
-    "estimator",
-    # Board specialists (board_worker, Kanban task execution)
-    "test_agent",
-    "merger",
-    "ui_test",
-    "visual_regression",
-    # Cross-board reviewers (standalone, webhook-driven)
-    "quality_reviewer",
-    "security_reviewer",
-    "architecture_reviewer",
-})
+VALID_ROLE_TEMPLATES = frozenset(
+    {
+        # Delivery specialists (board_worker, pre-board lifecycle)
+        "triager",
+        "planner",
+        "estimator",
+        # Board specialists (board_worker, Kanban task execution)
+        "test_agent",
+        "merger",
+        "ui_test",
+        "visual_regression",
+        # Cross-board reviewers (standalone, webhook-driven)
+        "quality_reviewer",
+        "security_reviewer",
+        "architecture_reviewer",
+    }
+)
 
-STANDALONE_ROLE_TEMPLATES = frozenset({
-    "quality_reviewer",
-    "security_reviewer",
-    "architecture_reviewer",
-})
+STANDALONE_ROLE_TEMPLATES = frozenset(
+    {
+        "quality_reviewer",
+        "security_reviewer",
+        "architecture_reviewer",
+    }
+)
 
 BOARD_WORKER_ROLE_TEMPLATES = VALID_ROLE_TEMPLATES - STANDALONE_ROLE_TEMPLATES
 
@@ -198,13 +202,12 @@ class AgentCreate(AgentBase):
                 f"Must be one of: {sorted(VALID_ROLE_TEMPLATES)}"
             )
         if role_template in STANDALONE_ROLE_TEMPLATES and self.agent_type != AGENT_TYPE_STANDALONE:
-            raise ValueError(
-                f"role_template '{role_template}' requires agent_type 'standalone'"
-            )
-        if role_template in BOARD_WORKER_ROLE_TEMPLATES and self.agent_type != AGENT_TYPE_BOARD_WORKER:
-            raise ValueError(
-                f"role_template '{role_template}' requires agent_type 'board_worker'"
-            )
+            raise ValueError(f"role_template '{role_template}' requires agent_type 'standalone'")
+        if (
+            role_template in BOARD_WORKER_ROLE_TEMPLATES
+            and self.agent_type != AGENT_TYPE_BOARD_WORKER
+        ):
+            raise ValueError(f"role_template '{role_template}' requires agent_type 'board_worker'")
         return self
 
     gateway_id: UUID | None = Field(

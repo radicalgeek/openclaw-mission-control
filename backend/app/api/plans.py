@@ -23,7 +23,6 @@ from app.models.plans import Plan
 from app.models.tasks import Task
 from app.schemas.common import OkResponse
 from app.schemas.plans import (
-    DecomposedTicket,
     PlanAgentUpdateRequest,
     PlanChatRequest,
     PlanChatResponse,
@@ -38,7 +37,6 @@ from app.services.planning import (
     build_decompose_prompt,
     build_plan_system_prompt,
     build_plan_turn_prompt,
-    extract_decomposed_tickets,
     extract_plan_content,
     generate_slug,
 )
@@ -541,12 +539,11 @@ async def decompose_plan(
     decompose_prompt = build_decompose_prompt(plan.content)
 
     try:
-        from app.services.openclaw.gateway_dispatch import GatewayDispatchService  # noqa: PLC0415
-
-        await GatewayDispatchService.dispatch(
-            session=session,
+        dispatcher = PlanningMessagingService(session)
+        await dispatcher.dispatch_plan_start(
             board=board,
             prompt=decompose_prompt,
+            correlation_id=f"planning.decompose:{plan_id}",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("plan.decompose_dispatch_failed plan_id=%s err=%s", plan_id, exc)

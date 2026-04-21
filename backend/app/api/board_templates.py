@@ -23,7 +23,6 @@ from app.schemas.board_templates import (
     BoardTemplateRead,
     BoardTemplateUpsert,
 )
-from app.schemas.pagination import DefaultLimitOffsetPage
 from app.services.openclaw.constants import DEFAULT_GATEWAY_FILES, LEAD_GATEWAY_FILES
 
 if TYPE_CHECKING:

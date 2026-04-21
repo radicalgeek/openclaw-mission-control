@@ -18,10 +18,10 @@ from app.models.organization_members import OrganizationMember
 from app.models.organizations import Organization
 from app.services.organizations import OrganizationContext
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 async def _make_engine() -> AsyncEngine:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -82,9 +82,7 @@ async def test_get_deployment_branding() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/branding")
         assert resp.status_code == 200
         data = resp.json()
@@ -108,9 +106,7 @@ async def test_get_org_branding_no_overrides() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/organizations/me/branding")
         assert resp.status_code == 200
         data = resp.json()
@@ -132,9 +128,7 @@ async def test_get_org_branding_with_overrides() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/api/v1/organizations/me/branding")
         assert resp.status_code == 200
         assert resp.json()["product_name"] == "CustomProduct"
@@ -155,9 +149,7 @@ async def test_patch_org_branding() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.patch(
                 "/api/v1/organizations/me/branding",
                 json={"product_name": "NewProduct", "accent_color": "#ff0000"},
@@ -183,9 +175,7 @@ async def test_patch_null_clears_override() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.patch(
                 "/api/v1/organizations/me/branding",
                 json={"product_name": None},
@@ -217,9 +207,7 @@ async def test_delete_resets_branding() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.delete("/api/v1/organizations/me/branding")
         assert resp.status_code == 200
         from app.core.branding import get_branding
@@ -247,9 +235,7 @@ async def test_patch_partial_preserves_other_overrides() -> None:
     app = _build_app(session_maker, org_ctx=ctx)
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.patch(
                 "/api/v1/organizations/me/branding",
                 json={"accent_color": "#bbb"},

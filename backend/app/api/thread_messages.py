@@ -14,6 +14,7 @@ from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db import crud
 from app.db.session import get_session
+from app.models.boards import Board
 from app.models.channel import Channel
 from app.models.thread import Thread
 from app.models.thread_message import ThreadMessage
@@ -22,6 +23,7 @@ from app.schemas.thread_messages import (
     ThreadMessageRead,
     ThreadMessageUpdate,
 )
+from app.services.activity_log import record_audit
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
@@ -55,6 +57,17 @@ def _to_message_read(msg: ThreadMessage) -> ThreadMessageRead:
         created_at=msg.created_at,
         updated_at=msg.updated_at,
     )
+
+
+def _actor_audit_fields(actor: object) -> tuple[str, UUID | None]:
+    from app.api.deps import ActorContext
+
+    if isinstance(actor, ActorContext):
+        if actor.actor_type == "agent" and actor.agent is not None:
+            return "agent", actor.agent.id
+        if actor.actor_type == "user" and actor.user is not None:
+            return "user", actor.user.id
+    return "system", None
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +175,27 @@ async def create_thread_message(
     thread.last_message_at = msg.created_at
     thread.updated_at = utcnow()
 
+    board = await session.get(Board, channel.board_id)
+    actor_type, actor_id = _actor_audit_fields(actor)
+    if board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="thread.message.posted",
+            board_id=board.id,
+            thread_id=thread.id,
+            task_id=thread.task_id,
+            agent_id=sender_id if sender_type == "agent" else None,
+            detail={
+                "message_id": str(msg.id),
+                "channel_id": str(channel.id),
+                "content_type": msg.content_type,
+            },
+            actor_type=actor_type,
+            actor_id=actor_id,
+        )
+
     await session.commit()
     await session.refresh(msg)
 
@@ -218,16 +252,37 @@ async def edit_message(
     msg.content = payload.content
     msg.is_edited = True
     msg.updated_at = utcnow()
+    thread = await session.get(Thread, msg.thread_id)
+    board = None
+    if thread is not None:
+        channel = await session.get(Channel, thread.channel_id)
+        if channel is not None:
+            board = await session.get(Board, channel.board_id)
+    actor_type, actor_id = _actor_audit_fields(actor)
+    if thread is not None and board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="thread.message.edited",
+            board_id=board.id,
+            thread_id=thread.id,
+            task_id=thread.task_id,
+            agent_id=msg.sender_id if msg.sender_type == "agent" else None,
+            detail={"message_id": str(msg.id), "content_type": msg.content_type},
+            actor_type=actor_type,
+            actor_id=actor_id,
+        )
     await crud.save(session, msg)
     return _to_message_read(msg)
 
 
-@router.delete("/messages/{message_id}", response_model=dict, tags=["channels"])
+@router.delete("/messages/{message_id}", response_model=dict[str, bool], tags=["channels"])
 async def delete_message(
     message_id: UUID,
     session: AsyncSession = SESSION_DEP,
     actor: object = ACTOR_DEP,
-) -> dict:
+) -> dict[str, bool]:
     """Delete a message (own messages only)."""
     _channels_enabled_check()
     from app.api.deps import ActorContext
@@ -245,8 +300,30 @@ async def delete_message(
             if msg.sender_id != actor.user.id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
-    # Update thread counter
     thread = await session.get(Thread, msg.thread_id)
+    board = None
+    if thread is not None:
+        channel = await session.get(Channel, thread.channel_id)
+        if channel is not None:
+            board = await session.get(Board, channel.board_id)
+
+    actor_type, actor_id = _actor_audit_fields(actor)
+    if thread is not None and board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="thread.message.deleted",
+            board_id=board.id,
+            thread_id=thread.id,
+            task_id=thread.task_id,
+            agent_id=msg.sender_id if msg.sender_type == "agent" else None,
+            detail={"message_id": str(msg.id), "content_type": msg.content_type},
+            actor_type=actor_type,
+            actor_id=actor_id,
+        )
+
+    # Update thread counter
     if thread is not None and thread.message_count > 0:
         thread.message_count -= 1
         thread.updated_at = utcnow()

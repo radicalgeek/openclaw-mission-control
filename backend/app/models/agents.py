@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Column, Text
+from sqlalchemy import JSON, Column, Numeric, Text
 from sqlmodel import Field
 
 from app.core.time import utcnow
@@ -64,5 +64,6 @@ class Agent(QueryModel, table=True):
         default=None,
         sa_column=Column(JSON, nullable=True),
     )
+    budget_usd: float | None = Field(default=None, sa_column=Column(Numeric(12, 6), nullable=True))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -7,7 +7,7 @@ import hmac
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import col, select
 
 from app.api.deps import (
@@ -20,7 +20,6 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db import crud
-from app.db.pagination import paginate
 from app.db.session import get_session
 from app.models.channel import Channel
 from app.models.channel_subscription import ChannelSubscription
@@ -36,15 +35,14 @@ from app.schemas.channels import (
     SubscriptionUpsert,
 )
 from app.schemas.common import OkResponse
-from app.schemas.pagination import DefaultLimitOffsetPage
+from app.services.activity_log import record_audit
 from app.services.channel_thread_hook import handle_direct_channel_webhook
 
 if TYPE_CHECKING:
-    from fastapi_pagination.limit_offset import LimitOffsetPage
     from sqlmodel.ext.asyncio.session import AsyncSession
 
+    from app.core.auth import AuthContext
     from app.models.boards import Board
-    from app.schemas.auth import AuthContext
 
 router = APIRouter(tags=["channels"])
 logger = get_logger(__name__)
@@ -149,6 +147,18 @@ async def create_board_channel(
         is_readonly=payload.is_readonly,
         webhook_source_filter=payload.webhook_source_filter,
         position=payload.position,
+    )
+    record_audit(
+        session,
+        organization_id=board.organization_id,
+        event_category="channel",
+        event_action="channel.created",
+        board_id=board.id,
+        detail={
+            "channel_id": str(channel.id),
+            "name": channel.name,
+            "channel_type": channel.channel_type,
+        },
     )
     await crud.save(session, channel)
     # Auto-subscribe all existing board agents to the new channel
@@ -363,11 +373,15 @@ async def upsert_channel_subscription(
     agent_id: UUID,
     payload: SubscriptionUpsert,
     session: AsyncSession = SESSION_DEP,
-    _auth: object = ORG_MEMBER_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
 ) -> SubscriptionRead:
     """Create or update an agent's subscription to a channel."""
     _channels_enabled_check()
-    await _require_channel(session, channel_id)
+    assert auth.user is not None
+    channel = await _require_channel(session, channel_id)
+    from app.models.boards import Board as BoardModel
+
+    board = await session.get(BoardModel, channel.board_id)
     sub = (
         await session.exec(
             select(ChannelSubscription).where(
@@ -386,6 +400,21 @@ async def upsert_channel_subscription(
     else:
         sub.notify_on = payload.notify_on
         sub.updated_at = utcnow()
+    if board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="channel.subscription.upserted",
+            board_id=board.id,
+            agent_id=agent_id,
+            detail={
+                "channel_id": str(channel.id),
+                "notify_on": payload.notify_on,
+            },
+            actor_type="user",
+            actor_id=auth.user.id,
+        )
     await session.commit()
     await session.refresh(sub)
     return SubscriptionRead(
@@ -406,10 +435,15 @@ async def delete_channel_subscription(
     channel_id: UUID,
     agent_id: UUID,
     session: AsyncSession = SESSION_DEP,
-    _auth: object = ORG_MEMBER_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
 ) -> OkResponse:
     """Remove an agent's subscription from a channel."""
     _channels_enabled_check()
+    assert auth.user is not None
+    channel = await _require_channel(session, channel_id)
+    from app.models.boards import Board as BoardModel
+
+    board = await session.get(BoardModel, channel.board_id)
     sub = (
         await session.exec(
             select(ChannelSubscription).where(
@@ -420,6 +454,18 @@ async def delete_channel_subscription(
     ).first()
     if sub is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    if board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="channel.subscription.deleted",
+            board_id=board.id,
+            agent_id=agent_id,
+            detail={"channel_id": str(channel.id)},
+            actor_type="user",
+            actor_id=auth.user.id,
+        )
     await session.delete(sub)
     await session.commit()
     return OkResponse()
@@ -443,13 +489,13 @@ async def mark_channel_read(
     if not isinstance(auth, AuthContext) or auth.user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
-    await _require_channel(session, channel_id)
+    channel = await _require_channel(session, channel_id)
 
     # Find the latest message in this channel
     latest_msg = (
         await session.exec(
             select(ThreadMessage)
-            .join(Thread, Thread.id == ThreadMessage.thread_id)
+            .join(Thread, Thread.id == ThreadMessage.thread_id)  # type: ignore[arg-type]
             .where(col(Thread.channel_id) == channel_id)
             .order_by(col(ThreadMessage.created_at).desc())
             .limit(1)
@@ -479,6 +525,24 @@ async def mark_channel_read(
         state.last_read_message_id = latest_msg.id
         state.updated_at = utcnow()
 
+    from app.models.boards import Board as BoardModel
+
+    board = await session.get(BoardModel, channel.board_id)
+    if board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="channel.read",
+            board_id=board.id,
+            thread_id=latest_msg.thread_id,
+            detail={
+                "channel_id": str(channel.id),
+                "last_read_message_id": str(latest_msg.id),
+            },
+            actor_type="user",
+            actor_id=auth.user.id,
+        )
     await session.commit()
     return OkResponse()
 
@@ -496,7 +560,7 @@ async def toggle_channel_mute(
     if not isinstance(auth, AuthContext) or auth.user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
-    await _require_channel(session, channel_id)
+    channel = await _require_channel(session, channel_id)
 
     state = (
         await session.exec(
@@ -518,5 +582,19 @@ async def toggle_channel_mute(
         state.is_muted = not state.is_muted
         state.updated_at = utcnow()
 
+    from app.models.boards import Board as BoardModel
+
+    board = await session.get(BoardModel, channel.board_id)
+    if board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="channel.mute.toggled",
+            board_id=board.id,
+            detail={"channel_id": str(channel.id), "is_muted": state.is_muted},
+            actor_type="user",
+            actor_id=auth.user.id,
+        )
     await session.commit()
     return OkResponse()

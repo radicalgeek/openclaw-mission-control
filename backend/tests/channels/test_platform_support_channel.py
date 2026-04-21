@@ -13,17 +13,16 @@ os.environ["LOCAL_AUTH_TOKEN"] = "test-local-token-0123456789-0123456789-0123456
 os.environ["BASE_URL"] = "http://localhost:8000"
 os.environ["CHANNELS_ENABLED"] = "true"
 
-from app.models.agents import Agent
-from app.models.boards import Board
-from app.models.channel import Channel
-from app.models.channel_subscription import ChannelSubscription
-from app.models.gateways import Gateway
-from app.models.organizations import Organization
-from app.services.channel_lifecycle import (
+from app.models.agents import Agent  # noqa: E402
+from app.models.boards import Board  # noqa: E402
+from app.models.channel import Channel  # noqa: E402
+from app.models.channel_subscription import ChannelSubscription  # noqa: E402
+from app.models.gateways import Gateway  # noqa: E402
+from app.models.organizations import Organization  # noqa: E402
+from app.services.channel_lifecycle import (  # noqa: E402
     on_board_created,
     on_board_marked_platform,
     on_board_unmarked_platform,
-    sync_platform_support_subscribers,
 )
 
 

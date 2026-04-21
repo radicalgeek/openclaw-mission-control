@@ -34,6 +34,7 @@ from app.schemas.skills_marketplace import (
     SkillPackRead,
     SkillPackSyncResponse,
 )
+from app.services.activity_log import record_audit
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_resolver import (
     gateway_client_config,
@@ -1039,6 +1040,21 @@ async def _run_marketplace_skill_action(
         gateway_id=gateway.id,
         skill_id=skill.id,
         installed=installed,
+    )
+    record_audit(
+        session,
+        organization_id=ctx.organization.id,
+        event_category="skill",
+        event_action="skill.installed" if installed else "skill.uninstalled",
+        gateway_id=gateway.id,
+        detail={
+            "skill_id": str(skill.id),
+            "skill_name": skill.name,
+            "gateway_id": str(gateway.id),
+            "installed": installed,
+        },
+        actor_type="user",
+        actor_id=ctx.member.user_id,
     )
     await session.commit()
     return MarketplaceSkillActionResponse(

@@ -1176,7 +1176,7 @@ export default function EditBoardPage() {
                     Platform project
                   </span>
                   <span className="block text-xs text-slate-600">
-                    Designate this as the organization's platform/infrastructure project. Only one project can be the platform project. Adds a cross-project Support channel.
+                    Designate this as the organization&apos;s platform/infrastructure project. Only one project can be the platform project. Adds a cross-project Support channel.
                   </span>
                 </span>
               </div>

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel, col, select
+from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 os.environ["AUTH_MODE"] = "local"
@@ -20,12 +20,11 @@ os.environ["LOCAL_AUTH_TOKEN"] = "test-local-token-0123456789-0123456789-0123456
 os.environ["BASE_URL"] = "http://localhost:8000"
 os.environ["CHANNELS_ENABLED"] = "true"
 
-from app.models import Channel, Thread  # noqa: E402
+from app.models import Channel  # noqa: E402
 from app.models.agents import Agent  # noqa: E402
 from app.models.boards import Board  # noqa: E402
 from app.models.gateways import Gateway  # noqa: E402
 from app.models.organizations import Organization  # noqa: E402
-from app.services.channel_thread_hook import on_task_created_by_webhook  # noqa: E402
 
 
 async def _make_session_maker() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:

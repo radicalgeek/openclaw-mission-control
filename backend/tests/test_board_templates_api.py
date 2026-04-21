@@ -8,7 +8,6 @@ import pytest
 from fastapi import HTTPException
 
 from app.api import board_templates as board_templates_api
-from app.models.board_templates import BoardTemplate
 from app.services.openclaw.provisioning_db import fetch_db_template_overrides
 
 # ---------------------------------------------------------------------------

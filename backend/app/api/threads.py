@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import asc, col, desc, select
+from sqlmodel import col, desc, select
 
 from app.api.deps import (
     ActorContext,
@@ -25,14 +25,10 @@ from app.models.tasks import Task
 from app.models.thread import Thread
 from app.models.thread_message import ThreadMessage
 from app.schemas.threads import ThreadCreate, ThreadLinkTask, ThreadRead, ThreadUpdate
-
-if TYPE_CHECKING:
-    from app.schemas.auth import AuthContext
+from app.services.activity_log import record_audit
 
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
-
-    from app.core.auth import AuthContext
 
 router = APIRouter(tags=["channels"])
 logger = get_logger(__name__)
@@ -71,6 +67,15 @@ def _to_thread_read(thread: Thread, *, last_message_preview: str | None = None) 
         updated_at=thread.updated_at,
         last_message_preview=last_message_preview,
     )
+
+
+def _actor_audit_fields(actor: object) -> tuple[str, UUID | None]:
+    if isinstance(actor, ActorContext):
+        if actor.actor_type == "agent" and actor.agent is not None:
+            return "agent", actor.agent.id
+        if actor.actor_type == "user" and actor.user is not None:
+            return "user", actor.user.id
+    return "system", None
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +197,25 @@ async def create_channel_thread(
     session.add(msg)
     thread.message_count = 1
     thread.last_message_at = msg.created_at
+
+    actor_type, actor_id = _actor_audit_fields(actor)
+    board = await session.get(Board, channel.board_id)
+    if board is not None:
+        record_audit(
+            session,
+            organization_id=board.organization_id,
+            event_category="channel",
+            event_action="thread.created",
+            board_id=board.id,
+            thread_id=thread.id,
+            detail={
+                "channel_id": str(channel.id),
+                "topic": thread.topic,
+                "initial_content": payload.content,
+            },
+            actor_type=actor_type,
+            actor_id=actor_id,
+        )
 
     await session.commit()
     await session.refresh(thread)

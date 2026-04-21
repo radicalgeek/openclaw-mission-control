@@ -11,6 +11,7 @@ import dataclasses
 import hashlib
 import json
 from datetime import datetime, timezone
+from typing import Any
 
 
 @dataclasses.dataclass
@@ -24,7 +25,7 @@ class ClassifiedEvent:
     source_ref: str  # Unique dedup key
     summary: str  # One-line human summary
     content_markdown: str  # Full Markdown message
-    metadata: dict  # Raw payload + parsed fields
+    metadata: dict[str, Any]  # Raw payload + parsed fields
     severity: str  # "info" | "warning" | "error" | "critical"
     url: str | None = None
 
@@ -32,21 +33,23 @@ class ClassifiedEvent:
 class BaseClassifier:
     """Base class for webhook classifiers."""
 
-    def can_classify(self, headers: dict, payload: dict) -> bool:  # noqa: ARG002
+    def can_classify(
+        self, headers: dict[str, Any], payload: dict[str, Any]
+    ) -> bool:  # noqa: ARG002
         return False
 
-    def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         raise NotImplementedError
 
 
 class GitHubActionsClassifier(BaseClassifier):
     """Classifies GitHub Actions workflow_run / check_suite webhooks."""
 
-    def can_classify(self, headers: dict, payload: dict) -> bool:
+    def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
         event = headers.get("x-github-event", "")
         return event in ("workflow_run", "check_suite", "check_run")
 
-    def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         event_type_header = headers.get("x-github-event", "")
         repo = payload.get("repository", {})
         repo_name = repo.get("full_name") or repo.get("name") or "unknown"
@@ -139,10 +142,10 @@ class GitHubActionsClassifier(BaseClassifier):
 class GitHubPRClassifier(BaseClassifier):
     """Classifies GitHub pull_request webhooks."""
 
-    def can_classify(self, headers: dict, payload: dict) -> bool:
+    def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
         return headers.get("x-github-event") == "pull_request"
 
-    def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         pr = payload.get("pull_request", {})
         repo = payload.get("repository", {})
         repo_name = repo.get("full_name") or repo.get("name") or "unknown"
@@ -193,7 +196,7 @@ class GitHubPRClassifier(BaseClassifier):
 class DeploymentClassifier(BaseClassifier):
     """Classifies deployment-related webhooks."""
 
-    def can_classify(self, headers: dict, payload: dict) -> bool:
+    def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
         gh_event = headers.get("x-github-event", "")
         if gh_event in ("deployment", "deployment_status"):
             return True
@@ -203,7 +206,7 @@ class DeploymentClassifier(BaseClassifier):
         keys = set(payload.keys())
         return bool(keys & {"deployment", "deploy", "environment"}) and "workflow_run" not in keys
 
-    def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         gh_event = headers.get("x-github-event", "")
         repo = payload.get("repository", {})
         repo_name = (
@@ -276,7 +279,7 @@ class DeploymentClassifier(BaseClassifier):
 class TestResultsClassifier(BaseClassifier):
     """Classifies test result webhooks."""
 
-    def can_classify(self, headers: dict, payload: dict) -> bool:
+    def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
         gh_event = headers.get("x-github-event", "")
         if gh_event == "check_run":
             cr = payload.get("check_run", {})
@@ -286,7 +289,7 @@ class TestResultsClassifier(BaseClassifier):
         keys = set(str(k).lower() for k in payload.keys())
         return bool(keys & {"test_results", "test_suite", "coverage", "suites"})
 
-    def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         gh_event = headers.get("x-github-event", "")
         now = datetime.now(timezone.utc).isoformat()
 
@@ -296,14 +299,11 @@ class TestResultsClassifier(BaseClassifier):
             conclusion = cr.get("conclusion", "")
             run_id = cr.get("id", "")
             html_url = cr.get("details_url") or cr.get("html_url")
-            repo = payload.get("repository", {})
-            repo_name = repo.get("full_name") or repo.get("name") or "unknown"
         else:
             suite_name = payload.get("suite_name") or payload.get("name") or "Test Suite"
             conclusion = payload.get("result") or payload.get("status") or "completed"
             run_id = payload.get("id") or payload.get("run_id", "")
             html_url = payload.get("url")
-            repo_name = payload.get("repo") or payload.get("repository", "unknown")
 
         if "fail" in str(conclusion).lower():
             severity = "error"
@@ -340,10 +340,10 @@ class TestResultsClassifier(BaseClassifier):
 class GenericClassifier(BaseClassifier):
     """Fallback classifier — always matches, routes to production channel."""
 
-    def can_classify(self, headers: dict, payload: dict) -> bool:
+    def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
         return True
 
-    def classify(self, headers: dict, payload: dict) -> ClassifiedEvent:
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         now = datetime.now(timezone.utc).isoformat()
         source = headers.get("x-webhook-source") or headers.get("user-agent") or "External"
         payload_hash = hashlib.sha256(
@@ -375,7 +375,7 @@ class GenericClassifier(BaseClassifier):
         )
 
 
-def classify_webhook_event(payload: dict, headers: dict) -> ClassifiedEvent:
+def classify_webhook_event(payload: dict[str, Any], headers: dict[str, Any]) -> ClassifiedEvent:
     """Classify a webhook event using the first matching classifier."""
     classifiers: list[BaseClassifier] = [
         GitHubActionsClassifier(),

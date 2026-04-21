@@ -92,9 +92,9 @@ def test_reviewer_auto_reason_contains_reviewer_agent() -> None:
             )
             else f"lead_agent:{agent.id}"
         )
-        assert auto_reason.startswith("reviewer_agent:"), (
-            f"Expected 'reviewer_agent:' prefix for role_template '{role_tpl}', got '{auto_reason}'"
-        )
+        assert auto_reason.startswith(
+            "reviewer_agent:"
+        ), f"Expected 'reviewer_agent:' prefix for role_template '{role_tpl}', got '{auto_reason}'"
 
     # A board_worker with a reviewer template in identity_profile should NOT get reviewer prefix
     board_worker_with_reviewer_profile = SimpleNamespace(
@@ -113,9 +113,9 @@ def test_reviewer_auto_reason_contains_reviewer_agent() -> None:
         )
         else f"lead_agent:{board_worker_with_reviewer_profile.id}"
     )
-    assert auto_reason.startswith("lead_agent:"), (
-        "A board_worker with reviewer role_template should use lead_agent: prefix"
-    )
+    assert auto_reason.startswith(
+        "lead_agent:"
+    ), "A board_worker with reviewer role_template should use lead_agent: prefix"
 
 
 def test_non_lead_board_worker_cannot_create_tasks() -> None:
@@ -150,5 +150,3 @@ def test_board_worker_with_spoofed_reviewer_template_cannot_create_tasks() -> No
     with pytest.raises(HTTPException) as exc_info:
         _require_task_creation_permission(ctx, board)  # type: ignore[arg-type]
     assert exc_info.value.status_code == 403
-
-

@@ -26,9 +26,16 @@ def _standalone_create(**kwargs: object) -> AgentCreate:
 
 def test_valid_role_templates_set_is_complete() -> None:
     expected = {
-        "triager", "planner", "estimator",
-        "test_agent", "merger", "ui_test", "visual_regression",
-        "quality_reviewer", "security_reviewer", "architecture_reviewer",
+        "triager",
+        "planner",
+        "estimator",
+        "test_agent",
+        "merger",
+        "ui_test",
+        "visual_regression",
+        "quality_reviewer",
+        "security_reviewer",
+        "architecture_reviewer",
     }
     assert VALID_ROLE_TEMPLATES == expected
 

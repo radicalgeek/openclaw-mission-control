@@ -53,3 +53,43 @@ jq -r '
 
 ## API safety
 If no confident match exists for current intent, ask one clarifying question.
+
+
+## MCP App Tools
+
+You can register interactive tools that render rich UIs in Mission Control.
+Declare tools in `tools/mcp-apps.json` — Mission Control discovers them at
+runtime and renders their UI inline in the board chat or plan messages.
+
+### Manifest format
+
+See `tools/mcp-apps.json` in your workspace — it is pre-seeded with the built-in chart tool.
+
+### Built-in tools (always available)
+
+| Tool name      | Resource URI                      | Description                |
+|----------------|-----------------------------------|----------------------------|
+| `render_chart` | `ui://mission-control/chart.html` | Interactive chart renderer |
+
+### Posting an MCP App result
+
+To display a rich UI in the board chat, post a memory entry with:
+
+  POST {{ base_url }}/boards/{{ board_id | default('<BOARD_ID>') }}/memory
+  Content-Type: application/json
+  Authorization: Bearer {{ auth_token }}
+
+  {
+    "content": "Chart rendered.",
+    "content_type": "mcp_app_result",
+    "app_metadata": {
+      "agent_id": "{{ agent_id }}",
+      "board_id": "{{ board_id | default('<BOARD_ID>') }}",
+      "resource_uri": "ui://mission-control/chart.html",
+      "resource_html": "<html>...</html>"
+    }
+  }
+
+- `resource_uri` — which MCP resource to render.
+- `resource_html` — optional pre-rendered HTML (skips gateway round-trip).
+- Both `agent_id` and `board_id` must be set for tool call proxying.

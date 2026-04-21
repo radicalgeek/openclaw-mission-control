@@ -71,6 +71,10 @@ DEFAULT_GATEWAY_FILES = frozenset(
     },
 )
 
+# MCP Apps manifest: auto-provisioned as pure JSON (not Jinja-rendered).
+# Written alongside DEFAULT_GATEWAY_FILES but via a dedicated code path.
+MCP_APPS_MANIFEST_FILE = "tools/mcp-apps.json"
+
 # Lead-only workspace contract. Used for board leads to allow an iterative rollout
 # without changing worker templates.
 LEAD_GATEWAY_FILES = frozenset(

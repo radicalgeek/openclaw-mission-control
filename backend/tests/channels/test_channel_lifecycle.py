@@ -26,12 +26,11 @@ os.environ["CHANNELS_ENABLED"] = "true"
 from app.models import (  # noqa: E402
     Channel,
     ChannelSubscription,
-    Thread,
 )
-from app.models.agents import Agent
-from app.models.boards import Board
-from app.models.gateways import Gateway
-from app.models.organizations import Organization
+from app.models.agents import Agent  # noqa: E402
+from app.models.boards import Board  # noqa: E402
+from app.models.gateways import Gateway  # noqa: E402
+from app.models.organizations import Organization  # noqa: E402
 from app.services.channel_lifecycle import (  # noqa: E402
     get_default_channel_definitions,
     on_agent_added_to_board,

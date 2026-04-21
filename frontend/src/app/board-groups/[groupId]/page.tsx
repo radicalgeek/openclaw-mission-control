@@ -39,6 +39,7 @@ import type {
 import type { BoardGroupBoardSnapshot } from "@/api/generated/model";
 import { Markdown } from "@/components/atoms/Markdown";
 import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
+import { McpAppRenderer } from "@/components/atoms/McpAppRenderer";
 import { SignedOutPanel } from "@/components/auth/SignedOutPanel";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
 import { DashboardShell } from "@/components/templates/DashboardShell";
@@ -105,6 +106,11 @@ const canWriteGroupBoards = (
 };
 
 function GroupChatMessageCard({ message }: { message: BoardGroupMemoryRead }) {
+  const meta = message.app_metadata ?? null;
+  const resourceUri = typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
+  const agentId = typeof meta?.agent_id === "string" ? meta.agent_id : null;
+  const boardId = typeof meta?.board_id === "string" ? meta.board_id : null;
+  const resourceHtml = typeof meta?.resource_html === "string" ? meta.resource_html : null;
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -117,11 +123,21 @@ function GroupChatMessageCard({ message }: { message: BoardGroupMemoryRead }) {
       </div>
       <div className="mt-2 select-text cursor-text text-sm leading-relaxed text-slate-900 break-words">
         {message.content_type === "mcp_app_result" ? (
-          <MpcAppResultCard
-            metadata={message.app_metadata ?? null}
-            fallbackContent={message.content}
-            variant="basic"
-          />
+          resourceUri && agentId && boardId ? (
+            <McpAppRenderer
+              boardId={boardId}
+              agentId={agentId}
+              resourceUri={resourceUri}
+              resourceHtml={resourceHtml}
+              fallbackContent={message.content}
+            />
+          ) : (
+            <MpcAppResultCard
+              metadata={meta}
+              fallbackContent={message.content}
+              variant="basic"
+            />
+          )
         ) : (
           <Markdown content={message.content} variant="basic" />
         )}

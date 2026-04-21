@@ -63,26 +63,26 @@ def test_each_board_worker_role_template_renders_specialist_heartbeat() -> None:
     for role_tpl in BOARD_WORKER_ROLE_TEMPLATES:
         result = _render("BOARD_HEARTBEAT.md.j2", _ctx_with_role(role_tpl))
         # Specialist content should be included (not the default Board Worker Loop)
-        assert "Board Worker Loop" not in result, (
-            f"role_template '{role_tpl}' fell through to default worker loop"
-        )
+        assert (
+            "Board Worker Loop" not in result
+        ), f"role_template '{role_tpl}' fell through to default worker loop"
         assert len(result) > 500, f"role_template '{role_tpl}' rendered suspiciously short output"
         # Verify specialist-specific content was actually rendered
-        assert role_tpl.replace("_", " ") in result.lower() or role_tpl in result.lower(), (
-            f"role_template '{role_tpl}' heartbeat does not mention its own role name"
-        )
+        assert (
+            role_tpl.replace("_", " ") in result.lower() or role_tpl in result.lower()
+        ), f"role_template '{role_tpl}' heartbeat does not mention its own role name"
 
 
 def test_each_reviewer_role_template_renders_specialist_heartbeat() -> None:
     for role_tpl in STANDALONE_ROLE_TEMPLATES:
         result = _render("BOARD_HEARTBEAT.md.j2", _ctx_with_role(role_tpl))
-        assert "Board Worker Loop" not in result, (
-            f"role_template '{role_tpl}' fell through to default worker loop"
-        )
+        assert (
+            "Board Worker Loop" not in result
+        ), f"role_template '{role_tpl}' fell through to default worker loop"
         assert len(result) > 500, f"role_template '{role_tpl}' rendered suspiciously short output"
-        assert "webhook" in result.lower(), (
-            f"reviewer '{role_tpl}' heartbeat should mention webhook-driven activation"
-        )
+        assert (
+            "webhook" in result.lower()
+        ), f"reviewer '{role_tpl}' heartbeat should mention webhook-driven activation"
 
 
 def test_each_role_template_renders_specialist_agents() -> None:
@@ -105,9 +105,9 @@ def test_standalone_reviewer_agents_says_standalone_not_board() -> None:
     for role_tpl in STANDALONE_ROLE_TEMPLATES:
         ctx = {**_ctx_with_role(role_tpl), "is_standalone": "true"}
         result = _render("BOARD_AGENTS.md.j2", ctx)
-        assert "standalone agent" in result.lower(), (
-            f"reviewer '{role_tpl}' AGENTS.md should say 'standalone agent', not 'board agent'"
-        )
-        assert "board agent:" not in result.lower(), (
-            f"reviewer '{role_tpl}' AGENTS.md still says 'board agent'"
-        )
+        assert (
+            "standalone agent" in result.lower()
+        ), f"reviewer '{role_tpl}' AGENTS.md should say 'standalone agent', not 'board agent'"
+        assert (
+            "board agent:" not in result.lower()
+        ), f"reviewer '{role_tpl}' AGENTS.md still says 'board agent'"

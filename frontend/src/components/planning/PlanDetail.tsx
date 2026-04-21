@@ -12,6 +12,7 @@ import {
 
 import { Markdown } from "@/components/atoms/Markdown";
 import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
+import { McpAppRenderer } from "@/components/atoms/McpAppRenderer";
 import { cn } from "@/lib/utils";
 import {
   type PlanRead,
@@ -38,8 +39,12 @@ function isAwaitingAgentReply(msgs: PlanMessage[]): boolean {
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: PlanMessage }) {
+function MessageBubble({ msg, boardId }: { msg: PlanMessage; boardId: string }) {
   const isUser = msg.role === "user";
+  const meta = msg.metadata ?? null;
+  const resourceUri = typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
+  const agentId = typeof meta?.agent_id === "string" ? meta.agent_id : null;
+  const resourceHtml = typeof meta?.resource_html === "string" ? meta.resource_html : null;
   return (
     <div className={cn("flex flex-col gap-0.5", isUser && "items-end")}>
       <span className="text-[10px] text-slate-400 px-1">
@@ -54,11 +59,21 @@ function MessageBubble({ msg }: { msg: PlanMessage }) {
         )}
       >
         {!isUser && msg.content_type === "mcp_app_result" ? (
-          <MpcAppResultCard
-            metadata={msg.metadata ?? null}
-            fallbackContent={msg.content}
-            variant="comment"
-          />
+          resourceUri && agentId ? (
+            <McpAppRenderer
+              boardId={boardId}
+              agentId={agentId}
+              resourceUri={resourceUri}
+              resourceHtml={resourceHtml}
+              fallbackContent={msg.content}
+            />
+          ) : (
+            <MpcAppResultCard
+              metadata={meta}
+              fallbackContent={msg.content}
+              variant="comment"
+            />
+          )
         ) : (
           <Markdown content={msg.content} variant="comment" />
         )}
@@ -476,7 +491,7 @@ export function PlanDetail({
               </p>
             )}
             {messages.map((msg, i) => (
-              <MessageBubble key={i} msg={msg} />
+              <MessageBubble key={i} msg={msg} boardId={boardId} />
             ))}
             {agentThinking && (
               <div className="flex flex-col gap-0.5">

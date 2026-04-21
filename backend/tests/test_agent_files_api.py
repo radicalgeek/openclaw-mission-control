@@ -11,8 +11,6 @@ from fastapi import HTTPException
 from app.api import agent_files as agent_files_api
 from app.models.agents import Agent
 from app.models.gateways import Gateway
-from app.schemas.agent_files import AgentFileWrite
-from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 
 # ---------------------------------------------------------------------------
 # Stubs

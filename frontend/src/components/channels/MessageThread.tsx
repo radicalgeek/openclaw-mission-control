@@ -12,6 +12,7 @@ import { createTaskFromThread, getThreadMessages, sendMessage, updateThread } fr
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/atoms/Markdown";
 import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
+import { McpAppRenderer } from "@/components/atoms/McpAppRenderer";
 import { WebhookEventCard } from "./WebhookEventCard";
 import { LinkedTaskBadge } from "./LinkedTaskBadge";
 import { ApiError } from "@/api/mutator";
@@ -49,9 +50,11 @@ function SystemMessage({ message }: { message: ThreadMessageRead }) {
 function MessageBubble({
   message,
   isCurrentUser,
+  boardId,
 }: {
   message: ThreadMessageRead;
   isCurrentUser: boolean;
+  boardId: string;
 }) {
   if (message.content_type === "webhook_event") {
     return (
@@ -65,13 +68,32 @@ function MessageBubble({
   }
 
   if (message.content_type === "mcp_app_result") {
+    const meta = message.event_metadata ?? null;
+    const resourceUri = typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
+    const agentId =
+      typeof meta?.agent_id === "string"
+        ? meta.agent_id
+        : typeof message.sender_id === "string"
+          ? message.sender_id
+          : null;
+    const resourceHtml = typeof meta?.resource_html === "string" ? meta.resource_html : null;
     return (
       <div className="w-full">
-        <MpcAppResultCard
-          metadata={message.event_metadata ?? null}
-          fallbackContent={message.content}
-          variant="comment"
-        />
+        {resourceUri && agentId ? (
+          <McpAppRenderer
+            boardId={boardId}
+            agentId={agentId}
+            resourceUri={resourceUri}
+            resourceHtml={resourceHtml}
+            fallbackContent={message.content}
+          />
+        ) : (
+          <MpcAppResultCard
+            metadata={meta}
+            fallbackContent={message.content}
+            variant="comment"
+          />
+        )}
         <p className="mt-1 text-right text-[10px] text-slate-400">
           {formatTime(message.created_at)}
         </p>
@@ -550,6 +572,7 @@ export function MessageThread({
                   key={msg.id}
                   message={msg}
                   isCurrentUser={isCurrentUser}
+                  boardId={boardId}
                 />
               );
             })}

@@ -252,7 +252,8 @@ def _require_task_creation_permission(
     board: Board,
 ) -> None:
     """Allow board leads OR reviewer standalone agents (with board access) to create tasks."""
-    from fastapi import HTTPException, status as http_status
+    from fastapi import HTTPException
+    from fastapi import status as http_status
 
     agent = agent_ctx.agent
     # Board lead on this specific board: always allowed
@@ -1103,7 +1104,7 @@ async def create_task_comment(
     This is the primary collaboration/log surface for task progress.
     """
     _guard_task_access(agent_ctx, task)
-    return await tasks_api.create_task_comment(
+    return await tasks_api.create_task_comment(  # type: ignore[return-value]
         payload=payload,
         task=task,
         session=session,

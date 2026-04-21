@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends
 
@@ -21,7 +21,9 @@ router = APIRouter(tags=["branding"])
 SESSION_DEP = Depends(get_session)
 
 
-def _config_to_read(config: BrandingConfig, overrides: dict | None = None) -> BrandingRead:
+def _config_to_read(
+    config: BrandingConfig, overrides: dict[str, Any] | None = None
+) -> BrandingRead:
     """Merge deployment config with optional org overrides into a BrandingRead."""
     base = config.model_dump()
     if overrides:
@@ -78,7 +80,7 @@ async def update_org_branding(
 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
-    current: dict = dict(org.branding_overrides or {})
+    current: dict[str, Any] = dict(org.branding_overrides or {})
     for key, value in payload.model_dump(exclude_unset=True).items():
         if value is None:
             # Explicitly setting a field to null clears that override

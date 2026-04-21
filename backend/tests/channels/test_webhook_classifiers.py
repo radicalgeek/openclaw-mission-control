@@ -6,11 +6,8 @@ from __future__ import annotations
 import pytest
 
 from app.webhooks.classifier import (
-    DeploymentClassifier,
     GenericClassifier,
     GitHubActionsClassifier,
-    GitHubPRClassifier,
-    TestResultsClassifier,
     classify_webhook_event,
 )
 

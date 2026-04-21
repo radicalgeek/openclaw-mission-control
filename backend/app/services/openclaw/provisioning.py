@@ -38,6 +38,7 @@ from app.services.openclaw.constants import (
     LEAD_GATEWAY_FILES,
     LEAD_TEMPLATE_MAP,
     MAIN_TEMPLATE_MAP,
+    MCP_APPS_MANIFEST_FILE,
     PRESERVE_AGENT_EDITABLE_FILES,
     STANDALONE_TEMPLATE_MAP,
 )
@@ -478,6 +479,62 @@ def _session_key(agent: Agent) -> str:
     return board_agent_session_key(agent.id)
 
 
+_MCP_BUILTIN_CHART_TOOL: dict[str, Any] = {
+    "name": "show_chart",
+    "title": "Show Chart",
+    "description": (
+        "Render an interactive chart in Mission Control. "
+        "Use this to visualise sprint metrics, burndowns, or any structured data."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "app": {"type": "string", "enum": ["chart"], "description": "Always 'chart'"},
+            "spec": {
+                "type": "object",
+                "description": "Chart specification (matches the product-foundry-charts SKILL.md schema)",
+                "properties": {
+                    "title": {"type": "string"},
+                    "type": {"type": "string", "enum": ["line", "bar", "pie", "area"]},
+                    "data": {"type": "array"},
+                    "xKey": {"type": "string"},
+                    "yKey": {"type": "string"},
+                    "series": {"type": "array"},
+                },
+                "required": ["type", "data"],
+            },
+        },
+        "required": ["app", "spec"],
+    },
+    "_meta": {
+        "ui": {
+            "resourceUri": "ui://mission-control/chart.html",
+        }
+    },
+}
+
+_MCP_BUILTIN_CHART_RESOURCE: dict[str, Any] = {
+    "uri": "ui://mission-control/chart.html",
+    "mimeType": "text/html;profile=mcp-app",
+    "source": "builtin",
+}
+
+
+def _build_mcp_apps_manifest(agent: Agent) -> str:  # noqa: ARG001
+    """Generate the ``tools/mcp-apps.json`` manifest for an agent workspace.
+
+    The manifest declares MCP App tools that the gateway will expose via
+    ``mcp.tools.list`` once protocol v4 is supported.  Built-in tools (backed
+    by Mission Control's own HTML resources) are always included.
+    """
+    manifest: dict[str, Any] = {
+        "version": 1,
+        "tools": [_MCP_BUILTIN_CHART_TOOL],
+        "resources": [_MCP_BUILTIN_CHART_RESOURCE],
+    }
+    return json.dumps(manifest, indent=2)
+
+
 def _render_agent_files(
     context: dict[str, str],
     agent: Agent,
@@ -849,18 +906,12 @@ class BaseAgentLifecycleManager(ABC):
 
                 org = (
                     await session.exec(
-                        select(Organization).where(
-                            Organization.id == self._gateway.organization_id
-                        )
+                        select(Organization).where(Organization.id == self._gateway.organization_id)
                     )
                 ).first()
                 if org and org.branding_overrides:
-                    product_name = org.branding_overrides.get(
-                        "product_name", product_name
-                    )
-                    company_name = org.branding_overrides.get(
-                        "company_name", company_name
-                    )
+                    product_name = org.branding_overrides.get("product_name", product_name)
+                    company_name = org.branding_overrides.get("company_name", company_name)
         except Exception:
             logger.debug("Failed to resolve org branding overrides, using defaults")
         return {"product_name": product_name, "company_name": company_name}
@@ -1057,6 +1108,21 @@ class BaseAgentLifecycleManager(ABC):
                     name=name,
                     content=content,
                 )
+
+        # Write MCP Apps manifest unconditionally (always overwrite — manifest is deterministic).
+        mcp_manifest = _build_mcp_apps_manifest(agent)
+        try:
+            await self._control_plane.set_agent_file(
+                agent_id=agent_id,
+                name=MCP_APPS_MANIFEST_FILE,
+                content=mcp_manifest,
+            )
+        except OpenClawGatewayError as exc:
+            if "unsupported file" not in str(exc).lower():
+                raise
+            logger.debug(
+                "provisioning.mcp_manifest.unsupported agent_id=%s error=%s", agent_id, exc
+            )
 
 
 class BoardAgentLifecycleManager(BaseAgentLifecycleManager):

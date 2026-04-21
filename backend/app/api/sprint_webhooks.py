@@ -13,7 +13,6 @@ from app.api.deps import get_board_for_user_read, get_board_for_user_write, requ
 from app.core.time import utcnow
 from app.db.session import get_session
 from app.models.sprint_webhooks import SprintWebhook
-from app.schemas.common import OkResponse
 from app.schemas.sprints import SprintWebhookCreate, SprintWebhookRead, SprintWebhookUpdate
 
 if TYPE_CHECKING:
@@ -34,6 +33,7 @@ def _to_read(webhook: SprintWebhook) -> SprintWebhookRead:
         id=webhook.id,
         board_id=webhook.board_id,
         url=webhook.url,
+        secret=webhook.secret,
         events=list(webhook.events or []),
         enabled=webhook.enabled,
         created_at=webhook.created_at,

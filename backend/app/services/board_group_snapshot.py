@@ -40,7 +40,7 @@ def _status_weight_expr() -> ColumnElement[int]:
 def _priority_weight_expr() -> ColumnElement[int]:
     """Return a SQL expression that sorts tasks by numeric priority_score descending."""
     # Higher priority_score = higher priority = lower sort weight
-    return func.coalesce(col(Task.priority_score), 35) * -1  # type: ignore[no-any-return]
+    return func.coalesce(col(Task.priority_score), 35) * -1
 
 
 async def _boards_for_group(

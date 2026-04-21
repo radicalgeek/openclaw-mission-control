@@ -177,6 +177,15 @@ async def test_provision_main_agent_uses_dedicated_openclaw_agent_id(monkeypatch
         _fake_set_agent_files,
     )
 
+    async def _fake_set_agent_file(self, *, agent_id, name, content):
+        return None
+
+    monkeypatch.setattr(
+        agent_provisioning.OpenClawGatewayControlPlane,
+        "set_agent_file",
+        _fake_set_agent_file,
+    )
+
     await agent_provisioning.OpenClawGatewayProvisioner().apply_agent_lifecycle(
         agent=agent,  # type: ignore[arg-type]
         gateway=gateway,  # type: ignore[arg-type]

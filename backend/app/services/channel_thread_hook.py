@@ -13,7 +13,7 @@ Always call within try/except at the call site.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlmodel import col, select
 
@@ -38,8 +38,8 @@ async def on_task_created_by_webhook(
     session: "AsyncSession",
     task: "Task | None",
     board: "Board",
-    webhook_payload: dict,
-    webhook_headers: dict,
+    webhook_payload: dict[str, Any],
+    webhook_headers: dict[str, Any],
 ) -> None:
     """Post-creation hook: create a linked thread in the matching alert channel.
 
@@ -177,8 +177,8 @@ async def on_task_created_by_webhook(
 async def handle_direct_channel_webhook(
     session: "AsyncSession",
     channel: "Channel",
-    payload: dict,
-    headers: dict,
+    payload: dict[str, Any],
+    headers: dict[str, Any],
 ) -> object:
     """Handle a direct channel webhook (creates thread only, no task).
 

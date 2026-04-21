@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import col, select
 
 from app.api.deps import require_org_admin, require_org_member
 from app.core.logging import get_logger

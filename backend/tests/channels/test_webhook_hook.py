@@ -29,7 +29,6 @@ from app.models.gateways import Gateway  # noqa: E402
 from app.models.organizations import Organization  # noqa: E402
 from app.models.tasks import Task  # noqa: E402
 from app.services.channel_lifecycle import (  # noqa: E402
-    get_default_channel_definitions,
     on_board_created,
 )
 from app.services.channel_thread_hook import on_task_created_by_webhook  # noqa: E402

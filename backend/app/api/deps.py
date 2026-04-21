@@ -28,13 +28,17 @@ from app.core.agent_auth import get_agent_auth_context_optional
 from app.core.auth import AuthContext, get_auth_context, get_auth_context_optional
 from app.db.session import get_session
 from app.models.boards import Board
+from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
 from app.services.admin_access import require_user_actor
 from app.services.organizations import (
+    CAPABILITY_EXPORT_COMPLIANCE_ROLES,
+    CAPABILITY_VIEW_AUDIT_ROLES,
     OrganizationContext,
     ensure_member_for_user,
     get_active_membership,
+    has_capability,
     is_org_admin,
     require_board_access,
 )
@@ -125,6 +129,88 @@ async def require_org_admin(
     if not is_org_admin(ctx.member):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
     return ctx
+
+
+async def require_audit_access(
+    ctx: OrganizationContext = ORG_MEMBER_DEP,
+) -> OrganizationContext:
+    """Require audit/usage read access (owner, admin, operator, or auditor)."""
+    if not has_capability(ctx.member, CAPABILITY_VIEW_AUDIT_ROLES):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return ctx
+
+
+async def require_compliance_export(
+    ctx: OrganizationContext = ORG_MEMBER_DEP,
+) -> OrganizationContext:
+    """Require compliance export access (owner, admin, or auditor)."""
+    if not has_capability(ctx.member, CAPABILITY_EXPORT_COMPLIANCE_ROLES):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return ctx
+
+
+@dataclass
+class IngestCallerContext:
+    """Resolved caller context for telemetry ingest endpoints.
+
+    Supports both agent-token callers (pod sidecars) and human org-member callers.
+    When called by an agent, organization_id and gateway_id are resolved from the
+    agent's gateway record so data is fully attributed.
+    """
+
+    organization_id: UUID
+    agent_id: UUID | None  # None when called by a human operator
+    gateway_id: UUID | None  # None when called by a human operator
+
+
+async def require_ingest_caller(
+    request: Request,
+    session: AsyncSession = SESSION_DEP,
+) -> IngestCallerContext:
+    """Accept agent-token or user-org-member auth for telemetry ingest endpoints.
+
+    Agent callers (sidecars) use ``X-Agent-Token``; their organization and gateway
+    are resolved automatically from the authenticated agent record.
+    Human callers fall back to the standard org-member dep so operators can also
+    submit ingest payloads for agents they manage.
+    """
+    agent_auth = await get_agent_auth_context_optional(
+        request=request,
+        agent_token=request.headers.get("X-Agent-Token"),
+        authorization=request.headers.get("Authorization"),
+        session=session,
+    )
+    if agent_auth is not None:
+        agent = agent_auth.agent
+        gateway = await Gateway.objects.by_id(agent.gateway_id).first(session)
+        if gateway is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Gateway not found")
+        return IngestCallerContext(
+            organization_id=gateway.organization_id,
+            agent_id=agent.id,
+            gateway_id=gateway.id,
+        )
+    # Fall back to human user org-member auth
+    auth_ctx = await get_auth_context_optional(
+        request=request,
+        credentials=None,
+        session=session,
+    )
+    if auth_ctx is None or auth_ctx.user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    member = await get_active_membership(session, auth_ctx.user)
+    if member is None:
+        member = await ensure_member_for_user(session, auth_ctx.user)
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    organization = await Organization.objects.by_id(member.organization_id).first(session)
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return IngestCallerContext(
+        organization_id=organization.id,
+        agent_id=None,
+        gateway_id=None,
+    )
 
 
 async def get_board_or_404(

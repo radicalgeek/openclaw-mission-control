@@ -182,7 +182,7 @@ class OpenClawProvisioningService(OpenClawDBService):
             if existing.gateway_id != request.gateway.id:
                 existing.gateway_id = request.gateway.id
                 changed = True
-            desired_session_key = AgentLifecycleService.lead_session_key(board)
+            desired_session_key = board_lead_session_key(board.id)
             if existing.openclaw_session_id != desired_session_key:
                 existing.openclaw_session_id = desired_session_key
                 changed = True
@@ -214,7 +214,7 @@ class OpenClawProvisioningService(OpenClawDBService):
             is_board_lead=True,
             heartbeat_config=DEFAULT_HEARTBEAT_CONFIG.copy(),
             identity_profile=merged_identity_profile,
-            openclaw_session_id=AgentLifecycleService.lead_session_key(board),
+            openclaw_session_id=board_lead_session_key(board.id),
         )
         raw_token = mint_agent_token(agent)
         await self.add_commit_refresh(agent)
@@ -1305,10 +1305,7 @@ class AgentLifecycleService(OpenClawDBService):
         if role_template is None:
             return
         agent_type = agent.agent_type
-        if (
-            role_template in STANDALONE_ROLE_TEMPLATES
-            and agent_type != AGENT_TYPE_STANDALONE
-        ):
+        if role_template in STANDALONE_ROLE_TEMPLATES and agent_type != AGENT_TYPE_STANDALONE:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
@@ -1316,10 +1313,7 @@ class AgentLifecycleService(OpenClawDBService):
                     f"but this agent is '{agent_type}'"
                 ),
             )
-        if (
-            role_template in BOARD_WORKER_ROLE_TEMPLATES
-            and agent_type != AGENT_TYPE_BOARD_WORKER
-        ):
+        if role_template in BOARD_WORKER_ROLE_TEMPLATES and agent_type != AGENT_TYPE_BOARD_WORKER:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(

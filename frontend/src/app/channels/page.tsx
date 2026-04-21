@@ -41,6 +41,7 @@ export default function ChannelsIndexPage() {
     if (!boardsQuery.isSuccess) return;
     if (boards.length === 0) return;
     const first = boards[0];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRedirected(true);
     router.replace(`/channels/${first.id}`);
   }, [boardsQuery.isSuccess, boards, redirected, router]);

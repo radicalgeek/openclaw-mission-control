@@ -121,7 +121,7 @@ async def _require_standalone_agent(
     from app.services.openclaw.policies import OpenClawAuthorizationPolicy
 
     OpenClawAuthorizationPolicy.require_gateway_in_org(
-        gateway=None,  # type: ignore[arg-type]
+        gateway=None,
         organization_id=ctx.organization.id,
     )
     # Verify gateway belongs to org by checking agent's gateway
