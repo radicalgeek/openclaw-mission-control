@@ -345,7 +345,7 @@ async def ingest_agent_webhook(
 ) -> AgentWebhookIngestResponse:
     """Public endpoint for receiving external webhook payloads destined for a standalone agent."""
     client_ip = get_client_ip(request)
-    if not await webhook_ingest_limiter.is_allowed(client_ip):
+    if settings.rate_limit_enabled and not await webhook_ingest_limiter.is_allowed(client_ip):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS)
 
     webhook = (

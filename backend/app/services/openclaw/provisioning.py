@@ -30,6 +30,7 @@ from app.services.openclaw.constants import (
     DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY,
     DEFAULT_GATEWAY_FILES,
     DEFAULT_HEARTBEAT_CONFIG,
+    DEFAULT_EXTRA_IDENTITY_PROFILE,
     DEFAULT_IDENTITY_PROFILE,
     EXTRA_IDENTITY_PROFILE_FIELDS,
     HEARTBEAT_AGENT_TEMPLATE,
@@ -100,6 +101,44 @@ def _is_missing_agent_error(exc: OpenClawGatewayError) -> bool:
     ):
         return True
     return "agent" in message and "not found" in message
+
+
+# Error-message substrings that indicate a gateway rejected a file path as unsupported
+# (e.g. paths with directory separators on older gateway firmware).
+_UNSUPPORTED_FILE_PATTERNS = frozenset(
+    {
+        "unsupported file",
+        "invalid path",
+        "path separator",
+        "path contains",
+        "not a valid file",
+        "illegal file",
+    }
+)
+
+
+def _is_unsupported_file_error(exc: OpenClawGatewayError) -> bool:
+    message = str(exc).lower()
+    return any(pattern in message for pattern in _UNSUPPORTED_FILE_PATTERNS)
+
+
+# ---------------------------------------------------------------------------
+# Per-gateway rejected-file capability cache
+# ---------------------------------------------------------------------------
+# Tracks file names that a specific gateway has permanently rejected with an
+# "unsupported" error.  Keyed by gateway ID (str).  Avoids re-sending files
+# that are known to be incompatible with the connected gateway firmware, which
+# saves ~2 failed RPC calls per provisioning cycle (skills/…, tools/…).
+# In-process only — clears on restart, which is the safe default.
+_GATEWAY_REJECTED_FILES: dict[str, set[str]] = {}
+
+
+def _mark_file_rejected(gateway_id: str, file_name: str) -> None:
+    _GATEWAY_REJECTED_FILES.setdefault(gateway_id, set()).add(file_name)
+
+
+def _is_file_rejected(gateway_id: str, file_name: str) -> bool:
+    return file_name in _GATEWAY_REJECTED_FILES.get(gateway_id, set())
 
 
 def _repo_root() -> Path:
@@ -288,7 +327,7 @@ def _identity_context(agent: Agent) -> dict[str, str]:
         for field, context_key in IDENTITY_PROFILE_FIELDS.items()
     }
     extra_identity_context = {
-        context_key: normalized_identity.get(field, "")
+        context_key: normalized_identity.get(field, DEFAULT_EXTRA_IDENTITY_PROFILE.get(field, ""))
         for field, context_key in EXTRA_IDENTITY_PROFILE_FIELDS.items()
     }
     return {**identity_context, **extra_identity_context}
@@ -976,9 +1015,13 @@ class BaseAgentLifecycleManager(ABC):
         )
         target_file_names = desired_file_names or set(rendered.keys())
         unsupported_names: list[str] = []
+        gateway_id_str = str(self._gateway.id)
 
         for name, content in rendered.items():
             if content == "":
+                continue
+            # Skip files this gateway has previously rejected as unsupported.
+            if _is_file_rejected(gateway_id_str, name):
                 continue
             # Preserve "editable" files only during updates. During first-time provisioning,
             # the gateway may pre-create defaults for USER/MEMORY/etc, and we still want to
@@ -994,18 +1037,18 @@ class BaseAgentLifecycleManager(ABC):
                     content=content,
                 )
             except OpenClawGatewayError as exc:
-                if "unsupported file" in str(exc).lower():
+                if _is_unsupported_file_error(exc):
                     unsupported_names.append(name)
+                    _mark_file_rejected(gateway_id_str, name)
                     continue
                 raise
 
         if agent is not None and agent.is_board_lead and unsupported_names:
             unsupported_sorted = ", ".join(sorted(set(unsupported_names)))
-            msg = (
-                "Gateway rejected required lead workspace files as unsupported: "
-                f"{unsupported_sorted}"
+            logger.warning(
+                "gateway.files.unsupported_skipped agent_is_board_lead=True files=%s",
+                unsupported_sorted,
             )
-            raise RuntimeError(msg)
 
         if agent is None or not self._allow_stale_file_deletion(agent):
             return
@@ -1101,28 +1144,44 @@ class BaseAgentLifecycleManager(ABC):
 
         # Write caller-supplied extra files (e.g. auth-profiles.json, skill config.env).
         # These are written after templates so they are never overwritten by template rendering.
+        gateway_id_str = str(self._gateway.id)
         if extra_files:
             for name, content in extra_files.items():
-                await self._control_plane.set_agent_file(
-                    agent_id=agent_id,
-                    name=name,
-                    content=content,
-                )
+                if _is_file_rejected(gateway_id_str, name):
+                    continue
+                try:
+                    await self._control_plane.set_agent_file(
+                        agent_id=agent_id,
+                        name=name,
+                        content=content,
+                    )
+                except OpenClawGatewayError as exc:
+                    if _is_unsupported_file_error(exc):
+                        _mark_file_rejected(gateway_id_str, name)
+                        logger.warning(
+                            "gateway.extra_file.unsupported_skipped name=%s",
+                            name,
+                        )
+                        continue
+                    raise
 
         # Write MCP Apps manifest unconditionally (always overwrite — manifest is deterministic).
         mcp_manifest = _build_mcp_apps_manifest(agent)
-        try:
-            await self._control_plane.set_agent_file(
-                agent_id=agent_id,
-                name=MCP_APPS_MANIFEST_FILE,
-                content=mcp_manifest,
-            )
-        except OpenClawGatewayError as exc:
-            if "unsupported file" not in str(exc).lower():
-                raise
-            logger.debug(
-                "provisioning.mcp_manifest.unsupported agent_id=%s error=%s", agent_id, exc
-            )
+        if not _is_file_rejected(gateway_id_str, MCP_APPS_MANIFEST_FILE):
+            try:
+                await self._control_plane.set_agent_file(
+                    agent_id=agent_id,
+                    name=MCP_APPS_MANIFEST_FILE,
+                    content=mcp_manifest,
+                )
+            except OpenClawGatewayError as exc:
+                if _is_unsupported_file_error(exc):
+                    _mark_file_rejected(gateway_id_str, MCP_APPS_MANIFEST_FILE)
+                    logger.debug(
+                        "provisioning.mcp_manifest.unsupported agent_id=%s error=%s", agent_id, exc
+                    )
+                else:
+                    raise
 
 
 class BoardAgentLifecycleManager(BaseAgentLifecycleManager):

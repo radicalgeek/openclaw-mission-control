@@ -53,14 +53,20 @@ BOARD_WRITE_DEP = Depends(get_board_for_actor_write)
 ACTOR_DEP = Depends(require_user_or_agent)
 
 # ---------------------------------------------------------------------------
-# In-process per-board tool-call rate limiter: 10 calls/minute
+# In-process per-board tool-call rate limiter
+# Configurable via MCP_RATE_LIMIT_MAX / MCP_RATE_LIMIT_WINDOW env vars.
+# Set RATE_LIMIT_ENABLED=false to disable entirely.
 # ---------------------------------------------------------------------------
-_RATE_LIMIT_WINDOW_S = 60
-_RATE_LIMIT_MAX_CALLS = 10
+from app.core.config import settings as _settings
+
+_RATE_LIMIT_WINDOW_S = _settings.mcp_rate_limit_window
+_RATE_LIMIT_MAX_CALLS = _settings.mcp_rate_limit_max
 _rate_limit_buckets: dict[str, list[float]] = defaultdict(list)
 
 
 def _check_tool_call_rate_limit(board_id: UUID) -> None:
+    if not _settings.rate_limit_enabled:
+        return
     key = str(board_id)
     now = time.monotonic()
     window_start = now - _RATE_LIMIT_WINDOW_S

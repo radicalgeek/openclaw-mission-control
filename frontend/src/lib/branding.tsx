@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { getApiBaseUrl } from "@/lib/api-base";
 import { isLocalAuthMode, getLocalAuthToken } from "@/auth/localAuth";
 
 export interface BrandingConfig {
@@ -20,6 +19,18 @@ export interface BrandingConfig {
   accentColor: string;
   accentStrong: string;
   accentSoft: string;
+  /** Text colour rendered ON a solid accent background (e.g. buttons). Use dark (#111111) on bright accents. */
+  accentForeground: string;
+  /** Active sidebar item text/icon colour. Defaults to accentStrong. */
+  accentTextOnSoft: string;
+  /** Page/app background colour (--bg). */
+  bg: string;
+  /** Surface/panel base colour (--surface). */
+  surface: string;
+  /** Sidebar background colour. */
+  sidebarBg: string;
+  /** Card/panel background colour. */
+  cardBg: string;
   logoPath: string;
   copyrightHolder: string;
 }
@@ -28,11 +39,19 @@ const DEFAULTS: BrandingConfig = {
   productName: "Product Foundry",
   companyName: "AxiaCraft",
   fullTitle: "AxiaCraft Product Foundry",
-  description: "AI product engineering command center.",
-  accentColor: "#c9972a",
-  accentStrong: "#d4a82e",
-  accentSoft: "rgba(201, 151, 42, 0.18)",
-  logoPath: "/axiacraft-logo.png",
+  description:
+    process.env.NEXT_PUBLIC_APP_DESCRIPTION ??
+    "AI product engineering command centre.",
+  accentColor: process.env.NEXT_PUBLIC_ACCENT_COLOR ?? "#c9972a",
+  accentStrong: process.env.NEXT_PUBLIC_ACCENT_STRONG ?? "#d4a82e",
+  accentSoft: process.env.NEXT_PUBLIC_ACCENT_SOFT ?? "rgba(201, 151, 42, 0.18)",
+  accentForeground: process.env.NEXT_PUBLIC_ACCENT_FOREGROUND ?? "#ffffff",
+  accentTextOnSoft: process.env.NEXT_PUBLIC_ACCENT_TEXT_ON_SOFT ?? (process.env.NEXT_PUBLIC_ACCENT_STRONG ?? "#d4a82e"),
+  bg: process.env.NEXT_PUBLIC_BG ?? "",
+  surface: process.env.NEXT_PUBLIC_SURFACE ?? "",
+  sidebarBg: process.env.NEXT_PUBLIC_SIDEBAR_BG ?? "",
+  cardBg: process.env.NEXT_PUBLIC_CARD_BG ?? "",
+  logoPath: process.env.NEXT_PUBLIC_LOGO_PATH ?? "/axiacraft-logo.png",
   copyrightHolder: "AxiaCraft",
 };
 
@@ -45,6 +64,12 @@ interface BrandingApiResponse {
   accent_color: string;
   accent_strong: string;
   accent_soft: string;
+  accent_foreground?: string;
+  accent_text_on_soft?: string;
+  bg?: string;
+  surface?: string;
+  sidebar_bg?: string;
+  card_bg?: string;
   logo_path: string;
   copyright_holder: string;
 }
@@ -58,6 +83,12 @@ function mapApiResponse(raw: BrandingApiResponse): BrandingConfig {
     accentColor: raw.accent_color,
     accentStrong: raw.accent_strong,
     accentSoft: raw.accent_soft,
+    accentForeground: raw.accent_foreground ?? DEFAULTS.accentForeground,
+    accentTextOnSoft: raw.accent_text_on_soft ?? DEFAULTS.accentTextOnSoft,
+    bg: raw.bg ?? DEFAULTS.bg,
+    surface: raw.surface ?? DEFAULTS.surface,
+    sidebarBg: raw.sidebar_bg ?? DEFAULTS.sidebarBg,
+    cardBg: raw.card_bg ?? DEFAULTS.cardBg,
     logoPath: raw.logo_path,
     copyrightHolder: raw.copyright_holder,
   };
@@ -65,8 +96,8 @@ function mapApiResponse(raw: BrandingApiResponse): BrandingConfig {
 
 async function fetchDeploymentBranding(): Promise<BrandingConfig> {
   try {
-    const url = `${getApiBaseUrl()}/api/v1/branding`;
-    const res = await fetch(url, { cache: "no-store" });
+    // Use the same-origin proxy route to avoid cross-origin CORS issues.
+    const res = await fetch("/api/branding", { cache: "no-store" });
     if (!res.ok) return DEFAULTS;
     const data = (await res.json()) as BrandingApiResponse;
     return mapApiResponse(data);
@@ -98,8 +129,8 @@ async function fetchOrgBranding(): Promise<BrandingConfig | null> {
   try {
     const token = await resolveAuthToken();
     if (!token) return null;
-    const url = `${getApiBaseUrl()}/api/v1/organizations/me/branding`;
-    const res = await fetch(url, {
+    // Use the same-origin proxy route to avoid cross-origin CORS issues.
+    const res = await fetch("/api/org-branding", {
       cache: "no-store",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -136,6 +167,12 @@ function applyBrandingCss(branding: BrandingConfig): void {
   root.style.setProperty("--accent", branding.accentColor);
   root.style.setProperty("--accent-strong", branding.accentStrong);
   root.style.setProperty("--accent-soft", branding.accentSoft);
+  root.style.setProperty("--accent-foreground", branding.accentForeground);
+  root.style.setProperty("--accent-text-on-soft", branding.accentTextOnSoft);
+  if (branding.bg) root.style.setProperty("--bg", branding.bg);
+  if (branding.surface) root.style.setProperty("--surface", branding.surface);
+  if (branding.sidebarBg) root.style.setProperty("--sidebar-bg", branding.sidebarBg);
+  if (branding.cardBg) root.style.setProperty("--card-bg", branding.cardBg);
   document.title = branding.fullTitle;
 }
 

@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     # Rate limiting
     rate_limit_backend: RateLimitBackend = RateLimitBackend.MEMORY
     rate_limit_redis_url: str = ""
+    # Set to False to disable all rate limiting (trusted self-hosted deployments).
+    rate_limit_enabled: bool = True
+    # Agent auth limiter (applies per client IP).
+    agent_auth_rate_limit_max: int = 20
+    agent_auth_rate_limit_window: float = 60.0
+    # Webhook ingest limiter (applies per client IP).
+    webhook_rate_limit_max: int = 60
+    webhook_rate_limit_window: float = 60.0
+    # MCP tool-call limiter (applies per board).
+    mcp_rate_limit_max: int = 10
+    mcp_rate_limit_window: float = 60.0
 
     # Trusted reverse-proxy IPs/CIDRs for client-IP extraction from
     # Forwarded / X-Forwarded-For headers.  Comma-separated.
@@ -81,6 +92,25 @@ class Settings(BaseSettings):
     rq_dispatch_max_retries: int = 3
     rq_dispatch_retry_base_seconds: float = 10.0
     rq_dispatch_retry_max_seconds: float = 120.0
+
+    # Org-level standalone agent reconciliation interval (seconds).
+    org_agent_reconcile_interval_seconds: int = 3600
+
+    # Agent provisioning watchdog: how long (seconds) after a wake call the agent
+    # must send its first heartbeat before the reconcile worker retries.
+    # A generous window (120 s) is needed when several agents are provisioned
+    # concurrently and the gateway worker queues WebSocket handshakes serially.
+    agent_checkin_deadline_seconds: int = 120
+
+    # Maximum number of wake retries before the reconciler gives up and marks
+    # the agent offline.
+    agent_max_wake_attempts: int = 5
+
+    # Age (seconds) beyond which an agent stuck in 'provisioning' with no
+    # heartbeat is treated as orphaned and re-enqueued for a retry.  This sweep
+    # runs inside the periodic org-agent reconcile cycle and catches agents that
+    # were provisioned before the enqueue-on-failure fix was deployed.
+    agent_stuck_provisioning_sweep_seconds: int = 300
 
     # OpenClaw gateway runtime compatibility
     gateway_min_version: str = "2026.02.9"

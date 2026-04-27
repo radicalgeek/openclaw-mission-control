@@ -46,6 +46,7 @@ class Board(TenantScoped, table=True):
     only_lead_can_change_status: bool = Field(default=False)
     max_agents: int = Field(default=1)
     is_platform: bool = Field(default=False, index=True)
+    is_archived: bool = Field(default=False, index=True)
     auto_advance_sprint: bool = Field(default=False)  # "flow mode" auto-starts next queued sprint
     budget_usd: float | None = Field(default=None, sa_column=Column(Numeric(12, 6), nullable=True))
     created_at: datetime = Field(default_factory=utcnow)

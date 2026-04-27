@@ -1,7 +1,7 @@
 """add_channels_feature
 
 Revision ID: c4a1f2e8d9b3
-Revises: merge_all_heads_2026
+Revises: d0e1f2a3b4c5
 Create Date: 2026-03-21 22:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "c4a1f2e8d9b3"
-down_revision = "merge_all_heads_2026"
+down_revision = "d0e1f2a3b4c5"
 branch_labels = None
 depends_on = None
 

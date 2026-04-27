@@ -157,6 +157,15 @@ async def create_organization(
     await set_active_organization(session, user=auth.user, organization_id=org.id)
     await session.commit()
     await session.refresh(org)
+
+    # Best-effort: trigger immediate org-agent reconciliation for the new org.
+    try:
+        from app.services.openclaw.org_agent_reconcile_queue import enqueue_org_agent_reconcile
+
+        enqueue_org_agent_reconcile()
+    except Exception:
+        pass  # Non-fatal; periodic reconciler will catch up.
+
     return OrganizationRead.model_validate(org, from_attributes=True)
 
 

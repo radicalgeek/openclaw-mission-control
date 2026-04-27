@@ -372,6 +372,14 @@ async def ensure_member_for_user(
             normalized_existing_pack_urls.add(normalized_source_url)
             continue
 
+    # Best-effort: trigger immediate org-agent reconciliation for the new org.
+    try:
+        from app.services.openclaw.org_agent_reconcile_queue import enqueue_org_agent_reconcile
+
+        enqueue_org_agent_reconcile()
+    except Exception:
+        pass  # Non-fatal; periodic reconciler will catch up.
+
     await session.refresh(member)
     return member
 

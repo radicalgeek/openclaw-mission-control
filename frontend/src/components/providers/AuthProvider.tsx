@@ -11,7 +11,17 @@ import {
 } from "@/auth/localAuth";
 import { LocalAuthLogin } from "@/components/organisms/LocalAuthLogin";
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+  initialLocalToken = null,
+}: {
+  children: ReactNode;
+  // Server-read cookie value forwarded from AuthGate. Providing this ensures
+  // the SSR and client initial renders agree on auth state, avoiding the
+  // React hydration mismatch (error #418) that occurred when SSR returned
+  // null from sessionStorage-only getLocalAuthToken().
+  initialLocalToken?: string | null;
+}) {
   const localMode = isLocalAuthMode();
 
   useEffect(() => {
@@ -21,7 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [localMode]);
 
   if (localMode) {
-    if (!getLocalAuthToken()) {
+    // Prefer the server-read cookie value (consistent between SSR and hydration)
+    // over the client sessionStorage value (unavailable during SSR).
+    const token = initialLocalToken ?? getLocalAuthToken();
+    if (!token) {
       return <LocalAuthLogin />;
     }
     return <>{children}</>;

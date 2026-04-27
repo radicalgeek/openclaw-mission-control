@@ -108,6 +108,15 @@ async def create_gateway(
     data["organization_id"] = ctx.organization.id
     gateway = await crud.create(session, Gateway, **data)
     await service.ensure_main_agent(gateway, auth, action="provision")
+    # Enqueue org-level standalone agent reconciliation now that a gateway exists.
+    # (At org-creation time the gateway didn't exist yet, so the reconciler returned
+    # "no_gateway" for every template without provisioning anything.)
+    try:
+        from app.services.openclaw.org_agent_reconcile_queue import enqueue_org_agent_reconcile
+
+        enqueue_org_agent_reconcile()
+    except Exception:
+        pass  # Non-fatal; periodic reconciler will catch up.
     return gateway
 
 

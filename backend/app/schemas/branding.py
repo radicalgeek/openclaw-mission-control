@@ -17,6 +17,12 @@ class BrandingRead(SQLModel):
     accent_color: str
     accent_strong: str
     accent_soft: str
+    accent_foreground: str
+    accent_text_on_soft: str
+    bg: str
+    surface: str
+    sidebar_bg: str
+    card_bg: str
     logo_path: str
     copyright_holder: str
 
@@ -31,5 +37,11 @@ class BrandingUpdate(SQLModel):
     accent_color: Optional[str] = None
     accent_strong: Optional[str] = None
     accent_soft: Optional[str] = None
+    accent_foreground: Optional[str] = None
+    accent_text_on_soft: Optional[str] = None
+    bg: Optional[str] = None
+    surface: Optional[str] = None
+    sidebar_bg: Optional[str] = None
+    card_bg: Optional[str] = None
     logo_path: Optional[str] = None
     copyright_holder: Optional[str] = None

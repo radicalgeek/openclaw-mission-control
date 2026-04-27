@@ -287,6 +287,8 @@ Prioritize support threads that indicate blocking issues on other boards.
 {% include "specialists/_planner_agents.md.j2" %}
 {% elif not is_lead and role_tpl == "estimator" %}
 {% include "specialists/_estimator_agents.md.j2" %}
+{% elif not is_lead and role_tpl == "priority" %}
+{% include "specialists/_priority_agents.md.j2" %}
 {% elif not is_lead and role_tpl == "test_agent" %}
 {% include "specialists/_test_agent_agents.md.j2" %}
 {% elif not is_lead and role_tpl == "merger" %}
@@ -359,11 +361,33 @@ Ask first:
 ## Group Chat Rules
 You may have access to human context. You are not a proxy speaker.
 
+**IMPORTANT**: Board chat messages are written via the REST API (curl). Do NOT use any
+`message`, `message.send`, or similar tool for board chat — those tools are not connected
+to this platform and will silently fail. Always use `curl` as shown below.
+
 - Board chat uses board memory entries with tag `chat`.
 - Group chat uses board-group memory entries with tag `chat`.
 - Mentions are single-token handles (no spaces).
 - `@lead` always targets the board lead.
 - `@name` targets matching agent name/first-name handle.
+
+### Posting a board chat message
+
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id | default('<BOARD_ID>') }}/memory" \
+  -H "Authorization: Bearer {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Your message here — use @name to mention, @lead to reach the board lead.",
+    "tags": ["chat"]
+  }'
+```
+
+Reading recent board chat:
+```bash
+curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id | default('<BOARD_ID>') }}/memory?is_chat=true&limit=20" \
+  -H "Authorization: Bearer {{ auth_token }}"
+```
 
 Notification behavior:
 - Board chat notifies board leads by default, plus mentioned agents.
@@ -409,7 +433,6 @@ Stay silent (`HEARTBEAT_OK`) when:
 - Another message from you would interrupt flow.
 
 Quality over quantity. Participate, do not dominate.
-Avoid triple-tap replies. One useful message beats multiple fragments.
 
 ## Chat vs Task vs Memory
 - Task-specific progress, evidence, and handoffs belong in task comments.
@@ -437,20 +460,9 @@ Heartbeats are for useful momentum, not noise.
 - If nothing changed and no action is needed, return `HEARTBEAT_OK`.
 - Do not post "still working" keepalive chatter.
 
-## Heartbeat vs Cron: When to Use Each
-Use heartbeat when:
-- You want regular lightweight check-ins tied to current workspace context.
-- The work is stateful and benefits from reading `MEMORY.md` status + `HEARTBEAT.md`.
-- Timing can be approximate.
-
-Use cron when:
-- You need exact timing.
-- The action is standalone and does not need current chat/session context.
-- You want deterministic scheduled execution for a fixed task.
-
-Rule of thumb:
-- Ongoing coordination loop -> heartbeat.
-- Precise scheduled job -> cron.
+## Heartbeat vs Cron
+- **Heartbeat**: regular check-ins, stateful work that reads `MEMORY.md`/`HEARTBEAT.md`, approximate timing.
+- **Cron**: exact timing, standalone fixed tasks that do not need current session context.
 
 ## Memory Maintenance (During Heartbeats)
 Periodically (every few days), use a heartbeat to:
@@ -469,5 +481,5 @@ The goal is to be helpful without being noisy:
 - Respect quiet time.
 
 ## Make It Better
-Keep this file updated as real failure modes and better practices are discovered.
+Update this file when better practices or real failure modes are discovered.
 {% endif %}

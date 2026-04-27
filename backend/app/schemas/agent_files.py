@@ -37,3 +37,32 @@ class AgentFileWrite(SQLModel):
     """Request payload for writing an agent workspace file."""
 
     content: str
+
+
+class AgentFileBatchEntry(SQLModel):
+    """A single name+content pair for a batch file upload."""
+
+    name: str
+    content: str
+
+
+class AgentFileBatchWrite(SQLModel):
+    """Request payload for uploading multiple agent workspace files in one call."""
+
+    files: list[AgentFileBatchEntry]
+
+
+class AgentFileBatchResultEntry(SQLModel):
+    """Per-file outcome row in a batch write response."""
+
+    name: str
+    ok: bool
+    error: str | None = None
+
+
+class AgentFileBatchResult(SQLModel):
+    """Response payload for POST /agents/{id}/files."""
+
+    agent_id: UUID
+    gateway_agent_id: str
+    results: list[AgentFileBatchResultEntry]

@@ -13,6 +13,9 @@ from app.db.session import get_session
 from app.models.agents import Agent
 from app.models.gateways import Gateway
 from app.schemas.agent_files import (
+    AgentFileBatchResult,
+    AgentFileBatchResultEntry,
+    AgentFileBatchWrite,
     AgentFileContent,
     AgentFileEntry,
     AgentFileList,
@@ -189,6 +192,64 @@ def _redact_auth_token(content: str) -> str:
 # ---------------------------------------------------------------------------
 # Phase 2 – Write endpoints (org admin)
 # ---------------------------------------------------------------------------
+
+
+@router.post("/{agent_id}/files", response_model=AgentFileBatchResult)
+async def batch_set_agent_files(
+    agent_id: str,
+    payload: AgentFileBatchWrite,
+    reset_session: bool = RESET_SESSION_QUERY,
+    session: "AsyncSession" = SESSION_DEP,
+    ctx: "OrganizationContext" = ORG_ADMIN_DEP,
+) -> AgentFileBatchResult:
+    """Upload multiple files to an agent workspace in a single call.
+
+    Proxies ``agents.files.set`` for each file to the connected gateway.
+    Results include a per-file ``ok`` flag so the caller can inspect
+    partial failures without the whole request failing.
+
+    Pass ``?reset_session=true`` to trigger an agent session reset after
+    all writes so the agent re-reads its workspace promptly.
+    """
+    agent = await _require_agent(agent_id, session, ctx.organization.id)
+    control_plane, gw_agent_id = await _build_control_plane(agent, session)
+
+    results: list[AgentFileBatchResultEntry] = []
+    for entry in payload.files:
+        try:
+            await control_plane.set_agent_file(
+                agent_id=gw_agent_id, name=entry.name, content=entry.content
+            )
+            results.append(AgentFileBatchResultEntry(name=entry.name, ok=True))
+        except OpenClawGatewayError as exc:
+            results.append(
+                AgentFileBatchResultEntry(name=entry.name, ok=False, error=str(exc))
+            )
+
+    record_activity(
+        session,
+        event_type="agent.files.batch_write",
+        message=(
+            f"{len(payload.files)} file(s) uploaded to agent {agent.name} workspace "
+            f"({sum(1 for r in results if r.ok)} succeeded, "
+            f"{sum(1 for r in results if not r.ok)} failed)"
+        ),
+        agent_id=agent.id,
+        board_id=agent.board_id,
+    )
+    await session.commit()
+
+    if reset_session and agent.openclaw_session_id:
+        try:
+            await control_plane.reset_agent_session(agent.openclaw_session_id)
+        except OpenClawGatewayError:
+            logger.warning("agent.files.batch_write.session_reset_failed agent_id=%s", agent.id)
+
+    return AgentFileBatchResult(
+        agent_id=UUID(agent_id),
+        gateway_agent_id=gw_agent_id,
+        results=results,
+    )
 
 
 @router.put("/{agent_id}/files/{file_name:path}", response_model=AgentFileContent)

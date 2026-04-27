@@ -25,23 +25,25 @@ VALID_AGENT_TYPES = frozenset(
 
 VALID_ROLE_TEMPLATES = frozenset(
     {
-        # Delivery specialists (board_worker, pre-board lifecycle)
+        # Delivery specialists (board_worker or standalone)
         "triager",
         "planner",
         "estimator",
-        # Board specialists (board_worker, Kanban task execution)
+        "priority",
+        # Board specialists (board_worker only, Kanban task execution)
         "test_agent",
         "merger",
         "ui_test",
         "visual_regression",
-        # Cross-board reviewers (standalone, webhook-driven)
+        # Cross-board reviewers (standalone only, webhook-driven)
         "quality_reviewer",
         "security_reviewer",
         "architecture_reviewer",
     }
 )
 
-STANDALONE_ROLE_TEMPLATES = frozenset(
+# Templates that may only be assigned to standalone agents.
+STANDALONE_ONLY_ROLE_TEMPLATES = frozenset(
     {
         "quality_reviewer",
         "security_reviewer",
@@ -49,7 +51,31 @@ STANDALONE_ROLE_TEMPLATES = frozenset(
     }
 )
 
-BOARD_WORKER_ROLE_TEMPLATES = VALID_ROLE_TEMPLATES - STANDALONE_ROLE_TEMPLATES
+# Templates that may only be assigned to board_worker agents.
+BOARD_WORKER_ONLY_ROLE_TEMPLATES = frozenset(
+    {
+        "test_agent",
+        "merger",
+        "ui_test",
+        "visual_regression",
+    }
+)
+
+# Delivery-tier templates valid for BOTH standalone and board_worker.
+ORG_STANDALONE_ROLE_TEMPLATES = frozenset(
+    {
+        "triager",
+        "planner",
+        "estimator",
+        "priority",
+    }
+)
+
+# All templates valid for standalone agents (used by reconciler).
+STANDALONE_ROLE_TEMPLATES = STANDALONE_ONLY_ROLE_TEMPLATES | ORG_STANDALONE_ROLE_TEMPLATES
+
+# All templates valid for board_worker agents.
+BOARD_WORKER_ROLE_TEMPLATES = BOARD_WORKER_ONLY_ROLE_TEMPLATES | ORG_STANDALONE_ROLE_TEMPLATES
 
 _RUNTIME_TYPE_REFERENCES = (datetime, UUID, NonEmptyStr)
 
@@ -180,6 +206,17 @@ class AgentCreate(AgentBase):
     """Payload for creating a new agent."""
 
     @model_validator(mode="after")
+    def sync_is_board_lead_from_agent_type(self) -> "AgentCreate":
+        """Ensure is_board_lead=True whenever agent_type is 'board_lead'.
+
+        Clients may set either field; this validator enforces consistency so
+        provisioning always has a coherent state for session-key/template resolution.
+        """
+        if self.agent_type == AGENT_TYPE_BOARD_LEAD:
+            self.is_board_lead = True
+        return self
+
+    @model_validator(mode="after")
     def validate_standalone_board_id(self) -> "AgentCreate":
         """Enforce board_id presence/absence based on agent_type."""
         boardless_types = {AGENT_TYPE_STANDALONE, AGENT_TYPE_GATEWAY_MAIN}
@@ -201,10 +238,13 @@ class AgentCreate(AgentBase):
                 f"Invalid role_template '{role_template}'. "
                 f"Must be one of: {sorted(VALID_ROLE_TEMPLATES)}"
             )
-        if role_template in STANDALONE_ROLE_TEMPLATES and self.agent_type != AGENT_TYPE_STANDALONE:
+        if (
+            role_template in STANDALONE_ONLY_ROLE_TEMPLATES
+            and self.agent_type != AGENT_TYPE_STANDALONE
+        ):
             raise ValueError(f"role_template '{role_template}' requires agent_type 'standalone'")
         if (
-            role_template in BOARD_WORKER_ROLE_TEMPLATES
+            role_template in BOARD_WORKER_ONLY_ROLE_TEMPLATES
             and self.agent_type != AGENT_TYPE_BOARD_WORKER
         ):
             raise ValueError(f"role_template '{role_template}' requires agent_type 'board_worker'")

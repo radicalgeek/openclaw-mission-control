@@ -7,7 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: appTitle,
     short_name: appTitle.split(" ").pop() ?? appTitle,
-    description: "AI product engineering command center.",
+    description:
+      process.env.NEXT_PUBLIC_APP_DESCRIPTION ??
+      "AI product engineering command centre.",
     start_url: "/",
     display: "standalone",
     background_color: "#0f1623",

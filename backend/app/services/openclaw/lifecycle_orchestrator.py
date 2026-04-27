@@ -7,16 +7,18 @@ duplicate provisioning/wake/state logic.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlmodel import col, select
 
+from app.core.config import settings
 from app.core.time import utcnow
 from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
-from app.services.openclaw.constants import CHECKIN_DEADLINE_AFTER_WAKE
+from app.services.openclaw.constants import CHECKIN_DEADLINE_AFTER_WAKE  # noqa: F401 (kept for import compat)
 from app.services.openclaw.db_agent_state import (
     mark_provision_complete,
     mark_provision_requested,
@@ -95,7 +97,9 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
         )
         locked.lifecycle_generation += 1
         locked.last_provision_error = None
-        locked.checkin_deadline_at = utcnow() + CHECKIN_DEADLINE_AFTER_WAKE if wake else None
+        locked.checkin_deadline_at = (
+            utcnow() + timedelta(seconds=settings.agent_checkin_deadline_seconds) if wake else None
+        )
         if wake:
             locked.wake_attempts += 1
             locked.last_wake_sent_at = utcnow()
@@ -129,6 +133,16 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
             self.session.add(locked)
             await self.session.commit()
             await self.session.refresh(locked)
+            if wake and locked.checkin_deadline_at is not None:
+                enqueue_lifecycle_reconcile(
+                    QueuedAgentLifecycleReconcile(
+                        agent_id=locked.id,
+                        gateway_id=locked.gateway_id,
+                        board_id=locked.board_id,
+                        generation=locked.lifecycle_generation,
+                        checkin_deadline_at=locked.checkin_deadline_at,
+                    )
+                )
             if raise_gateway_errors:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
@@ -141,6 +155,16 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
             self.session.add(locked)
             await self.session.commit()
             await self.session.refresh(locked)
+            if wake and locked.checkin_deadline_at is not None:
+                enqueue_lifecycle_reconcile(
+                    QueuedAgentLifecycleReconcile(
+                        agent_id=locked.id,
+                        gateway_id=locked.gateway_id,
+                        board_id=locked.board_id,
+                        generation=locked.lifecycle_generation,
+                        checkin_deadline_at=locked.checkin_deadline_at,
+                    )
+                )
             if raise_gateway_errors:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -154,7 +178,9 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
             clear_confirm_token=clear_confirm_token,
         )
         locked.last_provision_error = None
-        locked.checkin_deadline_at = utcnow() + CHECKIN_DEADLINE_AFTER_WAKE if wake else None
+        locked.checkin_deadline_at = (
+            utcnow() + timedelta(seconds=settings.agent_checkin_deadline_seconds) if wake else None
+        )
         self.session.add(locked)
         await self.session.commit()
         await self.session.refresh(locked)

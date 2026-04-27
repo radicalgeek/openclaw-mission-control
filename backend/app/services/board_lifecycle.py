@@ -13,6 +13,7 @@ from sqlmodel import col, select
 
 from app.db import crud
 from app.models.activity_events import ActivityEvent
+from app.models.agent_board_access import AgentBoardAccess
 from app.models.agents import Agent
 from app.models.approval_task_links import ApprovalTaskLink
 from app.models.approvals import Approval
@@ -22,6 +23,8 @@ from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.board_webhooks import BoardWebhook
 from app.models.organization_board_access import OrganizationBoardAccess
 from app.models.organization_invite_board_access import OrganizationInviteBoardAccess
+from app.models.plans import Plan
+from app.models.sprint_webhooks import SprintWebhook
 from app.models.tag_assignments import TagAssignment
 from app.models.task_custom_fields import BoardTaskCustomField, TaskCustomFieldValue
 from app.models.task_dependencies import TaskDependency
@@ -148,9 +151,19 @@ async def delete_board(session: AsyncSession, *, board: Board) -> OkResponse:
         col(BoardTaskCustomField.board_id) == board.id,
     )
 
+    # Plans reference board_id (NOT NULL) and optionally task_id.
+    # Delete before tasks so neither FK blocks the other teardown step.
+    await crud.delete_where(session, Plan, col(Plan.board_id) == board.id)
+
+    # Sprint webhooks reference board_id (NOT NULL).
+    await crud.delete_where(session, SprintWebhook, col(SprintWebhook.board_id) == board.id)
+
     # Tasks reference agents and have dependent records.
     # Delete tasks before agents.
     await crud.delete_where(session, Task, col(Task.board_id) == board.id)
+
+    # Agent board access grants reference both agents and boards — delete before both.
+    await crud.delete_where(session, AgentBoardAccess, col(AgentBoardAccess.board_id) == board.id)
 
     if agents:
         agent_ids = [agent.id for agent in agents]

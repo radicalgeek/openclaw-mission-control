@@ -222,16 +222,19 @@ def create_rate_limiter(
     )
 
 
-# Shared limiter instances for specific endpoints.
-# Agent auth: 20 attempts per 60 seconds per IP.
+# Shared limiter instances for specific endpoints — thresholds read from settings
+# so they can be tuned or disabled via environment variables without a rebuild.
+from app.core.config import settings as _settings
+
+# Agent auth: configurable via AGENT_AUTH_RATE_LIMIT_MAX / AGENT_AUTH_RATE_LIMIT_WINDOW.
 agent_auth_limiter: RateLimiter = create_rate_limiter(
     namespace="agent_auth",
-    max_requests=20,
-    window_seconds=60.0,
+    max_requests=_settings.agent_auth_rate_limit_max,
+    window_seconds=_settings.agent_auth_rate_limit_window,
 )
-# Webhook ingest: 60 requests per 60 seconds per IP.
+# Webhook ingest: configurable via WEBHOOK_RATE_LIMIT_MAX / WEBHOOK_RATE_LIMIT_WINDOW.
 webhook_ingest_limiter: RateLimiter = create_rate_limiter(
     namespace="webhook_ingest",
-    max_requests=60,
-    window_seconds=60.0,
+    max_requests=_settings.webhook_rate_limit_max,
+    window_seconds=_settings.webhook_rate_limit_window,
 )

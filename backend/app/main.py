@@ -60,6 +60,7 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import init_db
 from app.schemas.health import HealthStatusResponse
 from app.services.telemetry.usage_poll_queue import enqueue_usage_poll
+from app.services.openclaw.org_agent_reconcile_queue import enqueue_org_agent_reconcile
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -499,6 +500,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.info("app.lifecycle.rate_limit backend=memory")
     usage_poll_seeded = enqueue_usage_poll()
     logger.info("app.lifecycle.usage_poll_seeded ok=%s", usage_poll_seeded)
+    org_agent_reconcile_seeded = enqueue_org_agent_reconcile()
+    logger.info("app.lifecycle.org_agent_reconcile_seeded ok=%s", org_agent_reconcile_seeded)
     logger.info("app.lifecycle.started")
     try:
         yield

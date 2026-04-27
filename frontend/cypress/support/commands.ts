@@ -16,6 +16,13 @@ Cypress.Commands.add("waitForAppLoaded", () => {
 });
 
 Cypress.Commands.add("loginWithLocalAuth", (token = DEFAULT_LOCAL_AUTH_TOKEN) => {
+  // Set the HTTP cookie BEFORE visiting so that the Next.js SSR request
+  // receives it and AuthGate passes initialLocalToken to AuthProvider.
+  // Without this, SSR renders unauthenticated → hydration mismatch (#418).
+  cy.setCookie(LOCAL_AUTH_STORAGE_KEY, encodeURIComponent(token), {
+    path: "/",
+    sameSite: "strict",
+  });
   cy.visit("/", {
     onBeforeLoad(win) {
       win.sessionStorage.setItem(LOCAL_AUTH_STORAGE_KEY, token);
@@ -24,6 +31,7 @@ Cypress.Commands.add("loginWithLocalAuth", (token = DEFAULT_LOCAL_AUTH_TOKEN) =>
 });
 
 Cypress.Commands.add("logoutLocalAuth", () => {
+  cy.clearCookie(LOCAL_AUTH_STORAGE_KEY);
   cy.visit("/", {
     onBeforeLoad(win) {
       win.sessionStorage.removeItem(LOCAL_AUTH_STORAGE_KEY);

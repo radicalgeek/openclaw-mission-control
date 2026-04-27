@@ -17,6 +17,15 @@
   --accent: #c9972a;
   --accent-strong: #d4a82e;
   --accent-soft: rgba(201, 151, 42, 0.18);
+  /* Text rendered ON a solid accent background (e.g. filled buttons). 
+     Should be dark on bright accents (#FFD602) and light on dark accents. */
+  --accent-foreground: #ffffff;
+  /* Text/icon colour for active sidebar items (renders on --accent-soft bg). */
+  --accent-text-on-soft: #d4a82e;
+  /* Sidebar background — overridable per-brand. */
+  --sidebar-bg: var(--surface);
+  /* Card/panel background — overridable per-brand. */
+  --card-bg: var(--surface);
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #f87171;

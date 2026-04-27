@@ -25,6 +25,7 @@ import { ApiError } from "@/api/mutator";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { getApiBaseUrl } from "@/lib/api-base";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
@@ -33,7 +34,7 @@ export function DashboardSidebar() {
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: async () => {
-      const res = await fetch("/healthz", { cache: "no-store" });
+      const res = await fetch(`${getApiBaseUrl()}/healthz`, { cache: "no-store" });
       if (!res.ok) throw new Error("Health check failed");
       return res.json() as Promise<{ ok: boolean }>;
     },
@@ -59,7 +60,7 @@ export function DashboardSidebar() {
         : "System degraded";
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 flex w-[280px] -translate-x-full flex-col border-r border-[var(--border)] bg-[var(--surface)] pt-16 shadow-lg transition-transform duration-200 ease-in-out [[data-sidebar=open]_&]:translate-x-0 md:relative md:inset-auto md:z-auto md:w-[260px] md:translate-x-0 md:pt-0 md:shadow-none md:transition-none md:h-full md:overflow-hidden">
+    <aside className="fixed inset-y-0 left-0 z-40 flex w-[280px] -translate-x-full flex-col border-r border-[var(--border)] bg-[color:var(--sidebar-bg)] pt-16 shadow-lg transition-transform duration-200 ease-in-out [[data-sidebar=open]_&]:translate-x-0 md:relative md:inset-auto md:z-auto md:w-[260px] md:translate-x-0 md:pt-0 md:shadow-none md:transition-none md:h-full md:overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4">
         <nav className="space-y-4 text-sm">
           {/* Overview */}
@@ -73,7 +74,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname === "/dashboard"
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -85,7 +86,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/activity")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -106,7 +107,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/approvals")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -118,7 +119,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/channels")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -130,7 +131,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/planning")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -142,7 +143,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/sprints")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -154,7 +155,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/boards")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -176,7 +177,7 @@ export function DashboardSidebar() {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                     pathname.startsWith("/gateways")
-                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                       : "hover:bg-[color:var(--surface-muted)]",
                   )}
                 >
@@ -190,7 +191,7 @@ export function DashboardSidebar() {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                     pathname.startsWith("/agents")
-                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                       : "hover:bg-[color:var(--surface-muted)]",
                   )}
                 >
@@ -205,7 +206,7 @@ export function DashboardSidebar() {
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                     pathname === "/skills" ||
                       pathname.startsWith("/skills/marketplace")
-                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                       : "hover:bg-[color:var(--surface-muted)]",
                   )}
                 >
@@ -219,7 +220,7 @@ export function DashboardSidebar() {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                     pathname.startsWith("/skills/packs")
-                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                       : "hover:bg-[color:var(--surface-muted)]",
                   )}
                 >
@@ -241,7 +242,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/organization")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -253,7 +254,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/board-groups")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -265,7 +266,7 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                   pathname.startsWith("/tags")
-                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                    ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                     : "hover:bg-[color:var(--surface-muted)]",
                 )}
               >
@@ -278,7 +279,7 @@ export function DashboardSidebar() {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[color:var(--text-muted)] transition",
                     pathname.startsWith("/custom-fields")
-                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] font-medium"
+                      ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] font-medium"
                       : "hover:bg-[color:var(--surface-muted)]",
                   )}
                 >

@@ -49,5 +49,8 @@ def test_not_checked_in_since_wake_when_missing_last_seen() -> None:
 
 
 def test_lifecycle_convergence_policy_constants() -> None:
-    assert CHECKIN_DEADLINE_AFTER_WAKE == timedelta(seconds=30)
-    assert MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN == 3
+    # These module-level constants are kept for import compatibility; the live
+    # code reads from settings (agent_checkin_deadline_seconds /
+    # agent_max_wake_attempts) which default to the same values.
+    assert CHECKIN_DEADLINE_AFTER_WAKE == timedelta(seconds=120)
+    assert MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN == 5

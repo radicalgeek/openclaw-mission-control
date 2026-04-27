@@ -56,12 +56,14 @@ async def update_agent_skills(
 ) -> AgentSkillsRead:
     """Update the skill allowlist for an agent.
 
-    This updates ``installed_skills`` on the agent record and triggers a
-    ``config.patch`` to the gateway to set ``agents.list[].skills``.
+    Updates ``installed_skills`` on the agent record.
 
     - ``null``: inherit gateway defaults (no allowlist enforcement)
     - ``[]``: no skills (empty allowlist)
     - ``["a", "b"]``: explicit allowlist
+
+    Note: the allowlist is stored on the agent record and will be forwarded to
+    the gateway when full skill-provisioning integration is enabled.
     """
     from app.core.time import utcnow
 

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db.session import async_session_maker
 from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
-from app.services.openclaw.constants import MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN
+from app.services.openclaw.constants import MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN  # noqa: F401 (kept for import compat)
 from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
 from app.services.openclaw.lifecycle_queue import decode_lifecycle_task, defer_lifecycle_reconcile
 from app.services.queue import QueuedTask
@@ -79,7 +80,7 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
             )
             return
 
-        if agent.wake_attempts >= MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN:
+        if agent.wake_attempts >= settings.agent_max_wake_attempts:
             agent.status = "offline"
             agent.checkin_deadline_at = None
             agent.last_provision_error = (
@@ -93,7 +94,7 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
                 extra={
                     "agent_id": str(agent.id),
                     "wake_attempts": agent.wake_attempts,
-                    "max_attempts": MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN,
+                    "max_attempts": settings.agent_max_wake_attempts,
                 },
             )
             return

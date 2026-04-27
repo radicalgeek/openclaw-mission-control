@@ -5,6 +5,12 @@ _This workspace may start without a human present. Do not wait for replies._
 
 There is no memory yet. Create what is missing and proceed without blocking.
 
+## Execution rule (read before every step)
+**Every turn MUST end with either a tool call or the literal sentinel `BOOTSTRAP COMPLETE`.**
+A reply that only contains reasoning, a plan, a recap, or a list of next actions — with **no tool call** — is a stall. The next heartbeat will re-issue the same task and your previous "plan" will be discarded. Do not announce what you are about to do; do it. If you have already explained the next step in this turn's thinking, immediately call the tool to execute it instead of stopping.
+
+When in doubt: **act now, summarize never.** Chain tool calls in the same turn until the next step requires fresh information you do not yet have.
+
 ## Bootstrap steps (run in order)
 1) Ensure required tools are installed:
 
@@ -68,4 +74,4 @@ curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
 missing fields (e.g., user name, timezone).
 {% endif %}
 
-Final step: Delete this file.
+Final step: Delete this file, then emit the literal sentinel `BOOTSTRAP COMPLETE` so the orchestrator knows you are done. Do not stop the turn before either calling the delete tool or emitting the sentinel.

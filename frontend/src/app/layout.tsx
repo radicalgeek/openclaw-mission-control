@@ -5,14 +5,16 @@ import type { ReactNode } from "react";
 
 import { DM_Serif_Display, Inter, Sora } from "next/font/google";
 
-import { AuthProvider } from "@/components/providers/AuthProvider";
+import { AuthGate } from "@/components/providers/AuthGate";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { GlobalLoader } from "@/components/ui/global-loader";
 import { BrandingProvider } from "@/lib/branding";
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_APP_TITLE ?? "AxiaCraft Product Foundry",
-  description: "AI product engineering command center.",
+  description:
+    process.env.NEXT_PUBLIC_APP_DESCRIPTION ??
+    "AI product engineering command centre.",
   icons: {
     icon: "/favicon.svg",
   },
@@ -46,12 +48,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         className={`${bodyFont.variable} ${headingFont.variable} ${displayFont.variable} min-h-screen bg-app text-strong antialiased`}
       >
         <BrandingProvider>
-          <AuthProvider>
+          <AuthGate>
             <QueryProvider>
               <GlobalLoader />
               {children}
             </QueryProvider>
-          </AuthProvider>
+          </AuthGate>
         </BrandingProvider>
       </body>
     </html>

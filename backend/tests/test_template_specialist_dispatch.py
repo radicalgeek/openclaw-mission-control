@@ -9,6 +9,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from app.schemas.agents import (
     BOARD_WORKER_ROLE_TEMPLATES,
+    STANDALONE_ONLY_ROLE_TEMPLATES,
     STANDALONE_ROLE_TEMPLATES,
     VALID_ROLE_TEMPLATES,
 )
@@ -80,6 +81,10 @@ def test_each_reviewer_role_template_renders_specialist_heartbeat() -> None:
             "Board Worker Loop" not in result
         ), f"role_template '{role_tpl}' fell through to default worker loop"
         assert len(result) > 500, f"role_template '{role_tpl}' rendered suspiciously short output"
+
+    # Only the webhook-driven reviewers specifically mention webhook activation.
+    for role_tpl in STANDALONE_ONLY_ROLE_TEMPLATES:
+        result = _render("BOARD_HEARTBEAT.md.j2", _ctx_with_role(role_tpl))
         assert (
             "webhook" in result.lower()
         ), f"reviewer '{role_tpl}' heartbeat should mention webhook-driven activation"

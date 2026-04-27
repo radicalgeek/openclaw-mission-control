@@ -18,6 +18,12 @@ _DEFAULTS: dict[str, str] = {
     "accent_color": "#c9972a",
     "accent_strong": "#d4a82e",
     "accent_soft": "rgba(201, 151, 42, 0.18)",
+    "accent_foreground": "#ffffff",
+    "accent_text_on_soft": "#d4a82e",
+    "bg": "",
+    "surface": "",
+    "sidebar_bg": "",
+    "card_bg": "",
     "logo_path": "/axiacraft-logo.png",
     "copyright_holder": "AxiaCraft",
 }
@@ -35,6 +41,12 @@ class BrandingConfig(BaseModel):
     accent_color: str = Field(default=_DEFAULTS["accent_color"])
     accent_strong: str = Field(default=_DEFAULTS["accent_strong"])
     accent_soft: str = Field(default=_DEFAULTS["accent_soft"])
+    accent_foreground: str = Field(default=_DEFAULTS["accent_foreground"])
+    accent_text_on_soft: str = Field(default=_DEFAULTS["accent_text_on_soft"])
+    bg: str = Field(default=_DEFAULTS["bg"])
+    surface: str = Field(default=_DEFAULTS["surface"])
+    sidebar_bg: str = Field(default=_DEFAULTS["sidebar_bg"])
+    card_bg: str = Field(default=_DEFAULTS["card_bg"])
     logo_path: str = Field(default=_DEFAULTS["logo_path"])
     copyright_holder: str = Field(default=_DEFAULTS["copyright_holder"])
 
@@ -44,20 +56,47 @@ class BrandingConfig(BaseModel):
         return re.sub(r"[^a-z0-9]+", "-", self.product_name.lower()).strip("-")
 
 
+def _apply_env_overrides(config: BrandingConfig) -> BrandingConfig:
+    """Override any branding field with a matching BRANDING_<FIELD> env var.
+
+    For example, ``BRANDING_DESCRIPTION="OAG tagline"`` overrides
+    ``description`` without rebuilding the image or editing branding.yaml.
+    All field names are upper-cased with the ``BRANDING_`` prefix:
+    ``BRANDING_PRODUCT_NAME``, ``BRANDING_COMPANY_NAME``, etc.
+    """
+    import os
+
+    overrides: dict[str, str] = {}
+    for field in BrandingConfig.model_fields:
+        env_key = f"BRANDING_{field.upper()}"
+        value = os.environ.get(env_key)
+        if value:
+            overrides[field] = value
+    if not overrides:
+        return config
+    return config.model_copy(update=overrides)
+
+
 def load_branding(path: Optional[Path] = None) -> BrandingConfig:
-    """Load branding configuration from a YAML file, falling back to defaults."""
+    """Load branding configuration from a YAML file, falling back to defaults.
+
+    Environment variables of the form ``BRANDING_<FIELD>`` (e.g.
+    ``BRANDING_PRODUCT_NAME``) take precedence over anything in the YAML file,
+    allowing runtime overrides without a rebuild.
+    """
     target = path or _BRANDING_FILE
     if not target.exists():
-        return BrandingConfig()
+        return _apply_env_overrides(BrandingConfig())
 
     try:
         import yaml  # type: ignore[import-untyped]
 
         raw: dict[str, str] = yaml.safe_load(target.read_text()) or {}
-        return BrandingConfig(**{k: v for k, v in raw.items() if k in BrandingConfig.model_fields})
+        config = BrandingConfig(**{k: v for k, v in raw.items() if k in BrandingConfig.model_fields})
+        return _apply_env_overrides(config)
     except Exception:  # noqa: BLE001
         # Branding file is optional — fall back to defaults on any parse error.
-        return BrandingConfig()
+        return _apply_env_overrides(BrandingConfig())
 
 
 @lru_cache(maxsize=1)

@@ -41,8 +41,8 @@ from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
 from app.schemas.agents import (
-    BOARD_WORKER_ROLE_TEMPLATES,
-    STANDALONE_ROLE_TEMPLATES,
+    BOARD_WORKER_ONLY_ROLE_TEMPLATES,
+    STANDALONE_ONLY_ROLE_TEMPLATES,
     AgentCreate,
     AgentHeartbeat,
     AgentHeartbeatCreate,
@@ -950,10 +950,16 @@ class AgentLifecycleService(OpenClawDBService):
     @classmethod
     def with_computed_status(cls, agent: Agent) -> Agent:
         now = utcnow()
-        if agent.status in {"deleting", "updating"}:
+        # Terminal / in-flight DB states — preserve as-is.
+        if agent.status in {"deleting", "updating", "offline", "provision_failed"}:
             return agent
         if agent.last_seen_at is None:
-            agent.status = "provisioning"
+            # If we recorded a provision error but the agent never heartbeated,
+            # surface it as provision_failed rather than leaving it as provisioning.
+            if agent.last_provision_error is not None:
+                agent.status = "provision_failed"
+            else:
+                agent.status = "provisioning"
         elif now - agent.last_seen_at > OFFLINE_AFTER:
             agent.status = "offline"
         return agent
@@ -1305,7 +1311,7 @@ class AgentLifecycleService(OpenClawDBService):
         if role_template is None:
             return
         agent_type = agent.agent_type
-        if role_template in STANDALONE_ROLE_TEMPLATES and agent_type != AGENT_TYPE_STANDALONE:
+        if role_template in STANDALONE_ONLY_ROLE_TEMPLATES and agent_type != AGENT_TYPE_STANDALONE:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(
@@ -1313,7 +1319,7 @@ class AgentLifecycleService(OpenClawDBService):
                     f"but this agent is '{agent_type}'"
                 ),
             )
-        if role_template in BOARD_WORKER_ROLE_TEMPLATES and agent_type != AGENT_TYPE_BOARD_WORKER:
+        if role_template in BOARD_WORKER_ONLY_ROLE_TEMPLATES and agent_type != AGENT_TYPE_BOARD_WORKER:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(

@@ -9,7 +9,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.agents import (
+    BOARD_WORKER_ONLY_ROLE_TEMPLATES,
     BOARD_WORKER_ROLE_TEMPLATES,
+    ORG_STANDALONE_ROLE_TEMPLATES,
+    STANDALONE_ONLY_ROLE_TEMPLATES,
     STANDALONE_ROLE_TEMPLATES,
     VALID_ROLE_TEMPLATES,
     AgentCreate,
@@ -29,6 +32,7 @@ def test_valid_role_templates_set_is_complete() -> None:
         "triager",
         "planner",
         "estimator",
+        "priority",
         "test_agent",
         "merger",
         "ui_test",
@@ -44,8 +48,18 @@ def test_standalone_role_templates_subset() -> None:
     assert STANDALONE_ROLE_TEMPLATES.issubset(VALID_ROLE_TEMPLATES)
 
 
-def test_board_worker_role_templates_disjoint_from_standalone() -> None:
-    assert BOARD_WORKER_ROLE_TEMPLATES.isdisjoint(STANDALONE_ROLE_TEMPLATES)
+def test_org_standalone_templates_in_both() -> None:
+    """Delivery-tier templates are valid for both standalone and board_worker."""
+    assert ORG_STANDALONE_ROLE_TEMPLATES.issubset(STANDALONE_ROLE_TEMPLATES)
+    assert ORG_STANDALONE_ROLE_TEMPLATES.issubset(BOARD_WORKER_ROLE_TEMPLATES)
+
+
+def test_standalone_only_templates_disjoint_from_board_worker() -> None:
+    assert STANDALONE_ONLY_ROLE_TEMPLATES.isdisjoint(BOARD_WORKER_ROLE_TEMPLATES)
+
+
+def test_board_worker_only_templates_disjoint_from_standalone() -> None:
+    assert BOARD_WORKER_ONLY_ROLE_TEMPLATES.isdisjoint(STANDALONE_ROLE_TEMPLATES)
 
 
 def test_board_worker_role_template_accepted() -> None:
@@ -76,12 +90,23 @@ def test_unknown_role_template_rejected() -> None:
 
 
 def test_standalone_role_template_on_board_worker_rejected() -> None:
-    for tpl in STANDALONE_ROLE_TEMPLATES:
+    """Templates that are standalone-ONLY must be rejected on board_worker."""
+    for tpl in STANDALONE_ONLY_ROLE_TEMPLATES:
         with pytest.raises(ValidationError, match="requires agent_type 'standalone'"):
             _board_create(identity_profile={"role_template": tpl})
 
 
 def test_board_worker_role_template_on_standalone_rejected() -> None:
-    for tpl in BOARD_WORKER_ROLE_TEMPLATES:
+    """Templates that are board_worker-ONLY must be rejected on standalone."""
+    for tpl in BOARD_WORKER_ONLY_ROLE_TEMPLATES:
         with pytest.raises(ValidationError, match="requires agent_type 'board_worker'"):
             _standalone_create(identity_profile={"role_template": tpl})
+
+
+def test_org_standalone_templates_accepted_on_both_types() -> None:
+    """Delivery-tier templates are accepted for both standalone and board_worker."""
+    for tpl in ORG_STANDALONE_ROLE_TEMPLATES:
+        agent_bw = _board_create(identity_profile={"role_template": tpl})
+        assert (agent_bw.identity_profile or {}).get("role_template") == tpl
+        agent_sa = _standalone_create(identity_profile={"role_template": tpl})
+        assert (agent_sa.identity_profile or {}).get("role_template") == tpl

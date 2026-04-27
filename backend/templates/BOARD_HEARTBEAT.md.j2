@@ -1,5 +1,12 @@
 {% set is_main = (is_main_agent | default(false) | string | lower) in ["true", "1", "yes"] %}
 {% set is_lead = (is_board_lead | default(false) | string | lower) in ["true", "1", "yes"] %}
+
+## Execution rule (read before every heartbeat)
+**Every turn MUST end with either a tool call or the literal sentinel `HEARTBEAT_OK`.**
+A reply that only contains reasoning, a plan, a recap, or "next I will…" text — with **no tool call** — is a stall. The next heartbeat will re-issue the same task and your previous "plan" will be discarded. Do not announce what you are about to do; do it. If your thinking has already named the next step, immediately call the tool to execute it instead of stopping.
+
+When in doubt: **act now, summarize never.** Chain tool calls in the same turn until the next step requires fresh information you do not yet have. Only emit `HEARTBEAT_OK` when the cycle's work is genuinely complete (see "When to Return `HEARTBEAT_OK`" below).
+
 {% if is_main %}
 # HEARTBEAT.md
 
@@ -262,6 +269,8 @@ curl -fsS -X PATCH "{{ base_url }}/api/v1/threads/{thread_id}" \
 {% include "specialists/_planner_heartbeat.md.j2" %}
 {% elif role_tpl == "estimator" %}
 {% include "specialists/_estimator_heartbeat.md.j2" %}
+{% elif role_tpl == "priority" %}
+{% include "specialists/_priority_heartbeat.md.j2" %}
 {% elif role_tpl == "test_agent" %}
 {% include "specialists/_test_agent_heartbeat.md.j2" %}
 {% elif role_tpl == "merger" %}

@@ -12,17 +12,18 @@ _GATEWAY_AGENT_PREFIX = f"agent:{_GATEWAY_OPENCLAW_AGENT_PREFIX}"
 _GATEWAY_AGENT_SUFFIX = ":main"
 
 DEFAULT_HEARTBEAT_CONFIG: dict[str, Any] = {
-    "every": "10m",
+    "every": "1m",
     "target": "last",
     "includeReasoning": False,
 }
 
 OFFLINE_AFTER = timedelta(minutes=10)
-# Provisioning convergence policy:
-# - require first heartbeat/check-in within 30s of wake
-# - allow up to 3 wake attempts before giving up
-CHECKIN_DEADLINE_AFTER_WAKE = timedelta(seconds=30)
-MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN = 3
+# Provisioning convergence policy — runtime values come from
+# app.core.config.settings (agent_checkin_deadline_seconds /
+# agent_max_wake_attempts) so operators can tune via env vars.
+# These module-level names are kept for test/legacy import compatibility.
+CHECKIN_DEADLINE_AFTER_WAKE = timedelta(seconds=120)
+MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN = 5
 AGENT_SESSION_PREFIX = "agent"
 
 DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY: dict[str, bool] = {
@@ -56,6 +57,13 @@ EXTRA_IDENTITY_PROFILE_FIELDS = {
     "custom_instructions": "identity_custom_instructions",
     # Specialist role template — selects Jinja2 heartbeat/agents partials.
     "role_template": "identity_role_template",
+}
+
+# Default values for EXTRA_IDENTITY_PROFILE_FIELDS when not set in identity_profile.
+# role_template must never be empty — the gateway worker maps it to a Jinja2 partial
+# and silently hangs if given an empty string.
+DEFAULT_EXTRA_IDENTITY_PROFILE: dict[str, str] = {
+    "role_template": "developer",
 }
 
 DEFAULT_GATEWAY_FILES = frozenset(

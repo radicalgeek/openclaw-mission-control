@@ -77,7 +77,7 @@ class TaskCustomFieldValue(TenantScoped, table=True):
         UniqueConstraint(
             "task_id",
             "task_custom_field_definition_id",
-            name="uq_task_custom_field_values_task_id_task_custom_field_definition_id",
+            name="uq_tcf_values_task_def",
         ),
     )
 
