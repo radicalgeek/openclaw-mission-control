@@ -14,6 +14,7 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import or_
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -239,21 +240,31 @@ async def reconcile_all_orgs(session: Any) -> None:
 
 
 async def sweep_stuck_provisioning_agents(session: Any) -> int:
-    """Re-enqueue lifecycle reconcile tasks for agents orphaned in 'provisioning'.
+    """Re-enqueue lifecycle reconcile tasks for agents orphaned in 'provisioning'
+    or 'updating'.
 
-    Targets agents where:
-    - status == 'provisioning'
-    - last_seen_at IS NULL  (never heartbeated)
-    - updated_at < now - agent_stuck_provisioning_sweep_seconds
+    Two stuck conditions, both bounded by ``updated_at < now - threshold``:
 
-    This catches agents provisioned before the enqueue-on-failure fix was
-    deployed and agents whose queue task was lost.  Each matched agent gets a
-    reconcile task enqueued with checkin_deadline_at=now (fires immediately).
+    - ``status == 'provisioning'`` and ``last_seen_at IS NULL`` — agent was
+      created but never heartbeated, queue task lost.
+    - ``status == 'updating'`` and the agent has not checked in since its
+      last wake (``last_seen_at IS NULL`` OR ``last_seen_at < last_wake_sent_at``)
+      — a previous update attempt failed (typically a gateway 503 from a
+      worker restart) and no further reconcile fired, so the agent never
+      transitioned back to ``online``.
+
+    For 'updating' matches we reset ``wake_attempts`` to 0 so the
+    re-enqueued reconcile gets a fresh budget; an already-maxed-out counter
+    would just bounce the agent straight to offline.
+
+    Each matched agent gets a reconcile task enqueued with
+    ``checkin_deadline_at=now`` (deadline in the past → fires immediately).
 
     Returns the number of agents re-enqueued.
     """
     threshold = utcnow() - timedelta(seconds=settings.agent_stuck_provisioning_sweep_seconds)
-    stuck_agents = list(
+
+    stuck_provisioning = list(
         await session.exec(
             select(Agent)
             .where(col(Agent.status) == "provisioning")
@@ -261,18 +272,40 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
             .where(col(Agent.updated_at) < threshold)
         )
     )
+    stuck_updating = list(
+        await session.exec(
+            select(Agent)
+            .where(col(Agent.status) == "updating")
+            .where(col(Agent.updated_at) < threshold)
+            .where(
+                or_(
+                    col(Agent.last_seen_at).is_(None),
+                    col(Agent.last_wake_sent_at).is_not(None)
+                    & (col(Agent.last_seen_at) < col(Agent.last_wake_sent_at)),
+                )
+            )
+        )
+    )
+    stuck_agents = stuck_provisioning + stuck_updating
     if not stuck_agents:
         return 0
 
     logger.info(
-        "org_agent_reconciler.stuck_sweep found=%d threshold_seconds=%d",
+        "org_agent_reconciler.stuck_sweep found=%d (provisioning=%d updating=%d) "
+        "threshold_seconds=%d",
         len(stuck_agents),
+        len(stuck_provisioning),
+        len(stuck_updating),
         settings.agent_stuck_provisioning_sweep_seconds,
     )
     now = utcnow()
     count = 0
     for agent in stuck_agents:
         try:
+            if agent.status == "updating" and agent.wake_attempts > 0:
+                agent.wake_attempts = 0
+                agent.updated_at = now
+                session.add(agent)
             enqueue_lifecycle_reconcile(
                 QueuedAgentLifecycleReconcile(
                     agent_id=agent.id,
@@ -294,4 +327,8 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
                 "org_agent_reconciler.stuck_requeue_error agent_id=%s",
                 agent.id,
             )
+
+    if any(a.status == "updating" and a.wake_attempts == 0 for a in stuck_updating):
+        await session.commit()
+
     return count
