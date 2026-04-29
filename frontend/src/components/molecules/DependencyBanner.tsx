@@ -22,9 +22,11 @@ interface DependencyBannerProps {
 
 type DependencyBannerVariant = "blocked" | "resolved";
 
+// Brand-aware tone classes — driven by --danger-* and --info-* CSS vars set
+// in src/lib/branding.tsx. Works on both light and dark surfaces.
 const toneClassByVariant: Record<DependencyBannerVariant, string> = {
-  blocked: "border-rose-200 bg-rose-50 text-rose-700",
-  resolved: "border-blue-200 bg-blue-50 text-blue-700",
+  blocked: "border-danger-border bg-danger-soft text-danger",
+  resolved: "border-info-border bg-info-soft text-info",
 };
 
 export function DependencyBanner({
@@ -49,25 +51,34 @@ export function DependencyBanner({
               className={cn(
                 "w-full rounded-lg border px-3 py-2 text-left transition",
                 isBlocking
-                  ? "border-rose-200 bg-rose-50 hover:bg-rose-100/40"
+                  ? "border-danger-border bg-danger-soft hover:opacity-90"
                   : isDone
-                    ? "border-emerald-200 bg-emerald-50 hover:bg-emerald-100/40"
-                    : "border-slate-200 bg-white hover:bg-slate-50",
+                    ? "border-success-border bg-success-soft hover:opacity-90"
+                    : "border-neutral-border bg-neutral-soft hover:opacity-90",
                 dependency.disabled && "cursor-not-allowed opacity-60",
               )}
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="truncate text-sm font-medium text-slate-900">
+                <p
+                  className={cn(
+                    "truncate text-sm font-medium",
+                    isBlocking
+                      ? "text-danger"
+                      : isDone
+                        ? "text-success"
+                        : "text-neutral",
+                  )}
+                >
                   {dependency.title}
                 </p>
                 <span
                   className={cn(
                     "text-[10px] font-semibold uppercase tracking-wide",
                     isBlocking
-                      ? "text-rose-700"
+                      ? "text-danger"
                       : isDone
-                        ? "text-emerald-700"
-                        : "text-slate-500",
+                        ? "text-success"
+                        : "text-neutral",
                   )}
                 >
                   {dependency.statusLabel}
@@ -77,7 +88,7 @@ export function DependencyBanner({
           );
         })
       ) : (
-        <p className="text-sm text-slate-500">{emptyMessage}</p>
+        <p className="text-sm text-neutral">{emptyMessage}</p>
       )}
       {children ? (
         <div

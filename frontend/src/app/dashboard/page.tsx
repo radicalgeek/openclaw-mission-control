@@ -369,14 +369,15 @@ function TopMetricCard({
   icon: React.ReactNode;
   accent: "blue" | "green" | "violet" | "emerald";
 }) {
+  // Brand-aware metric-card icon tones — semantic tokens via tailwind.config.cjs.
   const iconTone =
     accent === "blue"
-      ? "bg-blue-50 text-blue-600"
+      ? "bg-info-soft text-info"
       : accent === "green"
-        ? "bg-emerald-50 text-emerald-600"
+        ? "bg-success-soft text-success"
         : accent === "violet"
-          ? "bg-violet-50 text-violet-600"
-          : "bg-green-50 text-green-600";
+          ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]"
+          : "bg-success-soft text-success";
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -439,12 +440,12 @@ function InfoBlock({
         </div>
         {badge ? (
           <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
               badge.tone === "online"
-                ? "bg-emerald-100 text-emerald-700"
+                ? "bg-success-soft text-success border-success-border"
                 : badge.tone === "offline"
-                  ? "bg-rose-100 text-rose-700"
-                  : "bg-slate-200 text-slate-700"
+                  ? "bg-danger-soft text-danger border-danger-border"
+                  : "bg-neutral-soft text-neutral border-neutral-border"
             }`}
           >
             {badge.text}
@@ -458,11 +459,11 @@ function InfoBlock({
             <span
               className={`max-w-[65%] break-words text-right text-sm font-medium leading-5 ${
                 row.tone === "success"
-                  ? "text-emerald-700"
+                  ? "text-success"
                   : row.tone === "warning"
-                    ? "text-amber-700"
+                    ? "text-warning"
                     : row.tone === "danger"
-                      ? "text-rose-700"
+                      ? "text-danger"
                       : "text-slate-800"
               }`}
             >
@@ -903,7 +904,7 @@ export default function DashboardPage() {
         <main className="flex-1 overflow-y-auto bg-slate-50">
           <div className="p-4 md:p-8">
             {metricsQuery.error ? (
-              <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+              <div className="mb-4 rounded-lg border border-danger-border bg-danger-soft p-3 text-sm text-danger">
                 Load failed: {metricsQuery.error.message}
               </div>
             ) : null}
@@ -1011,7 +1012,7 @@ export default function DashboardPage() {
                   ) : null}
                 </div>
               ) : (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                <div className="rounded-lg border border-success-border bg-success-soft p-3 text-sm text-success">
                   No pending approvals across your projects.
                 </div>
               )}

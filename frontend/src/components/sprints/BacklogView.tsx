@@ -27,12 +27,13 @@ type Props = {
 
 const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
 
+// Brand-aware priority tones — semantic tokens via tailwind.config.cjs.
 const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-slate-100 text-slate-600",
-  medium: "bg-blue-100 text-blue-700",
-  high: "bg-orange-100 text-orange-700",
-  critical: "bg-red-100 text-red-700",
-  urgent: "bg-red-100 text-red-700",
+  low: "bg-success-soft text-success border border-success-border",
+  medium: "bg-warning-soft text-warning border border-warning-border",
+  high: "bg-danger-soft text-danger border border-danger-border",
+  critical: "bg-danger-soft text-danger border border-danger-border",
+  urgent: "bg-danger-soft text-danger border border-danger-border",
 };
 
 const STATUS_OPTIONS = ["triage", "backlog", "inbox", "in_progress", "review", "done", "archived"] as const;
@@ -295,7 +296,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
         {showForm && (
           <form
             onSubmit={(e) => void handleCreate(e)}
-            className="border-b border-slate-200 bg-orange-50/60 px-5 py-4 space-y-3"
+            className="border-b border-slate-200 bg-[color:var(--accent-soft)]/80 px-5 py-4 space-y-3"
           >
             <input
               required
@@ -387,7 +388,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition",
                           selected
-                            ? "border-orange-300 bg-orange-100 text-orange-800"
+                            ? "border-[color:var(--accent)]/50 bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]"
                             : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
                         )}
                       >
@@ -402,7 +403,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 </div>
               </div>
             )}
-            {formError && <p className="text-xs text-red-500">{formError}</p>}
+            {formError && <p className="text-xs text-danger">{formError}</p>}
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -486,7 +487,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                   className={cn(
                     "rounded-xl border transition-colors",
                     isSelected
-                      ? "border-orange-300 shadow-sm"
+                      ? "border-[color:var(--accent)]/50 shadow-sm"
                       : "border-slate-100 hover:border-slate-200",
                   )}
                 >
@@ -510,8 +511,8 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                   <div className="relative flex items-center gap-2 rounded-b-xl bg-slate-50 px-3 py-1.5 border-t border-slate-100">
                     {assignedSprint ? (
                       <>
-                        <span className="flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                        <span className="flex items-center gap-1 rounded-full bg-[color:var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--accent-text-on-soft)]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--accent)]" />
                           {assignedSprint.name}
                         </span>
                         <button
@@ -520,7 +521,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                             e.stopPropagation();
                             void handleRemoveFromSprint(task);
                           }}
-                          className="ml-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-400 hover:bg-red-50 hover:text-red-500 transition disabled:opacity-40"
+                          className="ml-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-400 hover:bg-danger-soft hover:text-danger transition disabled:opacity-40"
                         >
                           <X className="h-3 w-3" />
                           Remove
@@ -540,7 +541,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                             "flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition",
                             openSprints.length === 0
                               ? "cursor-default text-slate-300"
-                              : "text-orange-500 hover:bg-orange-50 hover:text-orange-700",
+                              : "text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent-text-on-soft)]",
                           )}
                         >
                           {assignBusy === task.id ? (
@@ -564,7 +565,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                                   e.stopPropagation();
                                   void handleAssignToSprint(task, s.id);
                                 }}
-                                className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-orange-50 hover:text-orange-700 transition"
+                                className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent-text-on-soft)] transition"
                               >
                                 <span className="font-medium">{s.name}</span>
                                 <span className="ml-1 text-[10px] text-slate-400">
@@ -606,7 +607,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                       });
                     }
                   }}
-                  className="w-full rounded-lg border border-orange-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-[color:var(--accent-soft)]"
+                  className="w-full rounded-lg border border-[color:var(--accent)]/50 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-[color:var(--accent-soft)]"
                 />
               ) : (
                 <div className="flex items-center gap-2 group min-w-0">
@@ -648,7 +649,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
           </div>
 
           {editError && (
-            <div className="shrink-0 bg-red-50 px-6 py-2 text-xs text-red-600">
+            <div className="shrink-0 bg-danger-soft px-6 py-2 text-xs text-danger">
               {editError}
             </div>
           )}
@@ -669,7 +670,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                       className={cn(
                         "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition border",
                         detailStatus === s
-                          ? "border-orange-300 bg-orange-100 text-orange-800"
+                          ? "border-[color:var(--accent)]/50 bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]"
                           : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50",
                       )}
                     >
@@ -754,7 +755,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition",
                           selected
-                            ? "border-orange-300 bg-orange-100 text-orange-800"
+                            ? "border-[color:var(--accent)]/50 bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]"
                             : "border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300",
                         )}
                       >
@@ -777,14 +778,14 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
               </label>
               {selectedTask.sprint_id && sprintMap[selectedTask.sprint_id] ? (
                 <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                  <span className="flex items-center gap-1.5 rounded-full bg-[color:var(--accent-soft)] px-3 py-1 text-xs font-medium text-[color:var(--accent-text-on-soft)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--accent)]" />
                     {sprintMap[selectedTask.sprint_id].name}
                   </span>
                   <button
                     disabled={assignBusy === selectedTask.id}
                     onClick={() => void handleRemoveFromSprint(selectedTask)}
-                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-50 hover:text-red-600 transition disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-danger-soft hover:text-danger transition disabled:opacity-40"
                   >
                     <X className="h-3.5 w-3.5" />
                     Remove from sprint
@@ -797,11 +798,11 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                       key={s.id}
                       disabled={assignBusy === selectedTask.id}
                       onClick={() => void handleAssignToSprint(selectedTask, s.id)}
-                      className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-600 hover:bg-orange-100 transition disabled:opacity-40"
+                      className="flex items-center gap-1.5 rounded-lg border border-[color:var(--accent)]/30 bg-[color:var(--accent-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] transition disabled:opacity-40"
                     >
                       <ArrowRight className="h-3 w-3" />
                       {s.name}
-                      <span className="text-[10px] text-orange-400">({s.status})</span>
+                      <span className="text-[10px] text-[color:var(--accent)]">({s.status})</span>
                     </button>
                   ))}
                 </div>

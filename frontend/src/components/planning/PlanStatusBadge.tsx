@@ -8,11 +8,12 @@ type Props = {
   className?: string;
 };
 
+// Brand-aware plan-status tones — driven by semantic tokens in tailwind.config.cjs.
 const CONFIG: Record<PlanStatus, { label: string; classes: string }> = {
-  draft:     { label: "Draft",     classes: "bg-slate-100 text-slate-600" },
-  active:    { label: "Active",    classes: "bg-orange-100 text-orange-700" },
-  completed: { label: "Completed", classes: "bg-green-100 text-green-700" },
-  archived:  { label: "Archived",  classes: "bg-amber-100 text-amber-700" },
+  draft:     { label: "Draft",     classes: "bg-neutral-soft text-neutral border border-neutral-border" },
+  active:    { label: "Active",    classes: "bg-info-soft text-info border border-info-border" },
+  completed: { label: "Completed", classes: "bg-success-soft text-success border border-success-border" },
+  archived:  { label: "Archived",  classes: "bg-warning-soft text-warning border border-warning-border" },
 };
 
 export function PlanStatusBadge({ status, className }: Props) {

@@ -20,25 +20,30 @@ import {
 } from "@/components/tables/cell-formatters";
 import { truncateText as truncate } from "@/lib/formatters";
 
+// Brand-aware agent type tones. Driven by --info / --warning / --neutral and
+// the brand --accent vars from src/lib/branding.tsx, so deployments can
+// re-skin without touching this component.
 const AGENT_TYPE_CONFIG: Record<
   string,
   { label: string; className: string }
 > = {
   standalone: {
     label: "Standalone",
-    className: "bg-purple-100 text-purple-800 border border-purple-200",
+    className: "bg-info-soft text-info border border-info-border",
   },
   board_lead: {
+    // Lead = brand accent so it stands out against worker rows.
     label: "Project Lead",
-    className: "bg-blue-100 text-blue-800 border border-blue-200",
+    className:
+      "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] border border-[color:var(--accent)]/40",
   },
   board_worker: {
     label: "Worker",
-    className: "bg-slate-100 text-slate-700 border border-slate-200",
+    className: "bg-neutral-soft text-neutral border border-neutral-border",
   },
   gateway_main: {
     label: "Gateway Main",
-    className: "bg-amber-100 text-amber-800 border border-amber-200",
+    className: "bg-warning-soft text-warning border border-warning-border",
   },
 };
 
@@ -52,7 +57,7 @@ function AgentTypeBadge({
   const type = agentType ?? "board_worker";
   const config = AGENT_TYPE_CONFIG[type] ?? {
     label: type,
-    className: "bg-slate-100 text-slate-700 border border-slate-200",
+    className: "bg-neutral-soft text-neutral border border-neutral-border",
   };
   return (
     <span className="flex items-center gap-1.5 flex-wrap">
@@ -62,7 +67,7 @@ function AgentTypeBadge({
         {config.label}
       </span>
       {roleTemplate ? (
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success-soft text-success border border-success-border">
           {roleTemplate.replace(/_/g, "\u00a0")}
         </span>
       ) : null}

@@ -31,8 +31,33 @@ export interface BrandingConfig {
   sidebarBg: string;
   /** Card/panel background colour. */
   cardBg: string;
+  /** Form input bg / pressed-state surface (--surface-muted). */
+  surfaceMuted: string;
+  /** Hover-state / strongly elevated surface (--surface-strong). */
+  surfaceStrong: string;
+  /** Subtle border colour (--border). */
+  border: string;
+  /** Stronger border colour for emphasised edges (--border-strong). */
+  borderStrong: string;
   logoPath: string;
   copyrightHolder: string;
+  // Semantic colour tokens — see backend/app/core/branding.py for usage notes.
+  // Each token has bg (rgba subtle), fg (saturated text), border (rgba mid).
+  successBg: string;
+  successFg: string;
+  successBorder: string;
+  warningBg: string;
+  warningFg: string;
+  warningBorder: string;
+  dangerBg: string;
+  dangerFg: string;
+  dangerBorder: string;
+  infoBg: string;
+  infoFg: string;
+  infoBorder: string;
+  neutralBg: string;
+  neutralFg: string;
+  neutralBorder: string;
 }
 
 const DEFAULTS: BrandingConfig = {
@@ -51,8 +76,28 @@ const DEFAULTS: BrandingConfig = {
   surface: process.env.NEXT_PUBLIC_SURFACE ?? "",
   sidebarBg: process.env.NEXT_PUBLIC_SIDEBAR_BG ?? "",
   cardBg: process.env.NEXT_PUBLIC_CARD_BG ?? "",
+  surfaceMuted: process.env.NEXT_PUBLIC_SURFACE_MUTED ?? "",
+  surfaceStrong: process.env.NEXT_PUBLIC_SURFACE_STRONG ?? "",
+  border: process.env.NEXT_PUBLIC_BORDER ?? "",
+  borderStrong: process.env.NEXT_PUBLIC_BORDER_STRONG ?? "",
   logoPath: process.env.NEXT_PUBLIC_LOGO_PATH ?? "/axiacraft-logo.png",
   copyrightHolder: "AxiaCraft",
+  // Semantic token defaults — must mirror backend/app/core/branding.py _DEFAULTS.
+  successBg: "rgba(34, 197, 94, 0.15)",
+  successFg: "#4ade80",
+  successBorder: "rgba(34, 197, 94, 0.35)",
+  warningBg: "rgba(245, 158, 11, 0.15)",
+  warningFg: "#fbbf24",
+  warningBorder: "rgba(245, 158, 11, 0.35)",
+  dangerBg: "rgba(244, 63, 94, 0.15)",
+  dangerFg: "#fb7185",
+  dangerBorder: "rgba(244, 63, 94, 0.35)",
+  infoBg: "rgba(96, 165, 250, 0.15)",
+  infoFg: "#93c5fd",
+  infoBorder: "rgba(96, 165, 250, 0.35)",
+  neutralBg: "rgba(148, 163, 184, 0.15)",
+  neutralFg: "#cbd5e1",
+  neutralBorder: "rgba(148, 163, 184, 0.35)",
 };
 
 // Raw API response shape (snake_case)
@@ -70,8 +115,29 @@ interface BrandingApiResponse {
   surface?: string;
   sidebar_bg?: string;
   card_bg?: string;
+  surface_muted?: string;
+  surface_strong?: string;
+  border?: string;
+  border_strong?: string;
   logo_path: string;
   copyright_holder: string;
+  // Semantic tokens. Optional in the response (older deployments may not
+  // include them); fall back to DEFAULTS if absent.
+  success_bg?: string;
+  success_fg?: string;
+  success_border?: string;
+  warning_bg?: string;
+  warning_fg?: string;
+  warning_border?: string;
+  danger_bg?: string;
+  danger_fg?: string;
+  danger_border?: string;
+  info_bg?: string;
+  info_fg?: string;
+  info_border?: string;
+  neutral_bg?: string;
+  neutral_fg?: string;
+  neutral_border?: string;
 }
 
 function mapApiResponse(raw: BrandingApiResponse): BrandingConfig {
@@ -89,8 +155,27 @@ function mapApiResponse(raw: BrandingApiResponse): BrandingConfig {
     surface: raw.surface ?? DEFAULTS.surface,
     sidebarBg: raw.sidebar_bg ?? DEFAULTS.sidebarBg,
     cardBg: raw.card_bg ?? DEFAULTS.cardBg,
+    surfaceMuted: raw.surface_muted ?? DEFAULTS.surfaceMuted,
+    surfaceStrong: raw.surface_strong ?? DEFAULTS.surfaceStrong,
+    border: raw.border ?? DEFAULTS.border,
+    borderStrong: raw.border_strong ?? DEFAULTS.borderStrong,
     logoPath: raw.logo_path,
     copyrightHolder: raw.copyright_holder,
+    successBg: raw.success_bg ?? DEFAULTS.successBg,
+    successFg: raw.success_fg ?? DEFAULTS.successFg,
+    successBorder: raw.success_border ?? DEFAULTS.successBorder,
+    warningBg: raw.warning_bg ?? DEFAULTS.warningBg,
+    warningFg: raw.warning_fg ?? DEFAULTS.warningFg,
+    warningBorder: raw.warning_border ?? DEFAULTS.warningBorder,
+    dangerBg: raw.danger_bg ?? DEFAULTS.dangerBg,
+    dangerFg: raw.danger_fg ?? DEFAULTS.dangerFg,
+    dangerBorder: raw.danger_border ?? DEFAULTS.dangerBorder,
+    infoBg: raw.info_bg ?? DEFAULTS.infoBg,
+    infoFg: raw.info_fg ?? DEFAULTS.infoFg,
+    infoBorder: raw.info_border ?? DEFAULTS.infoBorder,
+    neutralBg: raw.neutral_bg ?? DEFAULTS.neutralBg,
+    neutralFg: raw.neutral_fg ?? DEFAULTS.neutralFg,
+    neutralBorder: raw.neutral_border ?? DEFAULTS.neutralBorder,
   };
 }
 
@@ -173,6 +258,29 @@ function applyBrandingCss(branding: BrandingConfig): void {
   if (branding.surface) root.style.setProperty("--surface", branding.surface);
   if (branding.sidebarBg) root.style.setProperty("--sidebar-bg", branding.sidebarBg);
   if (branding.cardBg) root.style.setProperty("--card-bg", branding.cardBg);
+  // Surface variants — drive form inputs (--surface-muted via globals.css
+  // input rule), pressed/hover states, and any *-strong elevation.
+  if (branding.surfaceMuted) root.style.setProperty("--surface-muted", branding.surfaceMuted);
+  if (branding.surfaceStrong) root.style.setProperty("--surface-strong", branding.surfaceStrong);
+  if (branding.border) root.style.setProperty("--border", branding.border);
+  if (branding.borderStrong) root.style.setProperty("--border-strong", branding.borderStrong);
+  // Semantic tokens — consumed via Tailwind theme extensions in
+  // tailwind.config.cjs (e.g. bg-success-soft → var(--success-bg)).
+  root.style.setProperty("--success-bg", branding.successBg);
+  root.style.setProperty("--success-fg", branding.successFg);
+  root.style.setProperty("--success-border", branding.successBorder);
+  root.style.setProperty("--warning-bg", branding.warningBg);
+  root.style.setProperty("--warning-fg", branding.warningFg);
+  root.style.setProperty("--warning-border", branding.warningBorder);
+  root.style.setProperty("--danger-bg", branding.dangerBg);
+  root.style.setProperty("--danger-fg", branding.dangerFg);
+  root.style.setProperty("--danger-border", branding.dangerBorder);
+  root.style.setProperty("--info-bg", branding.infoBg);
+  root.style.setProperty("--info-fg", branding.infoFg);
+  root.style.setProperty("--info-border", branding.infoBorder);
+  root.style.setProperty("--neutral-bg", branding.neutralBg);
+  root.style.setProperty("--neutral-fg", branding.neutralFg);
+  root.style.setProperty("--neutral-border", branding.neutralBorder);
   document.title = branding.fullTitle;
 }
 

@@ -16,12 +16,13 @@ type Props = {
   onReorder?: (orderedIds: string[]) => void;
 };
 
+// Brand-aware sprint status tones — semantic tokens via tailwind.config.cjs.
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-500",
-  queued: "bg-yellow-100 text-yellow-700",
-  active: "bg-green-100 text-green-700",
-  completed: "bg-blue-100 text-blue-700",
-  cancelled: "bg-red-100 text-red-500",
+  draft: "bg-neutral-soft text-neutral border border-neutral-border",
+  queued: "bg-warning-soft text-warning border border-warning-border",
+  active: "bg-success-soft text-success border border-success-border",
+  completed: "bg-info-soft text-info border border-info-border",
+  cancelled: "bg-danger-soft text-danger border border-danger-border",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -128,7 +129,7 @@ export function SprintList({
     return (
       <div key={sprint.id}>
         {isDropTarget && (
-          <div className="mx-3 my-0.5 h-0.5 rounded-full bg-orange-400" />
+          <div className="mx-3 my-0.5 h-0.5 rounded-full bg-[color:var(--accent)]" />
         )}
         <div
           draggable={draggable}
@@ -146,7 +147,7 @@ export function SprintList({
             className={cn(
               "w-full py-3 pr-3 text-left transition",
               draggable ? "pl-7" : "pl-3",
-              isSelected ? "bg-orange-50" : "hover:bg-slate-50",
+              isSelected ? "bg-[color:var(--accent-soft)]" : "hover:bg-slate-50",
             )}
           >
             {draggable && (
@@ -162,7 +163,7 @@ export function SprintList({
               <span
                 className={cn(
                   "truncate text-sm font-medium leading-snug",
-                  isSelected ? "text-orange-800" : "text-slate-700",
+                  isSelected ? "text-[color:var(--accent-text-on-soft)]" : "text-slate-700",
                 )}
               >
                 {sprint.name}
@@ -182,7 +183,7 @@ export function SprintList({
                   <div
                     className={cn(
                       "h-full rounded-full transition-all",
-                      sprint.status === "completed" ? "bg-blue-300" : "bg-orange-400",
+                      sprint.status === "completed" ? "bg-info" : "bg-[color:var(--accent)]",
                     )}
                     style={{ width: `${pct}%` }}
                   />
@@ -209,7 +210,7 @@ export function SprintList({
         <button
           onClick={onNewSprint}
           title="New sprint"
-          className="flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-orange-500 hover:bg-orange-50 transition"
+          className="flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] transition"
         >
           <Plus className="h-3 w-3" />
           New
@@ -221,7 +222,7 @@ export function SprintList({
         onClick={onSelectBacklog}
         className={cn(
           "w-full border-b border-slate-100 px-3 py-2.5 text-left text-sm font-medium transition",
-          showingBacklog ? "bg-orange-50 text-orange-800" : "text-slate-700 hover:bg-slate-50",
+          showingBacklog ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]" : "text-slate-700 hover:bg-slate-50",
         )}
       >
         📋 Backlog
@@ -248,7 +249,7 @@ export function SprintList({
         {/* ── Active ─────────────────────────────────────────────────────── */}
         {active.length > 0 && (
           <div>
-            <SectionLabel label="Active" color="text-green-600" />
+            <SectionLabel label="Active" color="text-success" />
             {active.map((s) => renderSprintRow(s, false))}
           </div>
         )}

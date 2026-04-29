@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -777,9 +778,22 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
                     _update_delay = min(_update_delay * 2, 4.0)
                     continue
                 raise
-        await self.patch_agent_heartbeats(
-            [(registration.agent_id, registration.workspace_path, registration.heartbeat)],
-        )
+        # Pushing per-agent heartbeat to the gateway uses `config.patch`, which
+        # always forces a SIGUSR1 restart on the openclaw worker (the RPC carries
+        # `restartReason=config.patch` and bypasses gateway.reload.mode=off). That
+        # restart kills the in-flight provisioning chain (sessions.patch / chat.send
+        # then hit a draining pod and 503). Skip the sync by default; the gateway
+        # uses agents.defaults.heartbeat instead, and axiacraft's own DB still
+        # tracks per-agent heartbeat_config for any backend-side logic.
+        # Set OPENCLAW_SYNC_PER_AGENT_HEARTBEAT=true to restore the old behaviour.
+        if os.getenv("OPENCLAW_SYNC_PER_AGENT_HEARTBEAT", "false").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            await self.patch_agent_heartbeats(
+                [(registration.agent_id, registration.workspace_path, registration.heartbeat)],
+            )
 
     async def delete_agent(self, agent_id: str, *, delete_files: bool = True) -> None:
         await openclaw_call(

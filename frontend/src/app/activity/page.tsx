@@ -240,47 +240,56 @@ const eventLabel = (eventType: FeedEventType): string => {
   return "Updated";
 };
 
+// Brand-aware event-type tones — driven by semantic tokens in tailwind.config.cjs.
+// Maps each feed event type to the closest semantic intent so deployments
+// get one coherent palette across the activity stream.
 const eventPillClass = (eventType: FeedEventType): string => {
+  // Task lifecycle.
   if (eventType === "task.comment") {
-    return "border-blue-200 bg-blue-50 text-blue-700";
+    return "border-info-border bg-info-soft text-info";
   }
   if (eventType === "task.created") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-success-border bg-success-soft text-success";
   }
   if (eventType === "task.status_changed") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-warning-border bg-warning-soft text-warning";
   }
+  // Board chat / commands — informational; keep the brand accent for command
+  // (operator action) so it stands apart from passive chat events.
   if (eventType === "board.chat") {
-    return "border-teal-200 bg-teal-50 text-teal-700";
+    return "border-info-border bg-info-soft text-info";
   }
   if (eventType === "board.command") {
-    return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+    return "border-[color:var(--accent)]/40 bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]";
   }
+  // Agent lifecycle — created (info), online (success), offline (neutral),
+  // updated (warning to flag a state shift).
   if (eventType === "agent.created") {
-    return "border-violet-200 bg-violet-50 text-violet-700";
+    return "border-info-border bg-info-soft text-info";
   }
   if (eventType === "agent.online") {
-    return "border-lime-200 bg-lime-50 text-lime-700";
+    return "border-success-border bg-success-soft text-success";
   }
   if (eventType === "agent.offline") {
-    return "border-slate-300 bg-slate-100 text-slate-700";
+    return "border-neutral-border bg-neutral-soft text-neutral";
   }
   if (eventType === "agent.updated") {
-    return "border-indigo-200 bg-indigo-50 text-indigo-700";
+    return "border-warning-border bg-warning-soft text-warning";
   }
+  // Approvals — created/updated as info, approved as success, rejected as danger.
   if (eventType === "approval.created") {
-    return "border-cyan-200 bg-cyan-50 text-cyan-700";
+    return "border-info-border bg-info-soft text-info";
   }
   if (eventType === "approval.updated") {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return "border-info-border bg-info-soft text-info";
   }
   if (eventType === "approval.approved") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-success-border bg-success-soft text-success";
   }
   if (eventType === "approval.rejected") {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-danger-border bg-danger-soft text-danger";
   }
-  return "border-slate-200 bg-slate-100 text-slate-700";
+  return "border-neutral-border bg-neutral-soft text-neutral";
 };
 
 const FeedCard = memo(function FeedCard({

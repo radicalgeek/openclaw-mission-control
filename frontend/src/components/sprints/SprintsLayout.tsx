@@ -182,7 +182,7 @@ export function SprintsLayout({ boardId }: Props) {
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--accent-soft)]"
               />
               {createError && (
-                <p className="text-xs text-red-500">{createError}</p>
+                <p className="text-xs text-danger">{createError}</p>
               )}
               <div className="flex gap-2">
                 <button

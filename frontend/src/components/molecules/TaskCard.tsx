@@ -49,26 +49,27 @@ export function TaskCard({
   const hasPendingApproval = approvalsPendingCount > 0;
   const needsLeadReview =
     status === "review" && !isBlocked && !hasPendingApproval;
+  // Brand-aware semantic tones — driven by --danger/--warning/--info CSS vars.
   const leftBarClassName = isBlocked
-    ? "bg-rose-400"
+    ? "bg-danger"
     : hasPendingApproval
-      ? "bg-amber-400"
+      ? "bg-warning"
       : needsLeadReview
-        ? "bg-indigo-400"
+        ? "bg-info"
         : null;
   const priorityBadge = (value?: string) => {
     if (!value) return null;
     const normalized = value.toLowerCase();
     if (normalized === "high") {
-      return "bg-rose-100 text-rose-700";
+      return "bg-danger-soft text-danger border border-danger-border";
     }
     if (normalized === "medium") {
-      return "bg-amber-100 text-amber-700";
+      return "bg-warning-soft text-warning border border-warning-border";
     }
     if (normalized === "low") {
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-success-soft text-success border border-success-border";
     }
-    return "bg-slate-100 text-slate-600";
+    return "bg-neutral-soft text-neutral border border-neutral-border";
   };
 
   const priorityLabel = priority ? priority.toUpperCase() : "MEDIUM";
@@ -79,9 +80,9 @@ export function TaskCard({
       className={cn(
         "group relative cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md",
         isDragging && "opacity-60 shadow-none",
-        hasPendingApproval && "border-amber-200 bg-amber-50/40",
-        isBlocked && "border-rose-200 bg-rose-50/50",
-        needsLeadReview && "border-indigo-200 bg-indigo-50/30",
+        hasPendingApproval && "border-warning-border bg-warning-soft",
+        isBlocked && "border-danger-border bg-danger-soft",
+        needsLeadReview && "border-info-border bg-info-soft",
       )}
       draggable={draggable}
       onDragStart={onDragStart}
@@ -110,20 +111,20 @@ export function TaskCard({
             {title}
           </p>
           {isBlocked ? (
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-danger">
+              <span className="h-1.5 w-1.5 rounded-full bg-danger" />
               Blocked{blockedByCount > 0 ? ` · ${blockedByCount}` : ""}
             </div>
           ) : null}
           {hasPendingApproval ? (
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
               Approval needed · {approvalsPendingCount}
             </div>
           ) : null}
           {needsLeadReview ? (
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-info">
+              <span className="h-1.5 w-1.5 rounded-full bg-info" />
               Waiting for lead review
             </div>
           ) : null}
@@ -153,7 +154,7 @@ export function TaskCard({
           <span
             className={cn(
               "inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
-              priorityBadge(priority) ?? "bg-slate-100 text-slate-600",
+              priorityBadge(priority) ?? "bg-neutral-soft text-neutral border border-neutral-border",
             )}
           >
             {priorityLabel}

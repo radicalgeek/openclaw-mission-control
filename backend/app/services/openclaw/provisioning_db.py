@@ -30,6 +30,7 @@ from app.db.session import async_session_maker
 from app.models.activity_events import ActivityEvent
 from app.models.agents import (
     AGENT_TYPE_BOARD_WORKER,
+    AGENT_TYPE_GATEWAY_MAIN,
     AGENT_TYPE_STANDALONE,
     Agent,
 )
@@ -342,6 +343,18 @@ class OpenClawProvisioningService(OpenClawDBService):
             stop_sync = await _sync_one_agent(ctx, result, agent, board)
             if stop_sync:
                 break
+
+        if not stop_sync and options.board_id is None:
+            standalones = await (
+                Agent.objects.all()
+                .filter(col(Agent.gateway_id) == gateway.id)
+                .filter(col(Agent.agent_type) == AGENT_TYPE_STANDALONE)
+                .order_by(col(Agent.created_at).asc())
+            ).all(self.session)
+            for agent in standalones:
+                stop_sync = await _sync_one_standalone_agent(ctx, result, agent)
+                if stop_sync:
+                    break
 
         if not stop_sync and options.include_main:
             await _sync_main_agent(ctx, result)
@@ -708,6 +721,81 @@ async def _sync_one_agent(
         return False
 
 
+async def _sync_one_standalone_agent(
+    ctx: _SyncContext,
+    result: GatewayTemplatesSyncResult,
+    agent: Agent,
+) -> bool:
+    auth_token, fatal = await _resolve_agent_auth_token(
+        ctx,
+        result,
+        agent,
+        board=None,
+        agent_gateway_id=_agent_key(agent),
+    )
+    if fatal:
+        return True
+    if not auth_token:
+        return False
+
+    db_templates = await fetch_db_template_overrides(
+        ctx.session,
+        board_id=None,
+        organization_id=ctx.gateway.organization_id,
+    )
+
+    try:
+
+        async def _do_provision() -> bool:
+            try:
+                await AgentLifecycleOrchestrator(ctx.session).run_lifecycle(
+                    gateway=ctx.gateway,
+                    agent_id=agent.id,
+                    board=None,
+                    user=ctx.options.user,
+                    action="update",
+                    auth_token=auth_token,
+                    force_bootstrap=ctx.options.force_bootstrap,
+                    reset_session=ctx.options.reset_sessions,
+                    wake=False,
+                    deliver_wakeup=False,
+                    wakeup_verb="updated",
+                    clear_confirm_token=False,
+                    raise_gateway_errors=True,
+                    db_templates=db_templates or None,
+                )
+            except HTTPException as exc:
+                if exc.status_code == status.HTTP_502_BAD_GATEWAY:
+                    raise OpenClawGatewayError(str(exc.detail)) from exc
+                raise
+            return True
+
+        await ctx.backoff.run(_do_provision)
+        result.agents_updated += 1
+    except TimeoutError as exc:  # pragma: no cover - gateway/network dependent
+        result.agents_skipped += 1
+        _append_sync_error(result, agent=agent, message=str(exc))
+        return True
+    except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
+        result.agents_skipped += 1
+        _append_sync_error(
+            result,
+            agent=agent,
+            message=f"Failed to sync templates: {exc}",
+        )
+        return False
+    except HTTPException as exc:
+        result.agents_skipped += 1
+        _append_sync_error(
+            result,
+            agent=agent,
+            message=f"Failed to sync templates: {exc.detail}",
+        )
+        return False
+    else:
+        return False
+
+
 async def _sync_main_agent(
     ctx: _SyncContext,
     result: GatewayTemplatesSyncResult,
@@ -716,6 +804,7 @@ async def _sync_main_agent(
         await Agent.objects.all()
         .filter(col(Agent.gateway_id) == ctx.gateway.id)
         .filter(col(Agent.board_id).is_(None))
+        .filter(col(Agent.agent_type) == AGENT_TYPE_GATEWAY_MAIN)
         .first(ctx.session)
     )
     if main_agent is None:
@@ -1563,7 +1652,7 @@ class AgentLifecycleService(OpenClawDBService):
     ) -> AgentRead:
         if status_value:
             agent.status = status_value
-        elif agent.status == "provisioning":
+        elif agent.status in {"provisioning", "updating"}:
             agent.status = "online"
         agent.last_seen_at = utcnow()
         # Successful check-in ends the current wake escalation cycle.

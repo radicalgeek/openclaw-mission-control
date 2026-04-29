@@ -2,26 +2,28 @@ import { cn } from "@/lib/utils";
 
 type StatusDotVariant = "agent" | "approval" | "task";
 
+// Brand-aware status dots — driven by --success / --warning / --danger /
+// --info / --neutral and the brand --accent vars set in src/lib/branding.tsx.
 const AGENT_STATUS_DOT_CLASS_BY_STATUS: Record<string, string> = {
-  online: "bg-emerald-500",
-  busy: "bg-amber-500",
-  provisioning: "bg-amber-500",
-  updating: "bg-sky-500",
-  deleting: "bg-rose-500",
-  offline: "bg-slate-400",
+  online: "bg-success",
+  busy: "bg-warning",
+  provisioning: "bg-warning",
+  updating: "bg-info",
+  deleting: "bg-danger",
+  offline: "bg-neutral",
 };
 
 const APPROVAL_STATUS_DOT_CLASS_BY_STATUS: Record<string, string> = {
-  approved: "bg-emerald-500",
-  rejected: "bg-rose-500",
-  pending: "bg-amber-500",
+  approved: "bg-success",
+  rejected: "bg-danger",
+  pending: "bg-warning",
 };
 
 const TASK_STATUS_DOT_CLASS_BY_STATUS: Record<string, string> = {
-  inbox: "bg-slate-400",
-  in_progress: "bg-purple-500",
-  review: "bg-indigo-500",
-  done: "bg-emerald-500",
+  inbox: "bg-neutral",
+  in_progress: "bg-brand",
+  review: "bg-info",
+  done: "bg-success",
 };
 
 const STATUS_DOT_CLASS_BY_VARIANT: Record<
@@ -34,9 +36,9 @@ const STATUS_DOT_CLASS_BY_VARIANT: Record<
 };
 
 const DEFAULT_STATUS_DOT_CLASS: Record<StatusDotVariant, string> = {
-  agent: "bg-slate-300",
-  approval: "bg-amber-500",
-  task: "bg-slate-300",
+  agent: "bg-neutral",
+  approval: "bg-warning",
+  task: "bg-neutral",
 };
 
 export const statusDotClass = (
