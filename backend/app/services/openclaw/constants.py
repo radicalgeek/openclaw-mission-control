@@ -146,6 +146,7 @@ STANDALONE_TEMPLATE_MAP = {
     "HEARTBEAT.md": "BOARD_HEARTBEAT.md.j2",
     "USER.md": "BOARD_USER.md.j2",
     "TOOLS.md": "BOARD_TOOLS.md.j2",
+    "skills/product-foundry-charts/SKILL.md": "BOARD_CHARTS_SKILL.md.j2",
 }
 
 _TOOLS_KV_RE = re.compile(r"^(?P<key>[A-Z0-9_]+)=(?P<value>.*)$")
