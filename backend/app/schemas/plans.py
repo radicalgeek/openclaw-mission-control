@@ -23,6 +23,7 @@ class DecomposedTicket(SQLModel):
 
 
 VALID_PLAN_STATUSES = frozenset({"draft", "active", "completed", "archived"})
+VALID_DECOMPOSITION_TARGETS = frozenset({"board_lead", "org_planner", "org_triager"})
 
 
 class PlanCreate(SQLModel):
@@ -30,6 +31,7 @@ class PlanCreate(SQLModel):
 
     title: NonEmptyStr
     initial_prompt: str | None = None  # Optional kickoff message to the agent
+    decomposition_target: str = "board_lead"  # "board_lead" | "org_planner"
 
 
 class PlanUpdate(SQLModel):
@@ -49,6 +51,7 @@ class PlanRead(SQLModel):
     slug: str
     content: str
     status: str
+    decomposition_target: str = "board_lead"
     created_by_user_id: UUID | None
     task_id: UUID | None
     task_status: str | None  # Denormalized from linked task for display
@@ -91,3 +94,11 @@ class PlanAgentUpdateRequest(SQLModel):
     tickets: list[DecomposedTicket] | None = None  # If provided, stores decomposed tickets
     content_type: str = "text"  # "text" | "mcp_app_result"
     app_metadata: dict[str, object] | None = None  # Required when content_type == "mcp_app_result"
+
+
+class PlanCommitTicketsResponse(SQLModel):
+    """Response from the bulk-commit endpoint listing the created backlog tasks."""
+
+    plan_id: UUID
+    task_ids: list[UUID]
+    count: int

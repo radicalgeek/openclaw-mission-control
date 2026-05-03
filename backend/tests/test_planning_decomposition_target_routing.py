@@ -300,6 +300,90 @@ async def test_decompose_target_board_lead_routes_to_lead_even_with_org_planner_
 
 
 @pytest.mark.asyncio
+async def test_decompose_routes_to_org_triager_when_target_set() -> None:
+    """``decomposition_target == "org_triager"`` routes to the configured
+    triager agent's session. Per role templates, decomposition is the
+    triager's job (not the planner's)."""
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            board, plan, _lead, _planner = await _seed(
+                session,
+                decomposition_target="org_triager",
+                org_planner_session=None,
+            )
+            triager = Agent(
+                id=uuid4(),
+                gateway_id=board.gateway_id,
+                name="Org Triager",
+                agent_type=AGENT_TYPE_STANDALONE,
+                openclaw_session_id="triager-session-key",
+                status="online",
+                last_seen_at=utcnow(),
+            )
+            session.add(triager)
+            await session.commit()
+
+            captured, (p1, p2) = _capture_dispatches()
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.services.openclaw.planning_service.settings.org_triager_agent_id",
+                    str(triager.id),
+                ),
+            ):
+                svc = PlanningMessagingService(session)
+                returned = await svc.dispatch_plan_decompose(
+                    board=board,
+                    plan=plan,
+                    prompt="decompose this plan",
+                )
+        assert returned == "triager-session-key"
+        assert len(captured) == 1
+        assert captured[0]["session_key"] == "triager-session-key"
+        assert captured[0]["agent_name"] == "Org Triager"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_decompose_falls_back_to_lead_when_triager_unavailable() -> None:
+    """If decomposition_target=org_triager but no triager is configured/found,
+    fall back to the board lead — same contract as org_planner."""
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            board, plan, lead, _planner = await _seed(
+                session,
+                decomposition_target="org_triager",
+                org_planner_session=None,
+            )
+            assert lead is not None
+
+            captured, (p1, p2) = _capture_dispatches()
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.services.openclaw.planning_service.settings.org_triager_agent_id",
+                    "",  # no triager configured
+                ),
+            ):
+                svc = PlanningMessagingService(session)
+                returned = await svc.dispatch_plan_decompose(
+                    board=board,
+                    plan=plan,
+                    prompt="decompose",
+                )
+        assert returned == "lead-session-key"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_decompose_does_not_run_lifecycle_pass_on_dispatch() -> None:
     """The dispatch path must not trigger a run_lifecycle pass on the
     standalone agent. Doing so puts the agent into ``updating`` and

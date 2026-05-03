@@ -59,12 +59,20 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
     ) -> str:
         """Dispatch a decompose prompt honouring ``plan.decomposition_target``.
 
-        When ``decomposition_target == "org_planner"`` and the configured org
-        planner agent has an active gateway session, route to it. Otherwise
-        fall back to the board lead session via :meth:`dispatch_plan_start`.
+        Routes to the configured standalone agent matching the target
+        (``org_triager`` or ``org_planner``). Falls back to the board lead
+        session when the configured standalone is unavailable, or when the
+        target is ``board_lead``. Note: per the agent role templates,
+        decomposition is the **triager's** job; the planner does sprint
+        composition. New plans should target ``org_triager``.
         """
-        if plan.decomposition_target == "org_planner":
-            resolved = await self._resolve_org_agent_session(settings.org_planner_agent_id)
+        org_target_setting = {
+            "org_triager": settings.org_triager_agent_id,
+            "org_planner": settings.org_planner_agent_id,
+        }.get(plan.decomposition_target)
+
+        if org_target_setting is not None:
+            resolved = await self._resolve_org_agent_session(org_target_setting)
             if resolved is not None:
                 session_key, agent_name = resolved
                 return await self._dispatch_to_session(
@@ -76,8 +84,9 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                     log_prefix="planning.decompose",
                 )
             self.logger.warning(
-                "planning.decompose.org_planner_unavailable board_id=%s plan_id=%s "
-                "falling back to board lead",
+                "planning.decompose.org_agent_unavailable target=%s board_id=%s "
+                "plan_id=%s falling back to board lead",
+                plan.decomposition_target,
                 board.id,
                 plan.id,
             )

@@ -124,6 +124,47 @@ class Settings(BaseSettings):
         default=True,
         validation_alias=AliasChoices("PLANNING_ENABLED", "planning_enabled"),
     )
+    # Optional org-wide standalone agents that the graduation workflow dispatches
+    # to. When set, plan decomposition / backlog estimation / backlog
+    # prioritisation routes to these agents instead of the board lead.
+    org_planner_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("ORG_PLANNER_AGENT_ID", "org_planner_agent_id"),
+    )
+    # The triager decomposes plans into backlog tickets; the planner does
+    # sprint composition / prioritisation / velocity (its template
+    # explicitly says creating tickets is the triager's job). The
+    # decompose dispatch path uses this agent when
+    # plan.decomposition_target == "org_triager".
+    org_triager_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("ORG_TRIAGER_AGENT_ID", "org_triager_agent_id"),
+    )
+    org_estimator_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("ORG_ESTIMATOR_AGENT_ID", "org_estimator_agent_id"),
+    )
+    org_prioritiser_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("ORG_PRIORITISER_AGENT_ID", "org_prioritiser_agent_id"),
+    )
+    # Review agents dispatched at sprint review time (graduation gate).
+    org_qa_reviewer_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("ORG_QA_REVIEWER_AGENT_ID", "org_qa_reviewer_agent_id"),
+    )
+    org_security_reviewer_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ORG_SECURITY_REVIEWER_AGENT_ID", "org_security_reviewer_agent_id"
+        ),
+    )
+    org_architecture_reviewer_agent_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ORG_ARCHITECTURE_REVIEWER_AGENT_ID", "org_architecture_reviewer_agent_id"
+        ),
+    )
 
     # Logging
     log_level: str = "INFO"
