@@ -300,10 +300,12 @@ async def test_decompose_target_board_lead_routes_to_lead_even_with_org_planner_
 
 
 @pytest.mark.asyncio
-async def test_decompose_wakes_idle_org_planner_before_dispatching() -> None:
-    """An org planner whose heartbeat has gone stale must be woken before
-    the prompt is dispatched. Otherwise OpenClaw delivers the prompt to a
-    dead session and the planner never sees it.
+async def test_decompose_does_not_run_lifecycle_pass_on_dispatch() -> None:
+    """The dispatch path must not trigger a run_lifecycle pass on the
+    standalone agent. Doing so puts the agent into ``updating`` and
+    resets its session, which is wasteful and observed to interfere
+    with the agent settling and replying to the queued prompt. The
+    heartbeat-driven model handles work pickup; dispatch only delivers.
     """
     from datetime import timedelta
 
@@ -316,30 +318,17 @@ async def test_decompose_wakes_idle_org_planner_before_dispatching() -> None:
                 decomposition_target="org_planner",
             )
             assert org_planner is not None
-            # Simulate an agent that booted, heartbeated some hours ago, and
-            # has since gone idle. Status is the persisted value (not the
-            # computed one) — a long-idle agent that the sweep hasn't
-            # touched yet still shows status='online' here.
+            # Even when the agent has been idle for hours, the dispatcher
+            # must not initiate a lifecycle pass.
             org_planner.last_seen_at = utcnow() - timedelta(hours=2)
             org_planner.status = "online"
             session.add(org_planner)
             await session.commit()
 
-            wake_calls: list[dict[str, Any]] = []
-
-            async def _fake_run_lifecycle(self: Any, **kwargs: Any) -> Any:
-                wake_calls.append(kwargs)
-                return None
-
             captured, (p1, p2) = _capture_dispatches()
             with (
                 p1,
                 p2,
-                patch(
-                    "app.services.openclaw.planning_service.AgentLifecycleOrchestrator."
-                    "run_lifecycle",
-                    _fake_run_lifecycle,
-                ),
                 patch(
                     "app.services.openclaw.planning_service.settings.org_planner_agent_id",
                     str(org_planner.id),
@@ -353,65 +342,9 @@ async def test_decompose_wakes_idle_org_planner_before_dispatching() -> None:
                 )
 
         assert returned == "org-planner-session-key"
-        # The wake step ran before dispatch.
-        assert len(wake_calls) == 1
-        assert wake_calls[0]["agent_id"] == org_planner.id
-        assert wake_calls[0]["action"] == "update"
-        assert wake_calls[0]["wake"] is True
-        assert wake_calls[0]["deliver_wakeup"] is True
-        assert wake_calls[0]["board"] is None
-        # And the dispatch still happened to the planner's session.
+        # Exactly one dispatch, straight to the planner's session.
         assert len(captured) == 1
         assert captured[0]["session_key"] == "org-planner-session-key"
-    finally:
-        await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_decompose_skips_wake_when_org_planner_recently_heartbeated() -> None:
-    """No wake call should fire when the agent is already online — that
-    would be wasteful churn on every dispatch.
-    """
-    engine = await _make_engine()
-    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    try:
-        async with sm() as session:
-            board, plan, _lead, org_planner = await _seed(
-                session,
-                decomposition_target="org_planner",
-            )
-            assert org_planner is not None
-            # Default _seed sets a fresh last_seen_at, so this agent is online.
-
-            wake_calls: list[dict[str, Any]] = []
-
-            async def _fake_run_lifecycle(self: Any, **kwargs: Any) -> Any:
-                wake_calls.append(kwargs)
-                return None
-
-            captured, (p1, p2) = _capture_dispatches()
-            with (
-                p1,
-                p2,
-                patch(
-                    "app.services.openclaw.planning_service.AgentLifecycleOrchestrator."
-                    "run_lifecycle",
-                    _fake_run_lifecycle,
-                ),
-                patch(
-                    "app.services.openclaw.planning_service.settings.org_planner_agent_id",
-                    str(org_planner.id),
-                ),
-            ):
-                svc = PlanningMessagingService(session)
-                await svc.dispatch_plan_decompose(
-                    board=board,
-                    plan=plan,
-                    prompt="decompose",
-                )
-
-        assert wake_calls == []
-        assert len(captured) == 1
     finally:
         await engine.dispose()
 
