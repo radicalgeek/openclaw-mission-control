@@ -149,6 +149,7 @@ class TaskRead(TaskBase):
     channel_info: ChannelInfo | None = None
     is_backlog: bool = False
     sprint_id: UUID | None = None
+    plan_id: UUID | None = None
 
 
 class TaskCommentCreate(SQLModel):

@@ -28,6 +28,7 @@ from app.schemas.board_onboarding import (
     BoardOnboardingConfirm,
     BoardOnboardingLeadAgentDraft,
     BoardOnboardingRead,
+    BoardOnboardingSeed,
     BoardOnboardingStart,
     BoardOnboardingUserProfile,
 )
@@ -419,6 +420,70 @@ async def agent_onboarding_update(
         onboarding.status,
     )
     return onboarding
+
+
+@router.post("/seed", response_model=BoardRead)
+async def seed_onboarding(
+    payload: BoardOnboardingSeed,
+    board: Board = BOARD_USER_WRITE_DEP,
+    session: AsyncSession = SESSION_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
+) -> Board:
+    """Programmatically confirm onboarding and provision the lead agent.
+
+    Bypasses the chat-based onboarding entirely. Used by automation flows
+    (e.g. Runway graduation) that already know the board goal and lead-agent
+    configuration. The persisted onboarding session captures the same shape
+    `draft_goal` would have if produced by the chat-based assistant.
+    """
+    draft_goal: dict[str, object] = {
+        "status": "complete",
+        "board_type": payload.board_type,
+    }
+    if payload.objective is not None:
+        draft_goal["objective"] = payload.objective
+    if payload.success_metrics is not None:
+        draft_goal["success_metrics"] = payload.success_metrics
+    if payload.target_date is not None:
+        draft_goal["target_date"] = payload.target_date.isoformat()
+    if payload.user_profile is not None:
+        draft_goal["user_profile"] = payload.user_profile.model_dump(exclude_none=True)
+    if payload.lead_agent is not None:
+        draft_goal["lead_agent"] = payload.lead_agent.model_dump(exclude_none=True)
+
+    onboarding = BoardOnboardingSession(
+        board_id=board.id,
+        session_key="",
+        status="confirmed",
+        messages=[],
+        draft_goal=draft_goal,
+    )
+    session.add(onboarding)
+
+    board.board_type = payload.board_type
+    board.objective = payload.objective
+    board.success_metrics = payload.success_metrics
+    board.target_date = payload.target_date
+    board.goal_confirmed = True
+    board.goal_source = "programmatic_seed"
+    board.require_approval_for_done = _require_approval_for_done_from_draft(draft_goal)
+
+    lead_options = _lead_agent_options(payload.lead_agent)
+
+    gateway, config = await GatewayDispatchService(session).require_gateway_config_for_board(board)
+    session.add(board)
+    await session.commit()
+    await session.refresh(board)
+    await OpenClawProvisioningService(session).ensure_board_lead_agent(
+        request=LeadAgentRequest(
+            board=board,
+            gateway=gateway,
+            config=config,
+            user=auth.user,
+            options=lead_options,
+        ),
+    )
+    return board
 
 
 @router.post("/confirm", response_model=BoardRead)

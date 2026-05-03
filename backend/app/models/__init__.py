@@ -22,6 +22,7 @@ from app.models.organization_invite_board_access import OrganizationInviteBoardA
 from app.models.organization_invites import OrganizationInvite
 from app.models.organization_members import OrganizationMember
 from app.models.organizations import Organization
+from app.models.plans import Plan
 from app.models.skills import GatewayInstalledSkill, MarketplaceSkill, SkillPack
 from app.models.sprint_webhooks import SprintWebhook
 from app.models.sprints import Sprint, SprintTicket
@@ -73,6 +74,7 @@ __all__ = [
     "OrganizationBoardAccess",
     "OrganizationInvite",
     "OrganizationInviteBoardAccess",
+    "Plan",
     "TaskDependency",
     "Task",
     "TaskFingerprint",

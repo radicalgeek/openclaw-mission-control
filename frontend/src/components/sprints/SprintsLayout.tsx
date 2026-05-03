@@ -188,7 +188,7 @@ export function SprintsLayout({ boardId }: Props) {
                 <button
                   type="submit"
                   disabled={creating}
-                  className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
+                  className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-sm font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
                 >
                   {creating ? "Creating…" : "Create"}
                 </button>

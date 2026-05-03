@@ -64,11 +64,14 @@ body {
 .bg-slate-200                { background-color: var(--surface-strong)!important; }
 .bg-gray-50                  { background-color: var(--bg)            !important; }
 .bg-gray-100                 { background-color: var(--surface-muted) !important; }
-.hover\:bg-slate-50:hover    { background-color: var(--surface)       !important; }
-.hover\:bg-slate-100:hover   { background-color: var(--surface-muted) !important; }
+/* Hover bgs originally remapped to var(--surface), which on dark themes is
+   the SAME colour most cards/rows already sit on — making hover invisible.
+   Bump one shade up so hover gives real visual feedback. */
+.hover\:bg-slate-50:hover    { background-color: var(--surface-muted) !important; }
+.hover\:bg-slate-100:hover   { background-color: var(--surface-strong)!important; }
 .hover\:bg-white:hover       { background-color: var(--surface-strong)!important; }
 .hover\:bg-white\/70:hover   { background-color: var(--surface-strong)!important; }
-.hover\:bg-gray-50:hover     { background-color: var(--surface)       !important; }
+.hover\:bg-gray-50:hover     { background-color: var(--surface-muted) !important; }
 .focus\:bg-white:focus       { background-color: var(--surface)       !important; }
 /* Responsive opacity variants (sm+) */
 @media (min-width: 640px) {

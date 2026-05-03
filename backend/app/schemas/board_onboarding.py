@@ -151,6 +151,19 @@ class BoardOnboardingAgentComplete(BoardOnboardingConfirm):
     lead_agent: BoardOnboardingLeadAgentDraft | None = None
 
 
+class BoardOnboardingSeed(BoardOnboardingConfirm):
+    """Programmatic onboarding seed — confirm an onboarding session in one call.
+
+    Used by automation (e.g. the Runway graduation flow) to skip the chat-based
+    onboarding entirely. The payload carries everything the chat-based flow
+    accumulates in `draft_goal`. Validation rules from `BoardOnboardingConfirm`
+    still apply (goal boards must have objective + success_metrics).
+    """
+
+    user_profile: BoardOnboardingUserProfile | None = None
+    lead_agent: BoardOnboardingLeadAgentDraft | None = None
+
+
 BoardOnboardingAgentUpdate = BoardOnboardingAgentComplete | BoardOnboardingAgentQuestion
 
 

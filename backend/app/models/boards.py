@@ -48,6 +48,13 @@ class Board(TenantScoped, table=True):
     is_platform: bool = Field(default=False, index=True)
     is_archived: bool = Field(default=False, index=True)
     auto_advance_sprint: bool = Field(default=False)  # "flow mode" auto-starts next queued sprint
+    # Free-form context blob set by automation (e.g. graduation metadata: app_id,
+    # source repo URL, manifest summary). Surfaced on board reads so agents can
+    # consult it without round-tripping the originating system.
+    context: dict[str, object] | None = Field(
+        default=None,
+        sa_column=Column(JSON),
+    )
     budget_usd: float | None = Field(default=None, sa_column=Column(Numeric(12, 6), nullable=True))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

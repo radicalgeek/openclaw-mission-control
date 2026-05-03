@@ -28,6 +28,12 @@ class Plan(TenantScoped, table=True):
         default="draft", index=True
     )  # "draft" | "active" | "completed" | "archived"
 
+    # Routes plan decomposition to a specific agent role.
+    # "board_lead" (default): the board's lead agent runs decomposition in the
+    # planning chat. "org_planner": dispatch to the org-wide standalone planner
+    # agent (used by automated graduation flows).
+    decomposition_target: str = Field(default="board_lead")
+
     created_by_user_id: UUID | None = Field(
         default=None,
         foreign_key="users.id",

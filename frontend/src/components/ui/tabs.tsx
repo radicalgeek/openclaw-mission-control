@@ -29,7 +29,10 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "rounded-full px-4 py-2 text-xs font-semibold text-muted transition data-[state=active]:bg-[color:var(--accent)] data-[state=active]:text-white",
+      // Brand-aware tabs: inactive uses muted text + accent-soft hover,
+      // active uses brand accent with the proper accent-foreground (dark on
+      // bright accents, light on dark) — never hardcoded white-on-yellow.
+      "rounded-full px-4 py-2 text-xs font-semibold text-muted transition hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent-text-on-soft)] data-[state=active]:bg-[color:var(--accent)] data-[state=active]:text-[color:var(--accent-foreground)] data-[state=active]:hover:bg-[color:var(--accent-strong)]",
       className,
     )}
     {...props}

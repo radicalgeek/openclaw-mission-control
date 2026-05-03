@@ -3039,29 +3039,33 @@ export default function BoardDetailPage() {
     });
   };
 
+  // Brand-aware list-view badge tones — semantic tokens via tailwind.config.cjs.
   const statusBadgeClass = (value?: string) => {
     switch (value) {
       case "in_progress":
-        return "bg-purple-100 text-purple-700";
+        // In-progress = brand accent (primary working state).
+        return "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)] border border-[color:var(--accent)]/40";
       case "review":
-        return "bg-indigo-100 text-indigo-700";
+        return "bg-info-soft text-info border border-info-border";
       case "done":
-        return "bg-emerald-100 text-emerald-700";
+        return "bg-success-soft text-success border border-success-border";
       default:
-        return "bg-slate-100 text-slate-600";
+        return "bg-neutral-soft text-neutral border border-neutral-border";
     }
   };
 
   const priorityBadgeClass = (value?: string) => {
     switch (value?.toLowerCase()) {
       case "high":
-        return "bg-rose-100 text-rose-700";
+      case "critical":
+      case "urgent":
+        return "bg-danger-soft text-danger border border-danger-border";
       case "medium":
-        return "bg-amber-100 text-amber-700";
+        return "bg-warning-soft text-warning border border-warning-border";
       case "low":
-        return "bg-emerald-100 text-emerald-700";
+        return "bg-success-soft text-success border border-success-border";
       default:
-        return "bg-slate-100 text-slate-600";
+        return "bg-neutral-soft text-neutral border border-neutral-border";
     }
   };
 
@@ -3300,7 +3304,7 @@ export default function BoardDetailPage() {
                       className={cn(
                         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                         viewMode === "board"
-                          ? "bg-[color:var(--accent)] text-white"
+                          ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)]"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
                       )}
                       onClick={() => setViewMode("board")}
@@ -3311,7 +3315,7 @@ export default function BoardDetailPage() {
                       className={cn(
                         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                         viewMode === "list"
-                          ? "bg-[color:var(--accent)] text-white"
+                          ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)]"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
                       )}
                       onClick={() => setViewMode("list")}

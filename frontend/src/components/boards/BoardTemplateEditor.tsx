@@ -276,7 +276,7 @@ export function BoardTemplateEditor({ boardId }: BoardTemplateEditorProps) {
                       onClick={() => void handleSelectFile(name)}
                       className={`w-full px-3 py-2.5 text-left text-xs transition ${
                         selectedFile === name
-                          ? "bg-[color:var(--accent)] font-semibold text-white"
+                          ? "bg-[color:var(--accent)] font-semibold text-[color:var(--accent-foreground)]"
                           : "text-muted hover:bg-[color:var(--surface-strong)] hover:text-strong"
                       }`}
                     >

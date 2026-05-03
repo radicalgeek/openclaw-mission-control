@@ -139,7 +139,7 @@ export function PlanningLayout({ boardId }: Props) {
             </p>
             <button
               onClick={() => setShowNewModal(true)}
-              className="rounded-md bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
+              className="rounded-md bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] transition"
             >
               New plan
             </button>

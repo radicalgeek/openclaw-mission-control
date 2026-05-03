@@ -285,7 +285,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
           </div>
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1.5 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-[color:var(--accent-strong)] transition"
+            className="flex items-center gap-1.5 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] shadow-sm hover:bg-[color:var(--accent-strong)] transition"
           >
             <Plus className="h-3.5 w-3.5" />
             {showForm ? "Cancel" : "Add ticket"}
@@ -408,7 +408,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-[color:var(--accent)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
+                className="rounded-lg bg-[color:var(--accent)] px-4 py-1.5 text-sm font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
               >
                 {saving ? "Saving…" : "Add to backlog"}
               </button>
@@ -440,7 +440,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
               <p className="text-xs text-slate-400">Add tickets to plan your upcoming work.</p>
               <button
                 onClick={() => setShowForm(true)}
-                className="mt-1 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
+                className="mt-1 rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] transition"
               >
                 Add first ticket
               </button>
@@ -632,7 +632,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
                 <button
                   onClick={() => void handleSaveEdit()}
                   disabled={editBusy}
-                  className="flex items-center gap-1 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
+                  className="flex items-center gap-1 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] disabled:opacity-50 transition"
                 >
                   <Check className="h-3 w-3" />
                   {editBusy ? "Saving…" : "Save"}

@@ -14,6 +14,7 @@ from app.api.deps import (
     get_board_for_user_write,
     require_user_auth,
 )
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db.session import get_session
@@ -323,6 +324,119 @@ async def delete_sprint(
 # ---------------------------------------------------------------------------
 
 
+class _AutoFromBacklogRequest(BaseModel):
+    """Payload for auto-building a sprint from the board backlog."""
+
+    name: str
+    goal: str | None = None
+    take: int | str = "all"  # "all" or a positive int
+    start: bool = False  # if true, start the sprint after attaching tickets
+
+
+class _AutoFromBacklogResponse(BaseModel):
+    """Response detailing the sprint and tickets created."""
+
+    sprint: SprintRead
+    task_ids: list[UUID]
+
+
+@router.post("/sprints/auto-from-backlog", response_model=_AutoFromBacklogResponse)
+async def auto_sprint_from_backlog(
+    payload: _AutoFromBacklogRequest,
+    board: Board = BOARD_WRITE_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    auth: "AuthContext" = USER_AUTH_DEP,
+) -> _AutoFromBacklogResponse:
+    """Create a draft sprint and attach the highest-priority backlog tasks.
+
+    Tasks are sorted by ``priority_score`` desc then ``created_at`` asc so the
+    most urgent items land first. Setting ``start=true`` immediately runs the
+    existing sprint start lifecycle (tickets move backlog → inbox).
+    """
+    from sqlalchemy import or_  # noqa: PLC0415
+
+    take: int | None
+    if isinstance(payload.take, str):
+        if payload.take.lower() == "all":
+            take = None
+        else:
+            try:
+                take = int(payload.take)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="take must be 'all' or a positive integer",
+                ) from exc
+    else:
+        take = int(payload.take)
+    if take is not None and take <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="take must be 'all' or a positive integer",
+        )
+
+    backlog_stmt = (
+        select(Task)
+        .where(col(Task.board_id) == board.id)
+        .where(
+            or_(
+                col(Task.status).in_(["triage", "backlog"]),
+                col(Task.is_backlog).is_(True),
+            ),
+        )
+        .where(col(Task.sprint_id).is_(None))
+        .order_by(col(Task.priority_score).desc(), col(Task.created_at).asc())
+    )
+    backlog = list((await session.exec(backlog_stmt)).all())
+    if not backlog:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No unassigned backlog tasks available to attach.",
+        )
+    selected = backlog if take is None else backlog[:take]
+
+    sprint = Sprint(
+        organization_id=board.organization_id,
+        board_id=board.id,
+        name=payload.name,
+        slug=generate_slug(payload.name),
+        goal=payload.goal,
+        status="draft",
+        position=0,
+        created_by_user_id=auth.user.id if auth.user else None,
+    )
+    session.add(sprint)
+    await session.flush()
+
+    for idx, task in enumerate(selected):
+        link = SprintTicket(sprint_id=sprint.id, task_id=task.id, position=idx)
+        session.add(link)
+        task.sprint_id = sprint.id
+        task.updated_at = utcnow()
+        session.add(task)
+
+    record_activity(
+        session,
+        event_type="sprint_auto_from_backlog",
+        message=f"Auto-built sprint '{payload.name}' from {len(selected)} backlog tasks",
+        board_id=board.id,
+    )
+    await session.commit()
+    await session.refresh(sprint)
+
+    if payload.start:
+        from app.services.sprint_lifecycle import SprintService  # noqa: PLC0415
+
+        await SprintService.start_sprint(session, sprint=sprint, board=board)
+        await session.refresh(sprint)
+
+    total, done = await _sprint_ticket_counts(session, sprint.id)
+    return _AutoFromBacklogResponse(
+        sprint=_sprint_to_read(sprint, total, done),
+        task_ids=[t.id for t in selected],
+    )
+
+
 @router.post("/sprints/{sprint_id}/start", response_model=SprintRead)
 async def start_sprint(
     sprint_id: UUID,
@@ -355,6 +469,122 @@ async def complete_sprint(
     await session.refresh(sprint)
     total, done = await _sprint_ticket_counts(session, sprint.id)
     return _sprint_to_read(sprint, total, done)
+
+
+class _RunReviewResponse(BaseModel):
+    """Response from POST /sprints/{id}/run-review."""
+
+    sprint_id: UUID
+    dispatched_reviewers: list[str]
+    skipped_reviewers: list[dict[str, str]]  # [{role, reason}]
+
+
+def _build_review_prompt(board: Board, sprint: Sprint, role: str, tasks: list[Task]) -> str:
+    role_intros = {
+        "qa": "QA REVIEW REQUEST: assess test coverage, acceptance criteria, regression risk.",
+        "security": (
+            "SECURITY REVIEW REQUEST: assess OWASP Top 10, secrets exposure, dependency "
+            "vulnerabilities, IAM misconfigurations."
+        ),
+        "architecture": (
+            "ARCHITECTURE REVIEW REQUEST: assess scalability, resilience, observability, cost."
+        ),
+    }
+    lines = [
+        role_intros.get(role, f"{role.upper()} REVIEW REQUEST"),
+        f"Board: {board.name}",
+        f"Sprint: {sprint.name}",
+        f"Sprint goal: {sprint.goal or '(none)'}",
+        "",
+        "Reviewer instructions:",
+        "- If the work meets the bar, post agent-update on this sprint with verdict=approve.",
+        f"- If not, create new tickets on the board via POST /api/v1/boards/{board.id}/backlog ",
+        "  describing the gaps. Do NOT mark approve until those tickets are addressed.",
+        "",
+        "Sprint tickets to review:",
+    ]
+    for t in tasks:
+        lines.append(
+            f"- task_id={t.id} | status={t.status} | title={t.title} | "
+            f"description={(t.description or '').replace(chr(10), ' ')[:200]}",
+        )
+    return "\n".join(lines)
+
+
+@router.post("/sprints/{sprint_id}/run-review", response_model=_RunReviewResponse)
+async def run_sprint_review(
+    sprint_id: UUID,
+    board: Board = BOARD_WRITE_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    _auth: "AuthContext" = USER_AUTH_DEP,
+) -> _RunReviewResponse:
+    """Dispatch QA, Security, and Architecture reviewer agents over the sprint scope.
+
+    Reviewers either post an approve verdict via the existing agent-update
+    pathway, or create new backlog tickets via the Tasks API. This endpoint
+    only handles dispatch; verdict aggregation is the caller's concern.
+    """
+    from app.services.openclaw.planning_service import (  # noqa: PLC0415
+        PlanningMessagingService,
+    )
+
+    sprint = await _require_sprint(session, sprint_id, board)
+    if sprint.status not in {"active", "queued"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot run review on sprint with status '{sprint.status}'",
+        )
+
+    tickets_stmt = (
+        select(Task)
+        .join(SprintTicket, col(SprintTicket.task_id) == col(Task.id))
+        .where(col(SprintTicket.sprint_id) == sprint.id)
+    )
+    tasks = list((await session.exec(tickets_stmt)).all())
+    if not tasks:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Sprint has no tickets to review.",
+        )
+
+    dispatcher = PlanningMessagingService(session)
+    dispatched: list[str] = []
+    skipped: list[dict[str, str]] = []
+    role_to_setting = {
+        "qa": settings.org_qa_reviewer_agent_id,
+        "security": settings.org_security_reviewer_agent_id,
+        "architecture": settings.org_architecture_reviewer_agent_id,
+    }
+    for role, agent_id in role_to_setting.items():
+        if not agent_id:
+            skipped.append({"role": role, "reason": "agent_not_configured"})
+            continue
+        prompt = _build_review_prompt(board, sprint, role, tasks)
+        session_key = await dispatcher.dispatch_to_configured_org_agent(
+            board=board,
+            configured_agent_id=agent_id,
+            prompt=prompt,
+            log_prefix=f"sprint.review.{role}",
+            correlation_id=f"sprint.review.{role}:{sprint.id}",
+        )
+        if session_key is None:
+            skipped.append({"role": role, "reason": "agent_offline_or_missing"})
+        else:
+            dispatched.append(role)
+
+    record_activity(
+        session,
+        event_type="sprint_review_dispatched",
+        message=f"Sprint review dispatched: {len(dispatched)} reviewers ({', '.join(dispatched)})",
+        board_id=board.id,
+    )
+    await session.commit()
+
+    return _RunReviewResponse(
+        sprint_id=sprint.id,
+        dispatched_reviewers=dispatched,
+        skipped_reviewers=skipped,
+    )
 
 
 @router.post("/sprints/{sprint_id}/cancel", response_model=SprintRead)
@@ -596,6 +826,249 @@ async def create_backlog_task(
     await session.refresh(task)
     reads = await _tasks_to_read_with_tags(session, [task])
     return reads[0]
+
+
+class _BacklogOrchestrationResponse(BaseModel):
+    """Response from backlog estimate / prioritise dispatch."""
+
+    dispatched: bool
+    task_count: int
+    task_ids: list[UUID]
+    skipped_existing: int
+    agent_session: str | None
+    reason: str | None = None
+
+
+def _build_estimate_prompt(board: Board, tasks: list[Task]) -> str:
+    """Build the prompt sent to the org estimator for a batch of backlog tasks."""
+    lines = [
+        f"BACKLOG ESTIMATION REQUEST for board '{board.name}'.",
+        "Estimate each task in minutes. For each task, call:",
+        '  PATCH /api/v1/tasks/{task_id} with body {"estimate_minutes": <int>}',
+        "Use ranges 15, 30, 60, 120, 240, 480 minutes. Pick the closest fit.",
+        "",
+        "Tasks needing estimates:",
+    ]
+    for t in tasks:
+        lines.append(
+            f"- task_id={t.id} | title={t.title} | priority={t.priority} | "
+            f"description={(t.description or '').replace(chr(10), ' ')[:200]}",
+        )
+    return "\n".join(lines)
+
+
+def _build_prioritise_prompt(board: Board, tasks: list[Task]) -> str:
+    """Build the prompt sent to the org prioritiser for a batch of backlog tasks."""
+    lines = [
+        f"BACKLOG PRIORITISATION REQUEST for board '{board.name}'.",
+        "Choose priority (low | medium | high | critical) and a numeric "
+        "priority_score (1–100). Higher = more urgent. For each task, call:",
+        '  PATCH /api/v1/tasks/{task_id} with body {"priority": "...", "priority_score": <int>}',
+        "Consider the board objective when ranking.",
+        f"Board objective: {board.objective or '(not set)'}",
+        "",
+        "Tasks needing priority:",
+    ]
+    for t in tasks:
+        lines.append(
+            f"- task_id={t.id} | title={t.title} | "
+            f"description={(t.description or '').replace(chr(10), ' ')[:200]}",
+        )
+    return "\n".join(lines)
+
+
+async def _select_backlog_tasks_missing_field(
+    session: "AsyncSession",
+    *,
+    board_id: UUID,
+    field: str,
+) -> tuple[list[Task], int]:
+    """Return (tasks_missing_field, skipped_count_with_value).
+
+    ``field`` is either ``estimate_minutes`` or ``priority_score`` (when force=False).
+    """
+    from sqlalchemy import or_  # noqa: PLC0415
+
+    stmt = (
+        select(Task)
+        .where(col(Task.board_id) == board_id)
+        .where(
+            or_(
+                col(Task.status).in_(["triage", "backlog"]),
+                col(Task.is_backlog).is_(True),
+            ),
+        )
+    )
+    rows = list((await session.exec(stmt)).all())
+    if field == "estimate_minutes":
+        missing = [t for t in rows if t.estimate_minutes is None]
+    elif field == "priority_score":
+        # priority_score=50 is the default — treat as "not yet prioritised".
+        missing = [t for t in rows if t.priority_score in (None, 50)]
+    else:
+        missing = []
+    return missing, len(rows) - len(missing)
+
+
+@router.post("/backlog/estimate", response_model=_BacklogOrchestrationResponse)
+async def dispatch_backlog_estimate(
+    board: Board = BOARD_WRITE_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    _auth: "AuthContext" = USER_AUTH_DEP,
+    force: bool = Query(default=False),
+) -> _BacklogOrchestrationResponse:
+    """Dispatch the org estimator agent to fill estimate_minutes on backlog tasks.
+
+    Idempotent: skips tasks that already have an estimate unless ``force=true``.
+    Kicks off a single dispatch with all relevant tasks; the agent is expected
+    to update each task via ``PATCH /tasks/{id}``.
+    """
+    from app.services.openclaw.planning_service import (  # noqa: PLC0415
+        PlanningMessagingService,
+    )
+
+    if force:
+        from sqlalchemy import or_  # noqa: PLC0415
+
+        stmt = (
+            select(Task)
+            .where(col(Task.board_id) == board.id)
+            .where(
+                or_(
+                    col(Task.status).in_(["triage", "backlog"]),
+                    col(Task.is_backlog).is_(True),
+                ),
+            )
+        )
+        tasks = list((await session.exec(stmt)).all())
+        skipped = 0
+    else:
+        tasks, skipped = await _select_backlog_tasks_missing_field(
+            session,
+            board_id=board.id,
+            field="estimate_minutes",
+        )
+    if not tasks:
+        return _BacklogOrchestrationResponse(
+            dispatched=False,
+            task_count=0,
+            task_ids=[],
+            skipped_existing=skipped,
+            agent_session=None,
+            reason="no_backlog_tasks_need_estimate",
+        )
+    prompt = _build_estimate_prompt(board, tasks)
+    dispatcher = PlanningMessagingService(session)
+    session_key = await dispatcher.dispatch_to_configured_org_agent(
+        board=board,
+        configured_agent_id=settings.org_estimator_agent_id,
+        prompt=prompt,
+        log_prefix="backlog.estimate",
+        correlation_id=f"backlog.estimate:{board.id}",
+    )
+    if session_key is None:
+        return _BacklogOrchestrationResponse(
+            dispatched=False,
+            task_count=len(tasks),
+            task_ids=[t.id for t in tasks],
+            skipped_existing=skipped,
+            agent_session=None,
+            reason="org_estimator_agent_unavailable",
+        )
+    record_activity(
+        session,
+        event_type="backlog_estimate_dispatched",
+        message=f"Dispatched estimator to {len(tasks)} backlog tasks",
+        board_id=board.id,
+    )
+    await session.commit()
+    return _BacklogOrchestrationResponse(
+        dispatched=True,
+        task_count=len(tasks),
+        task_ids=[t.id for t in tasks],
+        skipped_existing=skipped,
+        agent_session=session_key,
+    )
+
+
+@router.post("/backlog/prioritise", response_model=_BacklogOrchestrationResponse)
+async def dispatch_backlog_prioritise(
+    board: Board = BOARD_WRITE_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    _auth: "AuthContext" = USER_AUTH_DEP,
+    force: bool = Query(default=False),
+) -> _BacklogOrchestrationResponse:
+    """Dispatch the org prioritiser agent to fill priority + priority_score.
+
+    Idempotent: skips tasks already prioritised (priority_score != 50) unless
+    ``force=true``. Single dispatch covers the whole batch.
+    """
+    from app.services.openclaw.planning_service import (  # noqa: PLC0415
+        PlanningMessagingService,
+    )
+
+    if force:
+        from sqlalchemy import or_  # noqa: PLC0415
+
+        stmt = (
+            select(Task)
+            .where(col(Task.board_id) == board.id)
+            .where(
+                or_(
+                    col(Task.status).in_(["triage", "backlog"]),
+                    col(Task.is_backlog).is_(True),
+                ),
+            )
+        )
+        tasks = list((await session.exec(stmt)).all())
+        skipped = 0
+    else:
+        tasks, skipped = await _select_backlog_tasks_missing_field(
+            session,
+            board_id=board.id,
+            field="priority_score",
+        )
+    if not tasks:
+        return _BacklogOrchestrationResponse(
+            dispatched=False,
+            task_count=0,
+            task_ids=[],
+            skipped_existing=skipped,
+            agent_session=None,
+            reason="no_backlog_tasks_need_priority",
+        )
+    prompt = _build_prioritise_prompt(board, tasks)
+    dispatcher = PlanningMessagingService(session)
+    session_key = await dispatcher.dispatch_to_configured_org_agent(
+        board=board,
+        configured_agent_id=settings.org_prioritiser_agent_id,
+        prompt=prompt,
+        log_prefix="backlog.prioritise",
+        correlation_id=f"backlog.prioritise:{board.id}",
+    )
+    if session_key is None:
+        return _BacklogOrchestrationResponse(
+            dispatched=False,
+            task_count=len(tasks),
+            task_ids=[t.id for t in tasks],
+            skipped_existing=skipped,
+            agent_session=None,
+            reason="org_prioritiser_agent_unavailable",
+        )
+    record_activity(
+        session,
+        event_type="backlog_prioritise_dispatched",
+        message=f"Dispatched prioritiser to {len(tasks)} backlog tasks",
+        board_id=board.id,
+    )
+    await session.commit()
+    return _BacklogOrchestrationResponse(
+        dispatched=True,
+        task_count=len(tasks),
+        task_ids=[t.id for t in tasks],
+        skipped_existing=skipped,
+        agent_session=session_key,
+    )
 
 
 @router.post("/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED)

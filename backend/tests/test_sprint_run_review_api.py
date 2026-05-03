@@ -1,0 +1,330 @@
+# ruff: noqa: INP001
+"""Tests for POST /boards/{id}/sprints/{id}/run-review."""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import patch
+from uuid import UUID, uuid4
+
+import pytest
+from fastapi import APIRouter, Depends, FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app.api.deps import (
+    get_board_for_user_read,
+    get_board_for_user_write,
+    require_user_auth,
+)
+from app.api.sprints import router as sprints_router
+from app.core.auth import AuthContext
+from app.db.session import get_session
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
+from app.models.boards import Board
+from app.models.gateways import Gateway
+from app.models.organizations import Organization
+from app.models.sprints import Sprint, SprintTicket
+from app.models.tasks import Task
+from app.models.users import User
+
+
+async def _make_engine() -> AsyncEngine:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.connect() as conn, conn.begin():
+        await conn.run_sync(SQLModel.metadata.create_all)
+    return engine
+
+
+def _build_app(session_maker: async_sessionmaker[AsyncSession], *, user: User) -> FastAPI:
+    app = FastAPI()
+    api = APIRouter(prefix="/api/v1")
+    api.include_router(sprints_router)
+    app.include_router(api)
+
+    async def _session_override():
+        async with session_maker() as s:
+            yield s
+
+    async def _board_override(
+        board_id: str,
+        session: AsyncSession = Depends(get_session),
+    ) -> Board:
+        from fastapi import HTTPException
+        from fastapi import status as http_status
+
+        board = await Board.objects.by_id(UUID(board_id)).first(session)
+        if board is None:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND)
+        return board
+
+    app.dependency_overrides[get_session] = _session_override
+    app.dependency_overrides[get_board_for_user_read] = _board_override
+    app.dependency_overrides[get_board_for_user_write] = _board_override
+    app.dependency_overrides[require_user_auth] = lambda: AuthContext(actor_type="user", user=user)
+    return app
+
+
+async def _seed_with_sprint_and_reviewers(
+    session: AsyncSession,
+    *,
+    sprint_status: str = "active",
+    with_qa: bool = True,
+    with_security: bool = True,
+    with_architecture: bool = True,
+) -> tuple[User, Board, Sprint, dict[str, Agent]]:
+    org_id = uuid4()
+    gw_id = uuid4()
+    board_id = uuid4()
+    sprint_id = uuid4()
+    user = User(id=uuid4(), clerk_user_id=f"cu_{uuid4()}", email=f"u{uuid4()}@x.test")
+
+    reviewers: dict[str, Agent] = {}
+
+    def _make_reviewer(name: str) -> Agent:
+        return Agent(
+            id=uuid4(),
+            gateway_id=gw_id,
+            name=name,
+            agent_type=AGENT_TYPE_STANDALONE,
+            openclaw_session_id=f"{name.lower()}-session",
+        )
+
+    objects: list[object] = [
+        Organization(id=org_id, name=f"org-{org_id}"),
+        Gateway(
+            id=gw_id,
+            organization_id=org_id,
+            name="gw",
+            url="https://gw.example",
+            token="t",
+            workspace_root="/tmp/ws",
+        ),
+        Board(
+            id=board_id,
+            organization_id=org_id,
+            gateway_id=gw_id,
+            name="b",
+            slug=f"b-{uuid4()}",
+        ),
+        user,
+    ]
+    if with_qa:
+        reviewers["qa"] = _make_reviewer("QA")
+        objects.append(reviewers["qa"])
+    if with_security:
+        reviewers["security"] = _make_reviewer("Security")
+        objects.append(reviewers["security"])
+    if with_architecture:
+        reviewers["architecture"] = _make_reviewer("Architecture")
+        objects.append(reviewers["architecture"])
+
+    sprint = Sprint(
+        id=sprint_id,
+        organization_id=org_id,
+        board_id=board_id,
+        name="Sprint",
+        slug=f"sprint-{uuid4()}",
+        status=sprint_status,
+        position=0,
+    )
+    objects.append(sprint)
+
+    task_id = uuid4()
+    task = Task(id=task_id, board_id=board_id, title="Done thing", status="done")
+    objects.append(task)
+    objects.append(SprintTicket(sprint_id=sprint_id, task_id=task_id, position=0))
+
+    session.add_all(objects)
+    await session.commit()
+    board = await session.get(Board, board_id)
+    fresh_sprint = await session.get(Sprint, sprint_id)
+    assert board is not None
+    assert fresh_sprint is not None
+    return user, board, fresh_sprint, reviewers
+
+
+def _capture() -> tuple[list[dict[str, Any]], Any, Any]:
+    captured: list[dict[str, Any]] = []
+
+    async def _fake_dispatch(self: Any, **kwargs: Any) -> None:
+        captured.append(kwargs)
+
+    async def _fake_config(self: Any, board: Board) -> tuple[Any, Any]:
+        return object(), object()
+
+    return (
+        captured,
+        patch(
+            "app.services.openclaw.planning_service.AbstractGatewayMessagingService."
+            "_dispatch_gateway_message",
+            _fake_dispatch,
+        ),
+        patch(
+            "app.services.openclaw.gateway_dispatch.GatewayDispatchService."
+            "require_gateway_config_for_board",
+            _fake_config,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_review_dispatches_to_all_three_reviewers_when_configured() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(session)
+        app = _build_app(sm, user=user)
+        captured, p1, p2 = _capture()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            with (
+                p1,
+                p2,
+                patch("app.api.sprints.settings.org_qa_reviewer_agent_id", str(reviewers["qa"].id)),
+                patch(
+                    "app.api.sprints.settings.org_security_reviewer_agent_id",
+                    str(reviewers["security"].id),
+                ),
+                patch(
+                    "app.api.sprints.settings.org_architecture_reviewer_agent_id",
+                    str(reviewers["architecture"].id),
+                ),
+            ):
+                resp = await c.post(
+                    f"/api/v1/boards/{board.id}/sprints/{sprint.id}/run-review",
+                )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert sorted(body["dispatched_reviewers"]) == ["architecture", "qa", "security"]
+        assert body["skipped_reviewers"] == []
+        # 3 dispatches, one per reviewer
+        sessions_dispatched = [c["session_key"] for c in captured]
+        assert sorted(sessions_dispatched) == sorted(
+            ["qa-session", "security-session", "architecture-session"]
+        )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_review_skips_unconfigured_reviewers() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                with_security=False,
+                with_architecture=False,
+            )
+        app = _build_app(sm, user=user)
+        captured, p1, p2 = _capture()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.api.sprints.settings.org_qa_reviewer_agent_id",
+                    str(reviewers["qa"].id),
+                ),
+                patch("app.api.sprints.settings.org_security_reviewer_agent_id", ""),
+                patch("app.api.sprints.settings.org_architecture_reviewer_agent_id", ""),
+            ):
+                resp = await c.post(
+                    f"/api/v1/boards/{board.id}/sprints/{sprint.id}/run-review",
+                )
+        body = resp.json()
+        assert body["dispatched_reviewers"] == ["qa"]
+        skipped_roles = [s["role"] for s in body["skipped_reviewers"]]
+        assert sorted(skipped_roles) == ["architecture", "security"]
+        assert all(s["reason"] == "agent_not_configured" for s in body["skipped_reviewers"])
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_review_marks_offline_reviewer_as_skipped() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(session)
+            # Knock the QA reviewer offline (no session_id).
+            qa = reviewers["qa"]
+            qa.openclaw_session_id = None
+            session.add(qa)
+            await session.commit()
+        app = _build_app(sm, user=user)
+        captured, p1, p2 = _capture()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            with (
+                p1,
+                p2,
+                patch("app.api.sprints.settings.org_qa_reviewer_agent_id", str(reviewers["qa"].id)),
+                patch(
+                    "app.api.sprints.settings.org_security_reviewer_agent_id",
+                    str(reviewers["security"].id),
+                ),
+                patch(
+                    "app.api.sprints.settings.org_architecture_reviewer_agent_id",
+                    str(reviewers["architecture"].id),
+                ),
+            ):
+                resp = await c.post(
+                    f"/api/v1/boards/{board.id}/sprints/{sprint.id}/run-review",
+                )
+        body = resp.json()
+        assert sorted(body["dispatched_reviewers"]) == ["architecture", "security"]
+        skipped = body["skipped_reviewers"]
+        assert any(s["role"] == "qa" and s["reason"] == "agent_offline_or_missing" for s in skipped)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_review_409_when_sprint_not_active_or_queued() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, sprint, _ = await _seed_with_sprint_and_reviewers(
+                session, sprint_status="completed"
+            )
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/sprints/{sprint.id}/run-review",
+            )
+        assert resp.status_code == 409
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_review_409_when_sprint_has_no_tickets() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, sprint, _ = await _seed_with_sprint_and_reviewers(session)
+            # Remove the seeded SprintTicket
+            from sqlmodel import select as _select
+
+            link = (
+                await session.exec(_select(SprintTicket).where(SprintTicket.sprint_id == sprint.id))
+            ).first()
+            assert link is not None
+            await session.delete(link)
+            await session.commit()
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/sprints/{sprint.id}/run-review",
+            )
+        assert resp.status_code == 409
+        assert "no tickets" in resp.json()["detail"].lower()
+    finally:
+        await engine.dispose()

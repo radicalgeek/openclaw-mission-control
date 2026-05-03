@@ -36,6 +36,7 @@ class BoardBase(SQLModel):
     only_lead_can_change_status: bool = False
     max_agents: int = Field(default=1, ge=0)
     is_platform: bool = False
+    context: dict[str, object] | None = None
 
 
 class BoardCreate(BoardBase):
@@ -83,6 +84,7 @@ class BoardUpdate(SQLModel):
     max_agents: int | None = Field(default=None, ge=0)
     is_platform: bool | None = None
     auto_advance_sprint: bool | None = None
+    context: dict[str, object] | None = None
 
     @model_validator(mode="after")
     def validate_gateway_id(self) -> Self:

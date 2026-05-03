@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import col, select
 
 from app.api.deps import require_org_admin
@@ -84,7 +84,13 @@ async def grant_board_access(
     ctx: OrganizationContext = ORG_ADMIN_DEP,
     session: AsyncSession = SESSION_DEP,
 ) -> AgentBoardAccessRead:
-    """Grant a standalone agent access to a board."""
+    """Grant a standalone agent access to a board.
+
+    Idempotent: if an active grant already exists for the (agent, board) pair,
+    the existing grant is returned and the access_level is upgraded to
+    ``write`` if the existing grant is ``read`` and the request asks for
+    ``write``. Downgrades from write to read are ignored.
+    """
     agent = await _require_standalone_agent(session, agent_id=agent_id, ctx=ctx)
 
     board = await Board.objects.by_id(payload.board_id).first(session)
@@ -94,7 +100,6 @@ async def grant_board_access(
             detail="Board not found",
         )
 
-    # Check for existing grant
     existing = (
         await session.exec(
             select(AgentBoardAccess)
@@ -103,10 +108,10 @@ async def grant_board_access(
         )
     ).first()
     if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Agent already has access to this board",
-        )
+        if existing.access_level == "read" and payload.access_level == "write":
+            existing.access_level = "write"
+            await crud.save(session, existing)
+        return _to_read(existing)
 
     grant = AgentBoardAccess(
         agent_id=agent.id,
@@ -115,6 +120,39 @@ async def grant_board_access(
     )
     await crud.save(session, grant)
     return _to_read(grant)
+
+
+@router.delete("", response_model=OkResponse)
+async def revoke_board_access_by_board(
+    agent_id: UUID,
+    board_id: UUID = Query(..., description="Board ID to revoke access from"),
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> OkResponse:
+    """Revoke a standalone agent's access to a specific board.
+
+    Idempotent: returns 200 even if no grant exists for the pair. Used by
+    automation that grants access for a unit of work and revokes it
+    afterwards without tracking the grant_id.
+    """
+    grant = (
+        await session.exec(
+            select(AgentBoardAccess)
+            .where(col(AgentBoardAccess.agent_id) == agent_id)
+            .where(col(AgentBoardAccess.board_id) == board_id),
+        )
+    ).first()
+    if grant is not None:
+        # Verify the board belongs to the requester's org before revoking.
+        board = await Board.objects.by_id(board_id).first(session)
+        if board is None or board.organization_id != ctx.organization.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Board not found",
+            )
+        await session.delete(grant)
+        await session.commit()
+    return OkResponse()
 
 
 @router.delete("/{grant_id}", response_model=OkResponse)

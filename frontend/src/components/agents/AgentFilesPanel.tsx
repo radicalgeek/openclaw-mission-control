@@ -167,7 +167,7 @@ export function AgentFilesPanel({ agentId, isAdmin }: AgentFilesPanelProps) {
                   onClick={() => handleSelectFile(file.name)}
                   className={`w-full px-3 py-2.5 text-left text-xs transition ${
                     selectedFile === file.name
-                      ? "bg-[color:var(--accent)] font-semibold text-white"
+                      ? "bg-[color:var(--accent)] font-semibold text-[color:var(--accent-foreground)]"
                       : "text-muted hover:bg-[color:var(--surface-strong)] hover:text-strong"
                   } ${file.missing ? "opacity-50" : ""}`}
                 >

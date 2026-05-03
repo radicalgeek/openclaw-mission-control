@@ -58,5 +58,8 @@ class Task(TenantScoped, table=True):
     is_backlog: bool = Field(default=False, index=True)
     sprint_id: UUID | None = Field(default=None, foreign_key="sprints.id", index=True)
 
+    # Source plan when a task was committed from a plan's decomposed_tickets.
+    plan_id: UUID | None = Field(default=None, foreign_key="plans.id", index=True)
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

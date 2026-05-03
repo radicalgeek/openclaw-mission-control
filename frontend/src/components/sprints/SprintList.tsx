@@ -238,7 +238,7 @@ export function SprintList({
             <p className="text-sm text-slate-500">No sprints yet.</p>
             <button
               onClick={onNewSprint}
-              className="mt-1 flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
+              className="mt-1 flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] transition"
             >
               <Plus className="h-3 w-3" />
               Create first sprint

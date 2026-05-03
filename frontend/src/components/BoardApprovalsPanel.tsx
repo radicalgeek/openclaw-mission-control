@@ -63,24 +63,26 @@ const formatTimestamp = (value?: string | null) => {
   });
 };
 
+// Brand-aware approval-status tones — semantic tokens via tailwind.config.cjs.
 const statusBadgeClass = (status: string) => {
   if (status === "approved") {
-    return "bg-emerald-900/30 text-emerald-400";
+    return "bg-success-soft text-success border border-success-border";
   }
   if (status === "rejected") {
-    return "bg-rose-900/30 text-rose-400";
+    return "bg-danger-soft text-danger border border-danger-border";
   }
-  return "bg-amber-900/40 text-amber-400";
+  return "bg-warning-soft text-warning border border-warning-border";
 };
 
+// Confidence tones — high = success, mid = warning, low = danger.
 const confidenceBadgeClass = (confidence: number) => {
   if (confidence >= 90) {
-    return "bg-emerald-900/30 text-emerald-400";
+    return "bg-success-soft text-success border border-success-border";
   }
   if (confidence >= 80) {
-    return "bg-amber-900/40 text-amber-400";
+    return "bg-warning-soft text-warning border border-warning-border";
   }
-  return "bg-orange-900/40 text-orange-400";
+  return "bg-danger-soft text-danger border border-danger-border";
 };
 
 const humanizeAction = (value: string) =>

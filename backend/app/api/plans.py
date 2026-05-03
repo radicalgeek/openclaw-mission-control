@@ -23,9 +23,11 @@ from app.models.plans import Plan
 from app.models.tasks import Task
 from app.schemas.common import OkResponse
 from app.schemas.plans import (
+    VALID_DECOMPOSITION_TARGETS,
     PlanAgentUpdateRequest,
     PlanChatRequest,
     PlanChatResponse,
+    PlanCommitTicketsResponse,
     PlanCreate,
     PlanPromoteRequest,
     PlanRead,
@@ -86,6 +88,7 @@ def _plan_to_read(plan: Plan, task_status: str | None) -> PlanRead:
         slug=plan.slug,
         content=plan.content,
         status=plan.status,
+        decomposition_target=plan.decomposition_target,
         created_by_user_id=plan.created_by_user_id,
         task_id=plan.task_id,
         task_status=task_status,
@@ -139,12 +142,19 @@ async def create_plan(
     _planning_enabled_check()
 
     slug = generate_slug(str(payload.title))
+    target = payload.decomposition_target
+    if target not in VALID_DECOMPOSITION_TARGETS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"decomposition_target must be one of {sorted(VALID_DECOMPOSITION_TARGETS)}",
+        )
     plan = Plan(
         board_id=board.id,
         title=str(payload.title),
         slug=slug,
         content="",
         status="draft",
+        decomposition_target=target,
         created_by_user_id=auth.user.id if auth.user else None,
         session_key="",
         messages=[],
@@ -540,8 +550,9 @@ async def decompose_plan(
 
     try:
         dispatcher = PlanningMessagingService(session)
-        await dispatcher.dispatch_plan_start(
+        await dispatcher.dispatch_plan_decompose(
             board=board,
+            plan=plan,
             prompt=decompose_prompt,
             correlation_id=f"planning.decompose:{plan_id}",
         )
@@ -556,3 +567,114 @@ async def decompose_plan(
     )
     await session.commit()
     return OkResponse()
+
+
+# ---------------------------------------------------------------------------
+# Commit decomposed tickets to the board backlog
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{plan_id}/commit-tickets",
+    response_model=PlanCommitTicketsResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def commit_plan_tickets(
+    plan_id: UUID,
+    board: Board = BOARD_WRITE_DEP,
+    session: AsyncSession = SESSION_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
+) -> PlanCommitTicketsResponse:
+    """Commit a plan's decomposed_tickets to the backlog as Task rows.
+
+    Idempotent: if any task already exists with this plan_id, the call returns
+    409 to prevent duplicate creation. To re-commit, delete the existing tasks
+    first.
+    """
+    _planning_enabled_check()
+    from app.schemas.tasks import priority_to_score  # noqa: PLC0415
+
+    plan = await _require_plan(session, plan_id, board)
+
+    tickets = plan.decomposed_tickets or []
+    if not tickets:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Plan has no decomposed tickets to commit.",
+        )
+
+    existing_for_plan = await session.exec(
+        select(Task).where(col(Task.plan_id) == plan.id),
+    )
+    if existing_for_plan.first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tickets for this plan have already been committed.",
+        )
+
+    actor_user_id = auth.user.id if auth.user else None
+    created_ids: list[UUID] = []
+    for raw in tickets:
+        # raw is either a DecomposedTicket (validated) or a plain dict from JSON.
+        if isinstance(raw, dict):
+            title = str(raw.get("title", "")).strip()
+            description = str(raw.get("description") or "")
+            priority = str(raw.get("priority") or "medium")
+            score_raw = raw.get("priority_score")
+            estimate_raw = raw.get("estimate_minutes")
+        else:
+            title = str(getattr(raw, "title", "")).strip()
+            description = str(getattr(raw, "description", "") or "")
+            priority = str(getattr(raw, "priority", "medium"))
+            score_raw = getattr(raw, "priority_score", None)
+            estimate_raw = getattr(raw, "estimate_minutes", None)
+        if not title:
+            continue
+        priority_score = (
+            int(score_raw)
+            if isinstance(score_raw, (int, float)) and int(score_raw) > 0
+            else priority_to_score(priority)
+        )
+        estimate_minutes: int | None = (
+            int(estimate_raw) if isinstance(estimate_raw, (int, float)) else None
+        )
+        task = Task(
+            board_id=board.id,
+            title=title,
+            description=description,
+            status="backlog",
+            priority=priority,
+            priority_score=priority_score,
+            estimate_minutes=estimate_minutes,
+            is_backlog=True,
+            plan_id=plan.id,
+            created_by_user_id=actor_user_id,
+            auto_created=True,
+            auto_reason="committed_from_plan",
+        )
+        session.add(task)
+        await session.flush()
+        created_ids.append(task.id)
+
+    if not created_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Plan decomposed_tickets contained no usable entries.",
+        )
+
+    plan.status = "active"
+    plan.updated_at = utcnow()
+    session.add(plan)
+    record_activity(
+        session,
+        event_type="plan_tickets_committed",
+        message=f"Committed {len(created_ids)} backlog tickets from plan: {plan.title}",
+        board_id=board.id,
+    )
+    await session.commit()
+
+    return PlanCommitTicketsResponse(
+        plan_id=plan.id,
+        task_ids=created_ids,
+        count=len(created_ids),
+    )

@@ -54,7 +54,7 @@ function MessageBubble({ msg, boardId }: { msg: PlanMessage; boardId: string }) 
         className={cn(
           "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
           isUser
-            ? "max-w-[85%] bg-[color:var(--accent)] text-white rounded-br-sm"
+            ? "max-w-[85%] bg-[color:var(--accent)] text-[color:var(--accent-foreground)] rounded-br-sm"
             : "w-full bg-white border border-slate-200 text-slate-800 rounded-bl-sm",
         )}
       >
@@ -118,7 +118,7 @@ function ChatComposer({ onSend, disabled }: ComposerProps) {
       <button
         onClick={submit}
         disabled={disabled || !text.trim()}
-        className="mb-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-[color:var(--accent)] text-white transition hover:bg-[color:var(--accent-strong)] disabled:opacity-40"
+        className="mb-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-[color:var(--accent)] text-[color:var(--accent-foreground)] transition hover:bg-[color:var(--accent-strong)] disabled:opacity-40"
         title="Send"
       >
         <ArrowUpCircle className="h-5 w-5" />
@@ -338,7 +338,7 @@ export function PlanDetail({
         {!isArchived && !isCompleted && !plan.task_id && (
           <button
             onClick={handlePromote}
-            className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color:var(--accent-strong)] transition"
+            className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] transition"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             Promote to task

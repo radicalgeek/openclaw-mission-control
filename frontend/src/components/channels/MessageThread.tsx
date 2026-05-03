@@ -134,7 +134,7 @@ function MessageBubble({
         className={cn(
           "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
           isCurrentUser
-            ? "bg-[color:var(--accent)] text-white rounded-br-sm"
+            ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] rounded-br-sm"
             : isAgent
               ? "bg-slate-100 text-slate-800 rounded-bl-sm ring-1 ring-slate-200"
               : "bg-white text-slate-900 rounded-bl-sm ring-1 ring-slate-200",
@@ -588,7 +588,7 @@ export function MessageThread({
               scrollToBottom();
               setUnreadWhileScrolledUp(0);
             }}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg transition hover:bg-[color:var(--accent-strong)]"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-lg transition hover:bg-[color:var(--accent-strong)]"
           >
             {unreadWhileScrolledUp} new message{unreadWhileScrolledUp > 1 ? "s" : ""}
           </button>
@@ -622,7 +622,7 @@ export function MessageThread({
             type="button"
             onClick={() => void handleSend()}
             disabled={isSending || !composerText.trim()}
-            className="flex-shrink-0 rounded-xl bg-[color:var(--accent)] p-2.5 text-white transition hover:bg-[color:var(--accent-strong)] disabled:opacity-40"
+            className="flex-shrink-0 rounded-xl bg-[color:var(--accent)] p-2.5 text-[color:var(--accent-foreground)] transition hover:bg-[color:var(--accent-strong)] disabled:opacity-40"
             aria-label="Send message"
           >
             <Send className="h-4 w-4" />
