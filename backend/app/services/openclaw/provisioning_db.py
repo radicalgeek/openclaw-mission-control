@@ -326,6 +326,7 @@ class OpenClawProvisioningService(OpenClawDBService):
         else:
             agents = []
 
+        synced_agents: list[Agent] = []
         stop_sync = False
         for agent in agents:
             board = boards_by_id.get(agent.board_id) if agent.board_id is not None else None
@@ -340,6 +341,7 @@ class OpenClawProvisioningService(OpenClawDBService):
             if board.id in paused_board_ids:
                 result.agents_skipped += 1
                 continue
+            synced_agents.append(agent)
             stop_sync = await _sync_one_agent(ctx, result, agent, board)
             if stop_sync:
                 break
@@ -352,12 +354,39 @@ class OpenClawProvisioningService(OpenClawDBService):
                 .order_by(col(Agent.created_at).asc())
             ).all(self.session)
             for agent in standalones:
+                synced_agents.append(agent)
                 stop_sync = await _sync_one_standalone_agent(ctx, result, agent)
                 if stop_sync:
                     break
 
         if not stop_sync and options.include_main:
+            main_agent = (
+                await Agent.objects.all()
+                .filter(col(Agent.gateway_id) == gateway.id)
+                .filter(col(Agent.board_id).is_(None))
+                .filter(col(Agent.agent_type) == AGENT_TYPE_GATEWAY_MAIN)
+                .first(self.session)
+            )
+            if main_agent is not None:
+                synced_agents.append(main_agent)
             await _sync_main_agent(ctx, result)
+
+        # Batch-patch heartbeats once at the end. Per-agent patches during the
+        # sync loop would trigger a SIGUSR1 restart on every agent, causing
+        # cascading connection timeouts and failing the remaining sync calls.
+        if synced_agents and gateway.url and gateway.workspace_root:
+            try:
+                await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(
+                    gateway,
+                    synced_agents,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "gateway.sync_gateway_agent_heartbeats.failed gateway_id=%s error=%s",
+                    gateway.id,
+                    exc,
+                )
+
         return result
 
 
@@ -686,6 +715,7 @@ async def _sync_one_agent(
                     clear_confirm_token=False,
                     raise_gateway_errors=True,
                     db_templates=db_templates or None,
+                    patch_heartbeat=False,
                 )
             except HTTPException as exc:
                 if exc.status_code == status.HTTP_502_BAD_GATEWAY:
@@ -763,6 +793,7 @@ async def _sync_one_standalone_agent(
                     clear_confirm_token=False,
                     raise_gateway_errors=True,
                     db_templates=db_templates or None,
+                    patch_heartbeat=False,
                 )
             except HTTPException as exc:
                 if exc.status_code == status.HTTP_502_BAD_GATEWAY:
@@ -850,6 +881,7 @@ async def _sync_main_agent(
                     wakeup_verb="updated",
                     clear_confirm_token=False,
                     raise_gateway_errors=True,
+                    patch_heartbeat=False,
                 )
             except HTTPException as exc:
                 if exc.status_code == status.HTTP_502_BAD_GATEWAY:

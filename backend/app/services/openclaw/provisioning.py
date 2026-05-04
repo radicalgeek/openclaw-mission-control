@@ -1412,6 +1412,7 @@ class OpenClawGatewayProvisioner:
         wakeup_verb: str | None = None,
         extra_files: dict[str, str] | None = None,
         db_templates: dict[str, str] | None = None,
+        patch_heartbeat: bool = True,
     ) -> None:
         """Create/update an agent, sync all template files, and optionally wake the agent.
 
@@ -1419,6 +1420,7 @@ class OpenClawGatewayProvisioner:
         1) create agent (idempotent)
         2) set/update all template files
         3) wake the agent session (chat.send)
+        4) patch heartbeat config (unless ``patch_heartbeat=False``)
         """
 
         if not gateway.url:
@@ -1492,19 +1494,23 @@ class OpenClawGatewayProvisioner:
         # templates tell agents what work to do on each heartbeat cycle; without
         # this patch standalone agents (triager, planner, etc.) and board agents
         # sit idle because the gateway never learns their heartbeat instructions.
-        agent_id = manager._agent_id(agent)
-        workspace_path = _workspace_path(agent, gateway.workspace_root)
-        heartbeat = _heartbeat_config(agent)
-        try:
-            await control_plane.patch_agent_heartbeats(
-                [(agent_id, workspace_path, heartbeat)],
-            )
-        except (OpenClawGatewayError, TimeoutError) as exc:
-            logger.warning(
-                "gateway.apply_agent_lifecycle.heartbeat_patch_failed agent_id=%s error=%s",
-                agent_id,
-                exc,
-            )
+        # Bulk callers (template sync) should set ``patch_heartbeat=False`` and
+        # call ``sync_gateway_agent_heartbeats`` once at the end to avoid a
+        # restart storm.
+        if patch_heartbeat:
+            agent_id = manager._agent_id(agent)
+            workspace_path = _workspace_path(agent, gateway.workspace_root)
+            heartbeat = _heartbeat_config(agent)
+            try:
+                await control_plane.patch_agent_heartbeats(
+                    [(agent_id, workspace_path, heartbeat)],
+                )
+            except (OpenClawGatewayError, TimeoutError) as exc:
+                logger.warning(
+                    "gateway.apply_agent_lifecycle.heartbeat_patch_failed agent_id=%s error=%s",
+                    agent_id,
+                    exc,
+                )
 
     async def delete_agent_lifecycle(
         self,
