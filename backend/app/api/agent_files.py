@@ -222,9 +222,7 @@ async def batch_set_agent_files(
             )
             results.append(AgentFileBatchResultEntry(name=entry.name, ok=True))
         except OpenClawGatewayError as exc:
-            results.append(
-                AgentFileBatchResultEntry(name=entry.name, ok=False, error=str(exc))
-            )
+            results.append(AgentFileBatchResultEntry(name=entry.name, ok=False, error=str(exc)))
 
     record_activity(
         session,

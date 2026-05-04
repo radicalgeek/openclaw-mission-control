@@ -290,9 +290,7 @@ async def update_plan(
             )
             await session.commit()
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "plan.activate_dispatch_failed plan_id=%s err=%s", plan.id, exc
-            )
+            logger.warning("plan.activate_dispatch_failed plan_id=%s err=%s", plan.id, exc)
 
     task_status = await _task_status_for_plan(session, plan)
     return _plan_to_read(plan, task_status)

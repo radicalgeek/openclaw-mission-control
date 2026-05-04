@@ -279,9 +279,7 @@ async def test_seed_general_board_skips_optional_goal_fields(
     assert board.success_metrics is None
     assert board.goal_confirmed is True
 
-    onboarding = [
-        o for o in session.added if o.__class__.__name__ == "BoardOnboardingSession"
-    ][0]
+    onboarding = [o for o in session.added if o.__class__.__name__ == "BoardOnboardingSession"][0]
     assert "objective" not in onboarding.draft_goal
     assert "success_metrics" not in onboarding.draft_goal
     assert len(provisioning_calls) == 1

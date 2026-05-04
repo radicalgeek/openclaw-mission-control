@@ -55,9 +55,7 @@ def test_plan_create_accepts_org_triager_target() -> None:
 
 
 def test_valid_decomposition_targets_set() -> None:
-    assert VALID_DECOMPOSITION_TARGETS == frozenset(
-        {"board_lead", "org_planner", "org_triager"}
-    )
+    assert VALID_DECOMPOSITION_TARGETS == frozenset({"board_lead", "org_planner", "org_triager"})
 
 
 @pytest.mark.asyncio

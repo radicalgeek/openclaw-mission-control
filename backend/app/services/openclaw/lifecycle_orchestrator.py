@@ -6,8 +6,8 @@ duplicate provisioning/wake/state logic.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from datetime import timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -18,7 +18,9 @@ from app.core.time import utcnow
 from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
-from app.services.openclaw.constants import CHECKIN_DEADLINE_AFTER_WAKE  # noqa: F401 (kept for import compat)
+from app.services.openclaw.constants import (  # noqa: F401 (kept for import compat)
+    CHECKIN_DEADLINE_AFTER_WAKE,
+)
 from app.services.openclaw.db_agent_state import (
     mark_provision_complete,
     mark_provision_requested,

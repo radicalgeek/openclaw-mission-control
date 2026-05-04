@@ -238,9 +238,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                     session_key,
                     str(exc),
                 )
-                raise map_gateway_error_to_http_exception(
-                    PLAN_DISPATCH_OPERATION, exc
-                ) from exc
+                raise map_gateway_error_to_http_exception(PLAN_DISPATCH_OPERATION, exc) from exc
         except TimeoutError as exc:
             self.logger.error(
                 "gateway.%s.failed trace_id=%s board_id=%s session_key=%s error=%s",

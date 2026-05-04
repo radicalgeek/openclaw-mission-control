@@ -1408,7 +1408,10 @@ class AgentLifecycleService(OpenClawDBService):
                     f"but this agent is '{agent_type}'"
                 ),
             )
-        if role_template in BOARD_WORKER_ONLY_ROLE_TEMPLATES and agent_type != AGENT_TYPE_BOARD_WORKER:
+        if (
+            role_template in BOARD_WORKER_ONLY_ROLE_TEMPLATES
+            and agent_type != AGENT_TYPE_BOARD_WORKER
+        ):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=(

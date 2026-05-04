@@ -147,7 +147,9 @@ def load_branding(path: Optional[Path] = None) -> BrandingConfig:
         import yaml  # type: ignore[import-untyped]
 
         raw: dict[str, str] = yaml.safe_load(target.read_text()) or {}
-        config = BrandingConfig(**{k: v for k, v in raw.items() if k in BrandingConfig.model_fields})
+        config = BrandingConfig(
+            **{k: v for k, v in raw.items() if k in BrandingConfig.model_fields}
+        )
         return _apply_env_overrides(config)
     except Exception:  # noqa: BLE001
         # Branding file is optional — fall back to defaults on any parse error.

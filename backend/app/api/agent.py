@@ -953,7 +953,7 @@ async def create_task(
     description=(
         "Agent-scoped equivalent of the user backlog endpoint.\n\n"
         "Lands the new task in the sprints-feature Backlog "
-        "(`status: \"backlog\"`, `is_backlog: true`). Used by the triager to "
+        '(`status: "backlog"`, `is_backlog: true`). Used by the triager to '
         "decompose active plans into backlog tickets.\n\n"
         "Allowed callers: board lead on this board, or any standalone agent "
         "with a recognized role_template (triager, planner, estimator, etc.)."

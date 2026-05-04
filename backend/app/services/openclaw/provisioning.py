@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -29,9 +28,9 @@ from app.services import souls_directory
 from app.services.openclaw.constants import (
     BOARD_SHARED_TEMPLATE_MAP,
     DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY,
+    DEFAULT_EXTRA_IDENTITY_PROFILE,
     DEFAULT_GATEWAY_FILES,
     DEFAULT_HEARTBEAT_CONFIG,
-    DEFAULT_EXTRA_IDENTITY_PROFILE,
     DEFAULT_IDENTITY_PROFILE,
     EXTRA_IDENTITY_PROFILE_FIELDS,
     HEARTBEAT_AGENT_TEMPLATE,
@@ -778,22 +777,6 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
                     _update_delay = min(_update_delay * 2, 4.0)
                     continue
                 raise
-        # Pushing per-agent heartbeat to the gateway uses `config.patch`, which
-        # always forces a SIGUSR1 restart on the openclaw worker (the RPC carries
-        # `restartReason=config.patch` and bypasses gateway.reload.mode=off). That
-        # restart kills the in-flight provisioning chain (sessions.patch / chat.send
-        # then hit a draining pod and 503). Skip the sync by default; the gateway
-        # uses agents.defaults.heartbeat instead, and axiacraft's own DB still
-        # tracks per-agent heartbeat_config for any backend-side logic.
-        # Set OPENCLAW_SYNC_PER_AGENT_HEARTBEAT=true to restore the old behaviour.
-        if os.getenv("OPENCLAW_SYNC_PER_AGENT_HEARTBEAT", "false").lower() in (
-            "1",
-            "true",
-            "yes",
-        ):
-            await self.patch_agent_heartbeats(
-                [(registration.agent_id, registration.workspace_path, registration.heartbeat)],
-            )
 
     async def delete_agent(self, agent_id: str, *, delete_files: bool = True) -> None:
         await openclaw_call(
@@ -1488,23 +1471,40 @@ class OpenClawGatewayProvisioner:
                 if not _is_missing_session_error(exc):
                     raise
 
-        if not wake:
-            return
+        if wake:
+            client_config = GatewayClientConfig(
+                url=gateway.url,
+                token=gateway.token,
+                allow_insecure_tls=gateway.allow_insecure_tls,
+                disable_device_pairing=gateway.disable_device_pairing,
+            )
+            await ensure_session(session_key, config=client_config, label=agent.name)
+            verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")
+            await send_message(
+                _wakeup_text(agent, verb=verb),
+                session_key=session_key,
+                config=client_config,
+                deliver=deliver_wakeup,
+            )
 
-        client_config = GatewayClientConfig(
-            url=gateway.url,
-            token=gateway.token,
-            allow_insecure_tls=gateway.allow_insecure_tls,
-            disable_device_pairing=gateway.disable_device_pairing,
-        )
-        await ensure_session(session_key, config=client_config, label=agent.name)
-        verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")
-        await send_message(
-            _wakeup_text(agent, verb=verb),
-            session_key=session_key,
-            config=client_config,
-            deliver=deliver_wakeup,
-        )
+        # Patch heartbeat config last so a SIGUSR1 restart (if any) cannot
+        # interrupt the in-flight provisioning steps above. Per-agent heartbeat
+        # templates tell agents what work to do on each heartbeat cycle; without
+        # this patch standalone agents (triager, planner, etc.) and board agents
+        # sit idle because the gateway never learns their heartbeat instructions.
+        agent_id = manager._agent_id(agent)
+        workspace_path = _workspace_path(agent, gateway.workspace_root)
+        heartbeat = _heartbeat_config(agent)
+        try:
+            await control_plane.patch_agent_heartbeats(
+                [(agent_id, workspace_path, heartbeat)],
+            )
+        except (OpenClawGatewayError, TimeoutError) as exc:
+            logger.warning(
+                "gateway.apply_agent_lifecycle.heartbeat_patch_failed agent_id=%s error=%s",
+                agent_id,
+                exc,
+            )
 
     async def delete_agent_lifecycle(
         self,
