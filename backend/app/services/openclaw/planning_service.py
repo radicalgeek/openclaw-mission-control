@@ -8,31 +8,38 @@ from app.core.config import settings
 from app.core.logging import TRACE_LEVEL
 from app.models.agents import Agent
 from app.models.boards import Board
+from app.models.gateways import Gateway
 from app.models.plans import Plan
 from app.services.openclaw.coordination_service import AbstractGatewayMessagingService
 from app.services.openclaw.exceptions import GatewayOperation, map_gateway_error_to_http_exception
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
 from app.services.openclaw.shared import GatewayAgentIdentity
 
 PLAN_DISPATCH_OPERATION = GatewayOperation.LEAD_MESSAGE_DISPATCH
+
+# Substring used to detect "agent not registered in gateway config" — the gateway
+# returns this when a session_key references an agent that has been dropped from
+# the running config (typical after a worker restart). When we see it, we
+# re-register the agent (agents.create, no bootstrap) and retry once.
+_AGENT_MISSING_HINT = "no longer exists in configuration"
 
 
 class PlanningMessagingService(AbstractGatewayMessagingService):
     """Gateway message dispatch helpers for planning session routes."""
 
-    async def _resolve_org_agent_session(
+    async def _resolve_org_agent(
         self,
         agent_id_setting: str,
-    ) -> tuple[str, str] | None:
+    ) -> Agent | None:
         """Look up an org-wide standalone agent by configured ID.
 
-        Returns ``(session_key, agent_name)`` if the agent exists and has an
-        OpenClaw session, ``None`` otherwise (caller should fall back to the
-        board lead). The dispatch path delivers the prompt to the agent's
-        session; the standalone agent's heartbeat picks up queued session
-        messages on its next check-in (same model as board agents — provision
-        once, heartbeat-poll for work).
+        Returns the ``Agent`` if it exists and has an OpenClaw session,
+        ``None`` otherwise (caller should fall back to the board lead).
+        Standalone agents are provisioned once and only re-registered with
+        the gateway lazily when a dispatch detects them missing from the
+        running config (see ``_dispatch_to_session``).
         """
         if not agent_id_setting:
             return None
@@ -47,7 +54,44 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         agent = await Agent.objects.by_id(agent_uuid).first(self.session)
         if agent is None or not agent.openclaw_session_id:
             return None
-        return agent.openclaw_session_id, agent.name
+        return agent
+
+    async def _wake_standalone_agent(
+        self,
+        *,
+        agent: Agent,
+        gateway: Gateway,
+        log_prefix: str,
+        trace_id: str,
+    ) -> None:
+        """Re-register a standalone agent in the gateway's running config.
+
+        Runs ``run_lifecycle(action="update")`` with no bootstrap and no
+        wake-up message — just enough to put the agent back in
+        ``agents.list`` so a follow-up ``chat.send`` is accepted. The actual
+        prompt is delivered by the caller right after this returns.
+        """
+        self.logger.info(
+            "gateway.%s.relifecycle trace_id=%s agent_id=%s session_key=%s",
+            log_prefix,
+            trace_id,
+            agent.id,
+            agent.openclaw_session_id,
+        )
+        await AgentLifecycleOrchestrator(self.session).run_lifecycle(
+            gateway=gateway,
+            agent_id=agent.id,
+            board=None,
+            user=None,
+            action="update",
+            force_bootstrap=False,
+            reset_session=False,
+            wake=True,
+            deliver_wakeup=False,
+            clear_confirm_token=False,
+            raise_gateway_errors=False,
+            extra_files=None,
+        )
 
     async def dispatch_plan_decompose(
         self,
@@ -72,16 +116,16 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         }.get(plan.decomposition_target)
 
         if org_target_setting is not None:
-            resolved = await self._resolve_org_agent_session(org_target_setting)
-            if resolved is not None:
-                session_key, agent_name = resolved
+            agent = await self._resolve_org_agent(org_target_setting)
+            if agent is not None and agent.openclaw_session_id is not None:
                 return await self._dispatch_to_session(
                     board=board,
-                    session_key=session_key,
-                    agent_name=agent_name,
+                    session_key=agent.openclaw_session_id,
+                    agent_name=agent.name,
                     prompt=prompt,
                     correlation_id=correlation_id,
                     log_prefix="planning.decompose",
+                    standalone_agent=agent,
                 )
             self.logger.warning(
                 "planning.decompose.org_agent_unavailable target=%s board_id=%s "
@@ -110,17 +154,17 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         Returns the session_key used on success, or ``None`` when the
         configured agent is not available (caller decides whether to error).
         """
-        resolved = await self._resolve_org_agent_session(configured_agent_id)
-        if resolved is None:
+        agent = await self._resolve_org_agent(configured_agent_id)
+        if agent is None or agent.openclaw_session_id is None:
             return None
-        session_key, agent_name = resolved
         return await self._dispatch_to_session(
             board=board,
-            session_key=session_key,
-            agent_name=agent_name,
+            session_key=agent.openclaw_session_id,
+            agent_name=agent.name,
             prompt=prompt,
             correlation_id=correlation_id,
             log_prefix=log_prefix,
+            standalone_agent=agent,
         )
 
     async def _dispatch_to_session(
@@ -132,12 +176,14 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         prompt: str,
         correlation_id: str | None,
         log_prefix: str,
+        standalone_agent: Agent | None = None,
     ) -> str:
         trace_id = GatewayDispatchService.resolve_trace_id(correlation_id, prefix=log_prefix)
-        _gateway, config = await GatewayDispatchService(
+        gateway, config = await GatewayDispatchService(
             self.session,
         ).require_gateway_config_for_board(board)
-        try:
+
+        async def _send() -> None:
             await self._dispatch_gateway_message(
                 session_key=session_key,
                 config=config,
@@ -145,7 +191,57 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                 message=prompt,
                 deliver=True,
             )
-        except (OpenClawGatewayError, TimeoutError) as exc:
+
+        try:
+            await _send()
+        except OpenClawGatewayError as exc:
+            # Lazy re-registration: if the gateway has dropped this agent from
+            # its running config (typical after a worker restart), run an
+            # ``agents.create`` lifecycle (no bootstrap, no wake-up message)
+            # and retry once. Only attempted for standalone agents that we
+            # have full lifecycle context for.
+            if standalone_agent is not None and _AGENT_MISSING_HINT in str(exc):
+                self.logger.warning(
+                    "gateway.%s.agent_missing_in_config trace_id=%s session_key=%s "
+                    "re-registering and retrying",
+                    log_prefix,
+                    trace_id,
+                    session_key,
+                )
+                await self._wake_standalone_agent(
+                    agent=standalone_agent,
+                    gateway=gateway,
+                    log_prefix=log_prefix,
+                    trace_id=trace_id,
+                )
+                try:
+                    await _send()
+                except (OpenClawGatewayError, TimeoutError) as retry_exc:
+                    self.logger.error(
+                        "gateway.%s.failed trace_id=%s board_id=%s session_key=%s "
+                        "error=%s (after re-register)",
+                        log_prefix,
+                        trace_id,
+                        board.id,
+                        session_key,
+                        str(retry_exc),
+                    )
+                    raise map_gateway_error_to_http_exception(
+                        PLAN_DISPATCH_OPERATION, retry_exc
+                    ) from retry_exc
+            else:
+                self.logger.error(
+                    "gateway.%s.failed trace_id=%s board_id=%s session_key=%s error=%s",
+                    log_prefix,
+                    trace_id,
+                    board.id,
+                    session_key,
+                    str(exc),
+                )
+                raise map_gateway_error_to_http_exception(
+                    PLAN_DISPATCH_OPERATION, exc
+                ) from exc
+        except TimeoutError as exc:
             self.logger.error(
                 "gateway.%s.failed trace_id=%s board_id=%s session_key=%s error=%s",
                 log_prefix,

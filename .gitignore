@@ -25,3 +25,5 @@ backend/.coverage
 frontend/coverage
 backend/app/services/openclaw/.device-keys.claude/
 .DS_Store
+.claude/
+AUDIT.md

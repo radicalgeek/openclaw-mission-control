@@ -240,22 +240,26 @@ async def reconcile_all_orgs(session: Any) -> None:
 
 
 async def sweep_stuck_provisioning_agents(session: Any) -> int:
-    """Re-enqueue lifecycle reconcile tasks for agents orphaned in 'provisioning'
-    or 'updating'.
+    """Re-enqueue lifecycle reconcile tasks for agents that need re-waking.
 
-    Two stuck conditions, both bounded by ``updated_at < now - threshold``:
+    Catches three conditions so agents auto-recover after a gateway worker
+    restart (which wipes the in-memory ``agents.list`` and leaves every agent
+    in ``offline`` / ``updating`` with a stale ``last_seen_at``):
 
-    - ``status == 'provisioning'`` and ``last_seen_at IS NULL`` — agent was
-      created but never heartbeated, queue task lost.
+    - ``status == 'provisioning'`` and ``last_seen_at IS NULL`` and
+      ``updated_at < now - threshold`` — agent was created but never
+      heartbeated; lifecycle queue task was lost.
     - ``status == 'updating'`` and the agent has not checked in since its
-      last wake (``last_seen_at IS NULL`` OR ``last_seen_at < last_wake_sent_at``)
-      — a previous update attempt failed (typically a gateway 503 from a
-      worker restart) and no further reconcile fired, so the agent never
-      transitioned back to ``online``.
+      last wake — a previous update attempt failed (typically a 503 / WS
+      handshake timeout from a worker restart).
+    - ``status == 'offline'`` with a ``gateway_id`` set and ``updated_at``
+      older than the threshold — the agent went offline (worker restart,
+      cron didn't fire, etc.) and needs to be re-registered with the gateway
+      so its heartbeat schedule fires again.
 
-    For 'updating' matches we reset ``wake_attempts`` to 0 so the
-    re-enqueued reconcile gets a fresh budget; an already-maxed-out counter
-    would just bounce the agent straight to offline.
+    For ``updating`` and ``offline`` matches we reset ``wake_attempts`` to 0
+    so the re-enqueued reconcile gets a fresh budget; an already-maxed-out
+    counter would otherwise just bounce the agent straight back to offline.
 
     Each matched agent gets a reconcile task enqueued with
     ``checkin_deadline_at=now`` (deadline in the past → fires immediately).
@@ -286,26 +290,37 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
             )
         )
     )
-    stuck_agents = stuck_provisioning + stuck_updating
+    stuck_offline = list(
+        await session.exec(
+            select(Agent)
+            .where(col(Agent.status) == "offline")
+            .where(col(Agent.gateway_id).is_not(None))
+            .where(col(Agent.updated_at) < threshold)
+        )
+    )
+    stuck_agents = stuck_provisioning + stuck_updating + stuck_offline
     if not stuck_agents:
         return 0
 
     logger.info(
-        "org_agent_reconciler.stuck_sweep found=%d (provisioning=%d updating=%d) "
-        "threshold_seconds=%d",
+        "org_agent_reconciler.stuck_sweep found=%d "
+        "(provisioning=%d updating=%d offline=%d) threshold_seconds=%d",
         len(stuck_agents),
         len(stuck_provisioning),
         len(stuck_updating),
+        len(stuck_offline),
         settings.agent_stuck_provisioning_sweep_seconds,
     )
     now = utcnow()
     count = 0
+    needs_commit = False
     for agent in stuck_agents:
         try:
-            if agent.status == "updating" and agent.wake_attempts > 0:
+            if agent.status in ("updating", "offline") and agent.wake_attempts > 0:
                 agent.wake_attempts = 0
                 agent.updated_at = now
                 session.add(agent)
+                needs_commit = True
             enqueue_lifecycle_reconcile(
                 QueuedAgentLifecycleReconcile(
                     agent_id=agent.id,
@@ -328,7 +343,7 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
                 agent.id,
             )
 
-    if any(a.status == "updating" and a.wake_attempts == 0 for a in stuck_updating):
+    if needs_commit:
         await session.commit()
 
     return count

@@ -21,10 +21,9 @@ import {
   updatePlan,
   deletePlan,
   getPlan,
+  decomposePlan,
 } from "@/api/plans";
 import { PlanStatusBadge } from "./PlanStatusBadge";
-import { PromoteToTaskModal } from "./PromoteToTaskModal";
-import { promotePlan } from "@/api/plans";
 
 // ─── Markdown editor toolbar ─────────────────────────────────────────────────
 
@@ -153,7 +152,8 @@ export function PlanDetail({
   const [agentThinking, setAgentThinking] = useState(
     () => isAwaitingAgentReply(initialPlan.messages ?? []),
   );
-  const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateMessage, setGenerateMessage] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [savePending, setSavePending] = useState(false);
 
@@ -303,18 +303,31 @@ export function PlanDetail({
     onPlanDeleted();
   };
 
-  const handlePromote = async () => {
-    setShowPromoteModal(true);
-  };
-
-  const handlePromoteConfirm = async (payload: {
-    task_title?: string;
-    task_priority?: string;
-  }) => {
-    const result = await promotePlan(boardId, plan.id, payload);
-    if (result.status === 200) {
-      setPlan(result.data);
-      onPlanUpdated(result.data);
+  const handleGenerateTasks = async () => {
+    setGenerating(true);
+    setGenerateMessage(null);
+    try {
+      const result = await decomposePlan(boardId, plan.id);
+      if (result.status === 200) {
+        setGenerateMessage(
+          "Triager dispatched — backlog tickets will appear in Sprints → Backlog.",
+        );
+        const refreshed = await getPlan(boardId, plan.id);
+        if (refreshed.status === 200) {
+          setPlan(refreshed.data);
+          onPlanUpdated(refreshed.data);
+        }
+      } else {
+        setGenerateMessage("Failed to dispatch triager.");
+      }
+    } catch (err) {
+      setGenerateMessage(
+        err instanceof Error
+          ? `Failed to dispatch triager: ${err.message}`
+          : "Failed to dispatch triager.",
+      );
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -335,13 +348,19 @@ export function PlanDetail({
           </span>
         )}
         {/* Toolbar buttons */}
-        {!isArchived && !isCompleted && !plan.task_id && (
+        {!isArchived && !isCompleted && (
           <button
-            onClick={handlePromote}
-            className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] transition"
+            onClick={handleGenerateTasks}
+            disabled={generating || !plan.content}
+            title={
+              !plan.content
+                ? "Plan has no content to decompose"
+                : "Send this plan to the triager — tickets will land in Sprints → Backlog"
+            }
+            className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] hover:bg-[color:var(--accent-strong)] transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
-            Promote to task
+            {generating ? "Generating…" : "Generate tasks"}
           </button>
         )}
         <button
@@ -512,12 +531,10 @@ export function PlanDetail({
         </div>
       </div>
 
-      {showPromoteModal && (
-        <PromoteToTaskModal
-          plan={plan}
-          onConfirm={handlePromoteConfirm}
-          onClose={() => setShowPromoteModal(false)}
-        />
+      {generateMessage && (
+        <div className="shrink-0 border-t border-slate-200 bg-[color:var(--accent-soft)] px-6 py-2 text-xs text-[color:var(--accent-text-on-soft)]">
+          {generateMessage}
+        </div>
       )}
     </div>
   );

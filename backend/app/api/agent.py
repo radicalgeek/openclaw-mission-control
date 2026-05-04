@@ -944,6 +944,79 @@ async def create_task(
     )
 
 
+@router.post(
+    "/boards/{board_id}/backlog",
+    response_model=TaskRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=cast("list[str | Enum]", ["agent-lead", "agent-worker"]),
+    summary="Create a ticket directly in the sprints-feature backlog",
+    description=(
+        "Agent-scoped equivalent of the user backlog endpoint.\n\n"
+        "Lands the new task in the sprints-feature Backlog "
+        "(`status: \"backlog\"`, `is_backlog: true`). Used by the triager to "
+        "decompose active plans into backlog tickets.\n\n"
+        "Allowed callers: board lead on this board, or any standalone agent "
+        "with a recognized role_template (triager, planner, estimator, etc.)."
+    ),
+    operation_id="agent_create_backlog_task",
+    openapi_extra={
+        "x-llm-intent": "create_backlog_ticket",
+        "x-when-to-use": [
+            "Decomposing an active plan into backlog tickets",
+            "Adding a ticket directly to the sprints-feature backlog from an agent",
+        ],
+        "x-when-not-to-use": [
+            "Creating an on-board Kanban task (use POST /boards/{board_id}/tasks)",
+            "Updating an existing ticket (use PATCH /boards/{board_id}/tasks/{task_id})",
+        ],
+        "x-required-actor": "lead_or_standalone_agent",
+        "x-side-effects": [
+            "Creates a new task with status='backlog' and is_backlog=true",
+        ],
+    },
+)
+async def create_backlog_task(
+    payload: TaskCreate,
+    board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> TaskRead:
+    """Create a single ticket in the sprints-feature backlog as an agent."""
+    await _guard_board_access(session, agent_ctx, board)
+    _require_task_creation_permission(agent_ctx, board)
+
+    task = Task(
+        board_id=board.id,
+        title=payload.title,
+        description=payload.description,
+        status="backlog",
+        priority=payload.priority,
+        priority_score=payload.priority_score,
+        estimate_minutes=payload.estimate_minutes,
+        is_backlog=True,
+        auto_created=True,
+        auto_reason=f"triager:{agent_ctx.agent.id}",
+    )
+    session.add(task)
+    await session.flush()
+
+    record_activity(
+        session,
+        event_type="backlog.ticket_created",
+        task_id=task.id,
+        message=f"Backlog ticket created by {agent_ctx.agent.name}: {task.title}",
+        agent_id=agent_ctx.agent.id,
+        board_id=task.board_id,
+    )
+    await session.commit()
+    await session.refresh(task)
+    return await tasks_api._task_read_response(
+        session,
+        task=task,
+        board_id=board.id,
+    )
+
+
 @router.patch(
     "/boards/{board_id}/tasks/{task_id}",
     response_model=TaskRead,

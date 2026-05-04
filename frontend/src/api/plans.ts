@@ -130,3 +130,12 @@ export const promotePlan = (
     { method: "POST", body: JSON.stringify(payload ?? {}) },
   );
 
+export const decomposePlan = (
+  boardId: string,
+  planId: string,
+): Promise<ApiResponse<{ ok: boolean }>> =>
+  customFetch<ApiResponse<{ ok: boolean }>>(
+    `${base(boardId)}/${planId}/decompose`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+

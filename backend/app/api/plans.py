@@ -248,6 +248,7 @@ async def update_plan(
             detail="Completed plans cannot be edited.",
         )
 
+    previous_status = plan.status
     if payload.title is not None:
         plan.title = payload.title
     if payload.content is not None:
@@ -265,6 +266,33 @@ async def update_plan(
     session.add(plan)
     await session.commit()
     await session.refresh(plan)
+
+    # Auto-trigger decomposition when a plan transitions draft → active and has
+    # content + a non-board target (org_triager / org_planner). Mirrors the
+    # explicit POST /decompose path so the user can drive the same flow either
+    # by clicking "Activate" or by invoking decompose directly.
+    activated = previous_status == "draft" and plan.status == "active"
+    has_org_target = plan.decomposition_target in {"org_triager", "org_planner"}
+    if activated and has_org_target and plan.content:
+        try:
+            dispatcher = PlanningMessagingService(session)
+            await dispatcher.dispatch_plan_decompose(
+                board=board,
+                plan=plan,
+                prompt=build_decompose_prompt(str(plan.id), str(board.id)),
+                correlation_id=f"planning.decompose:{plan.id}",
+            )
+            record_activity(
+                session,
+                event_type="plan_decompose_requested",
+                message=f"Decompose auto-triggered on plan activation: {plan.title}",
+                board_id=board.id,
+            )
+            await session.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "plan.activate_dispatch_failed plan_id=%s err=%s", plan.id, exc
+            )
 
     task_status = await _task_status_for_plan(session, plan)
     return _plan_to_read(plan, task_status)
@@ -536,6 +564,9 @@ async def decompose_plan(
     """Dispatch a gateway session that decomposes the plan into backlog tickets.
 
     The agent will reply via ``agent-update`` with a ``tickets`` list.
+    Promotes ``draft`` plans to ``active`` so the triager's heartbeat scan
+    (``GET /plans?status=active``) picks the plan up alongside the chat
+    prompt.
     """
     _planning_enabled_check()
     plan = await _require_plan(session, plan_id, board)
@@ -546,7 +577,14 @@ async def decompose_plan(
             detail="Plan has no content to decompose.",
         )
 
-    decompose_prompt = build_decompose_prompt(plan.content)
+    if plan.status == "draft":
+        plan.status = "active"
+        plan.updated_at = utcnow()
+        session.add(plan)
+        await session.commit()
+        await session.refresh(plan)
+
+    decompose_prompt = build_decompose_prompt(str(plan.id), str(board.id))
 
     try:
         dispatcher = PlanningMessagingService(session)

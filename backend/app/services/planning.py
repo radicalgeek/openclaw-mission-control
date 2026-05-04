@@ -111,17 +111,30 @@ def build_plan_turn_prompt(
 _TICKETS_BLOCK_RE = re.compile(r"```tickets\s*\n(.+?)\n```", re.DOTALL)
 
 
-def build_decompose_prompt(plan_content: str) -> str:
-    """Build the gateway prompt that asks an agent to decompose a plan into tickets."""
+def build_decompose_prompt(plan_id: str, board_id: str) -> str:
+    """Build the gateway prompt that asks an agent to decompose a plan into tickets.
+
+    Keeps the chat-dispatched message tiny (~500 chars) — the agent fetches
+    ``plan.content`` via the API on its next tool turn rather than receiving
+    a 22k-char inline blob. This keeps the first LLM turn's input tokens
+    small enough that reasoning models don't hang processing the whole plan
+    in a single shot.
+    """
     return (
-        "Break the following plan into discrete, actionable work tickets.\n"
-        "Return ONLY a JSON array inside a ```tickets``` fenced code block.\n"
-        'Each element must be: {"title": string, "description": string, '
-        '"priority": "low"|"medium"|"high"|"critical", "priority_score": <int 1-100>, '
-        '"estimate_minutes": <int or null>}.\n'
-        "priority_score: 1=lowest, 100=highest. Midpoints: low=15, medium=35, high=65, critical=90.\n"
-        "estimate_minutes: rough time estimate in minutes (e.g. 60=1h, 480=8h), or null if unknown.\n\n"
-        "Plan content:\n" + plan_content
+        f"Decompose plan {plan_id} into backlog tickets and POST each one to the\n"
+        f"sprints-feature backlog. Per-call instructions:\n\n"
+        f"1) Fetch the plan content (do not assume — read it fresh):\n"
+        f"     GET /api/v1/agent/boards/{board_id}/plans/{plan_id}\n"
+        f"   Use the `content` field as your decomposition source.\n\n"
+        f"2) Decompose into discrete, actionable tickets following the standards\n"
+        f"   in your heartbeat template (action-oriented title with category prefix,\n"
+        f"   structured description with Context / Acceptance Criteria / Technical\n"
+        f"   Notes / Out of Scope, sized for 1–3 sessions, etc.).\n\n"
+        f"3) For each ticket, POST one at a time:\n"
+        f"     POST /api/v1/agent/boards/{board_id}/backlog\n"
+        f'     {{"title": "...", "description": "...", "priority": "low|medium|high|critical",\n'
+        f'       "priority_score": <1-100>, "estimate_minutes": <int or null>}}\n\n'
+        f"4) When all tickets are POSTed, return HEARTBEAT_OK."
     )
 
 

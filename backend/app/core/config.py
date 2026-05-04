@@ -94,7 +94,11 @@ class Settings(BaseSettings):
     rq_dispatch_retry_max_seconds: float = 120.0
 
     # Org-level standalone agent reconciliation interval (seconds).
-    org_agent_reconcile_interval_seconds: int = 3600
+    # Runs reconcile_all_orgs + sweep_stuck_provisioning_agents on this cadence.
+    # The sweep auto-recovers agents that got knocked offline by a gateway
+    # worker restart (which wipes the in-memory ``agents.list``), so the
+    # cadence is also the recovery time after a worker bounce.
+    org_agent_reconcile_interval_seconds: int = 300
 
     # Agent provisioning watchdog: how long (seconds) after a wake call the agent
     # must send its first heartbeat before the reconcile worker retries.
