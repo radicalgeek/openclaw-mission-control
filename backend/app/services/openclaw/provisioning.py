@@ -771,11 +771,22 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         )
 
     async def set_agent_file(self, *, agent_id: str, name: str, content: str) -> None:
-        await openclaw_call(
-            "agents.files.set",
-            {"agentId": agent_id, "name": name, "content": content},
-            config=self._config,
-        )
+        _set_retries = 5
+        _set_delay = 0.5
+        for _attempt in range(_set_retries):
+            try:
+                await openclaw_call(
+                    "agents.files.set",
+                    {"agentId": agent_id, "name": name, "content": content},
+                    config=self._config,
+                )
+                return
+            except OpenClawGatewayError as exc:
+                if _is_missing_agent_error(exc) and _attempt < _set_retries - 1:
+                    await asyncio.sleep(_set_delay)
+                    _set_delay = min(_set_delay * 2, 4.0)
+                    continue
+                raise
 
     async def delete_agent_file(self, *, agent_id: str, name: str) -> None:
         await openclaw_call(

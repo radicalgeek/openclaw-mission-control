@@ -656,6 +656,72 @@ def test_is_missing_agent_error_matches_gateway_agent_not_found() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_control_plane_set_agent_file_retries_missing_agent_race(monkeypatch):
+    """A freshly created agent can be visible to agents.update before
+    agents.files.set sees it. Retry that short gateway reload window."""
+    calls: list[tuple[str, dict[str, object] | None]] = []
+    sleeps: list[float] = []
+    set_attempts = 0
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    async def _fake_openclaw_call(method, params=None, config=None):
+        nonlocal set_attempts
+        _ = config
+        calls.append((method, params))
+        if method == "agents.files.set":
+            set_attempts += 1
+            if set_attempts < 3:
+                raise agent_provisioning.OpenClawGatewayError("unknown agent id")
+            return {"ok": True}
+        raise AssertionError(f"Unexpected method: {method}")
+
+    monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
+    monkeypatch.setattr(agent_provisioning.asyncio, "sleep", _fake_sleep)
+    cp = agent_provisioning.OpenClawGatewayControlPlane(
+        agent_provisioning.GatewayClientConfig(url="ws://gateway.example/ws", token=None),
+    )
+
+    await cp.set_agent_file(agent_id="board-agent-a", name="HEARTBEAT.md", content="hello")
+
+    assert [method for method, _ in calls] == [
+        "agents.files.set",
+        "agents.files.set",
+        "agents.files.set",
+    ]
+    assert sleeps == [0.5, 1.0]
+
+
+@pytest.mark.asyncio
+async def test_control_plane_set_agent_file_non_missing_error_fails_fast(monkeypatch):
+    calls: list[tuple[str, dict[str, object] | None]] = []
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    async def _fake_openclaw_call(method, params=None, config=None):
+        _ = config
+        calls.append((method, params))
+        if method == "agents.files.set":
+            raise agent_provisioning.OpenClawGatewayError("permission denied")
+        raise AssertionError(f"Unexpected method: {method}")
+
+    monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
+    monkeypatch.setattr(agent_provisioning.asyncio, "sleep", _fake_sleep)
+    cp = agent_provisioning.OpenClawGatewayControlPlane(
+        agent_provisioning.GatewayClientConfig(url="ws://gateway.example/ws", token=None),
+    )
+
+    with pytest.raises(agent_provisioning.OpenClawGatewayError):
+        await cp.set_agent_file(agent_id="board-agent-a", name="HEARTBEAT.md", content="hello")
+
+    assert [method for method, _ in calls] == ["agents.files.set"]
+    assert sleeps == []
+
+
 def test_select_role_soul_ref_prefers_exact_slug() -> None:
     refs = [
         SoulRef(handle="team", slug="security"),
