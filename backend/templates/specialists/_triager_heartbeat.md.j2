@@ -6,12 +6,22 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
 
 #### Every Heartbeat
 
-1. **Find work to triage.** List all active plans on the board:
+1. **Find work to triage.** First discover every board you can access, then
+   list active plans for each board:
 
    ```bash
-   curl -fsS "{{ base_url }}/api/v1/boards/{{ board_id }}/plans?status=active" \
-     -H "X-Agent-Token: {{ auth_token }}" \
-     | jq '[.[] | select(.decomposed_tickets == null or (.decomposed_tickets | length) == 0)]'
+   curl -fsS "{{ base_url }}/api/v1/agent/boards?limit=200" \
+     -H "X-Agent-Token: {{ auth_token }}" > /tmp/triager-boards.json
+
+   jq -r '.items[] | .id' /tmp/triager-boards.json | while read -r board_id; do
+     curl -fsS "{{ base_url }}/api/v1/boards/${board_id}/plans?status=active" \
+       -H "X-Agent-Token: {{ auth_token }}" \
+       | jq --arg board_id "$board_id" '
+           .[]
+           | select(.decomposed_tickets == null or (.decomposed_tickets | length) == 0)
+           | . + {triage_board_id: $board_id}
+         '
+   done | jq -s '.'
    ```
 
    The `jq` filter keeps only plans that have **not** been triaged yet
@@ -24,7 +34,7 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
    **sprints-feature Backlog** (not on the Kanban board):
 
    ```bash
-   curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/backlog" \
+   curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<triage_board_id>/backlog" \
      -H "X-Agent-Token: {{ auth_token }}" \
      -H "Content-Type: application/json" \
      -d '{
@@ -47,7 +57,7 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
    afterwards:
 
    ```bash
-   curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/plans/<plan_id>/agent-update" \
+   curl -fsS -X POST "{{ base_url }}/api/v1/boards/<triage_board_id>/plans/<plan_id>/agent-update" \
      -H "X-Agent-Token: {{ auth_token }}" \
      -H "Content-Type: application/json" \
      -d '{

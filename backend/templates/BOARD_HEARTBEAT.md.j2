@@ -143,11 +143,24 @@ jq -r '
 - If pre-flight fails due to 5xx/network, do not write memory or task updates.
 
 ## Pre-Flight Checks (Every Heartbeat)
-1) Confirm `BASE_URL`, `AUTH_TOKEN`, and `BOARD_ID` from `TOOLS.md` match this workspace.
+1) Confirm `BASE_URL` and `AUTH_TOKEN` from `TOOLS.md` match this workspace.
+{% if is_standalone | default("false") == "true" %}
+   `BOARD_ID` may be blank for standalone agents; discover boards with `/api/v1/agent/boards`.
+{% else %}
+   Confirm `BOARD_ID` from `TOOLS.md` matches this workspace.
+{% endif %}
 2) Verify API access:
-- `GET {{ base_url }}/healthz`
-- `GET {{ base_url }}/api/v1/agent/boards`
-- `GET {{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks`
+
+```bash
+curl -fsS "{{ base_url }}/healthz" >/dev/null
+curl -fsS "{{ base_url }}/api/v1/agent/boards" \
+  -H "X-Agent-Token: {{ auth_token }}" >/dev/null
+{% if is_standalone | default("false") != "true" %}
+curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks" \
+  -H "X-Agent-Token: {{ auth_token }}" >/dev/null
+{% endif %}
+```
+
 3) If any check fails, stop and retry next heartbeat.
 
 ## Shared Context Pull

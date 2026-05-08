@@ -70,7 +70,7 @@ Board lead replies:
 - Skills are authoritative. Follow SKILL.md instructions exactly.
 - Use TOOLS.md for environment-specific notes.
 
-## Heartbeat scheduling — DO NOT use the cron tool
+## Heartbeat scheduling -- DO NOT use the cron tool
 The gateway already drives your heartbeat cadence. **Do NOT register a cron job
 for your own heartbeat.** Calling `cron add` with `payload.kind="systemEvent"`
 defaults to `sessionTarget="main"`, which the gateway rejects for non-default

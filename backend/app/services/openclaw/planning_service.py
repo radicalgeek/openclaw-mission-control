@@ -69,10 +69,13 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                 agent_id_setting,
             )
             return None
-        agent = await Agent.objects.by_id(agent_uuid).first(self.session)
-        if agent is None or not agent.openclaw_session_id:
+        # Use a fresh variable name — `agent` is bound to a non-Optional Agent
+        # in the for-loop above; reassigning it to an Optional[Agent] would
+        # confuse mypy's flow narrowing.
+        fallback_agent = await Agent.objects.by_id(agent_uuid).first(self.session)
+        if fallback_agent is None or not fallback_agent.openclaw_session_id:
             return None
-        return agent
+        return fallback_agent
 
     async def _wake_standalone_agent(
         self,

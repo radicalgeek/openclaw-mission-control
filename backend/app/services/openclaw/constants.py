@@ -79,6 +79,18 @@ DEFAULT_GATEWAY_FILES = frozenset(
         "USER.md",
         "HEARTBEAT.md",
         "MEMORY.md",
+        # BOOTSTRAP.md is part of every agent's first provision. Agents read it
+        # once on startup, perform initial setup (verify tools, daily memory
+        # file, first heartbeat curl), then DELETE the file. The
+        # `_should_include_bootstrap` helper guards against re-issuing it on
+        # update reconciles once the agent has consumed it (it checks for the
+        # `missing` marker openclaw sets when the agent deletes the file). So
+        # leaving this in the default set is safe and gives every newly-
+        # provisioned agent — board lead, board worker, standalone, gateway
+        # main — the bootstrap doc they need to actually send their first
+        # heartbeat. Without it, board workers and standalones tried to read a
+        # non-existent BOOTSTRAP.md and got ENOENT instead of bootstrap steps.
+        "BOOTSTRAP.md",
     },
 )
 
