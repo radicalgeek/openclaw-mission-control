@@ -735,7 +735,7 @@ wheels = [
 
 [[package]]
 name = "product-foundry-backend"
-version = "0.2.22"
+version = "0.2.37"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },

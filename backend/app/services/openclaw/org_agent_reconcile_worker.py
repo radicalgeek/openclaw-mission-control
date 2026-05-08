@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.session import async_session_maker
 from app.services.openclaw.org_agent_reconcile_queue import (
+    clear_org_agent_reconcile_lock,
     enqueue_org_agent_reconcile,
 )
 from app.services.openclaw.org_agent_reconciler import (
@@ -20,6 +21,9 @@ logger = get_logger(__name__)
 async def process_org_agent_reconcile_task(task: QueuedTask) -> None:
     """Process an org-agent reconcile task: reconcile all orgs, then re-enqueue."""
     logger.info("org_agent_reconcile.start")
+    # Release the dedup lock so the self-renewing enqueue at the end of the
+    # cycle can claim the slot for the next run.
+    clear_org_agent_reconcile_lock()
 
     async with async_session_maker() as session:
         try:

@@ -48,6 +48,9 @@ class Board(TenantScoped, table=True):
     is_platform: bool = Field(default=False, index=True)
     is_archived: bool = Field(default=False, index=True)
     auto_advance_sprint: bool = Field(default=False)  # "flow mode" auto-starts next queued sprint
+    auto_organise_backlog: bool = Field(
+        default=False
+    )  # dispatch estimate+prioritise agents on new backlog tickets
     # Free-form context blob set by automation (e.g. graduation metadata: app_id,
     # source repo URL, manifest summary). Surfaced on board reads so agents can
     # consult it without round-tripping the originating system.

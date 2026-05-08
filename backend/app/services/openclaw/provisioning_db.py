@@ -22,7 +22,7 @@ from sqlmodel import col, select
 from sse_starlette.sse import EventSourceResponse
 
 from app.core.agent_tokens import verify_agent_token
-from app.core.logging import TRACE_LEVEL
+from app.core.logging import TRACE_LEVEL, get_logger
 from app.core.time import utcnow
 from app.db import crud
 from app.db.pagination import paginate
@@ -108,6 +108,8 @@ if TYPE_CHECKING:
 
 
 _T = TypeVar("_T")
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -404,8 +406,12 @@ def _build_extra_files(payload: AgentCreate) -> dict[str, str] | None:
 
     Handles:
     - ``auth_profile``: written verbatim as ``auth-profiles.json`` in the agent config dir.
-    - ``skill_env``: each slug→env-vars dict written as ``skills/<slug>/config.env``.
-    - ``tool_instructions``: appended to ``TOOLS.md`` as an additional section.
+    - ``tool_instructions`` and ``skill_env``: combined into a single ``TOOLS.md`` write.
+      ``tool_instructions`` is used verbatim as the tools document; ``skill_env`` is
+      appended as a ``## Skill credentials`` section so agents can read per-skill env
+      vars from the same allowlisted file. The OpenClaw gateway only accepts a fixed
+      set of bootstrap file names, so per-skill ``skills/<slug>/config.env`` writes
+      cannot be delivered through the gateway.
 
     Returns ``None`` when no extra files are required so callers can skip the write step.
     """
@@ -414,12 +420,24 @@ def _build_extra_files(payload: AgentCreate) -> dict[str, str] | None:
     if payload.auth_profile:
         files["auth-profiles.json"] = json.dumps(payload.auth_profile)
 
-    for slug, env_vars in (payload.skill_env or {}).items():
-        lines = [f"{k}={v}" for k, v in env_vars.items()]
-        files[f"skills/{slug}/config.env"] = "\n".join(lines)
-
+    sections: list[str] = []
     if payload.tool_instructions:
-        files["TOOLS.md"] = payload.tool_instructions
+        sections.append(payload.tool_instructions.rstrip())
+
+    if payload.skill_env:
+        env_lines: list[str] = ["## Skill credentials", ""]
+        for slug, env_vars in payload.skill_env.items():
+            env_lines.append(f"### {slug}")
+            env_lines.append("")
+            env_lines.append("```env")
+            for key, value in env_vars.items():
+                env_lines.append(f"{key}={value}")
+            env_lines.append("```")
+            env_lines.append("")
+        sections.append("\n".join(env_lines).rstrip())
+
+    if sections:
+        files["TOOLS.md"] = "\n\n".join(sections) + "\n"
 
     return files or None
 

@@ -113,7 +113,7 @@ describe("mcpToolContentText", () => {
 
   it("filters out non-text content", () => {
     const content = [
-      { type: "image" as const, text: undefined },
+      { type: "image" as const, text: null },
       { type: "text" as const, text: "hello" },
     ];
     expect(mcpToolContentText(content)).toBe("hello");

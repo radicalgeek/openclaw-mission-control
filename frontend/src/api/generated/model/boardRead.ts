@@ -11,6 +11,7 @@ import type { BoardReadSuccessMetrics } from "./boardReadSuccessMetrics";
  */
 export interface BoardRead {
   auto_advance_sprint?: boolean;
+  auto_organise_backlog?: boolean;
   block_status_changes_with_pending_approval?: boolean;
   board_group_id?: string | null;
   board_type?: string;

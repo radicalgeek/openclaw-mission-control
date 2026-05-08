@@ -11,7 +11,7 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
    ```bash
    curl -fsS "{{ base_url }}/api/v1/boards/{{ board_id }}/plans?status=active" \
      -H "X-Agent-Token: {{ auth_token }}" \
-     | jq '[.items[] | select(.decomposed_tickets == null or (.decomposed_tickets | length) == 0)]'
+     | jq '[.[] | select(.decomposed_tickets == null or (.decomposed_tickets | length) == 0)]'
    ```
 
    The `jq` filter keeps only plans that have **not** been triaged yet
@@ -32,6 +32,7 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
        "description": "## Context\n...\n## Acceptance Criteria\n- ...\n## Technical Notes\n- ...\n## Out of Scope\n- ...",
        "priority": "medium",
        "priority_score": 50,
+       "plan_id": "<plan_id>",
        "estimate_minutes": null
      }'
    ```

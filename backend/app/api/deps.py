@@ -23,14 +23,18 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlmodel import col, select
 
 from app.core.agent_auth import get_agent_auth_context_optional
 from app.core.auth import AuthContext, get_auth_context, get_auth_context_optional
 from app.db.session import get_session
+from app.models.agent_board_access import ACCESS_LEVEL_WRITE, AgentBoardAccess
+from app.models.agents import AGENT_TYPE_STANDALONE
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
+from app.schemas.agents import STANDALONE_ROLE_TEMPLATES
 from app.services.admin_access import require_user_actor
 from app.services.organizations import (
     CAPABILITY_EXPORT_COMPLIANCE_ROLES,
@@ -97,6 +101,62 @@ async def require_user_or_agent(
 
 
 ACTOR_DEP = Depends(require_user_or_agent)
+
+
+async def agent_has_board_access(
+    session: AsyncSession,
+    *,
+    agent: Agent,
+    board: Board,
+    write: bool,
+) -> bool:
+    """Return whether an agent may access a board at the requested level.
+
+    Rules:
+    - board-scoped agents may only access their own board
+    - standalone agents in ``STANDALONE_ROLE_TEMPLATES`` (Triager, Planner,
+      Estimator, Priority, Quality Reviewer, Security Reviewer, Architecture
+      Reviewer, etc.) are organization-level helpers — they get write access
+      to every board within their gateway's organization without needing
+      explicit ``AgentBoardAccess`` grants.
+    - other standalone agents (custom / non-templated) still need an explicit
+      ``agent_board_access`` grant.
+    - other boardless agents are scoped to their gateway organization
+    """
+    if agent.board_id is not None:
+        return agent.board_id == board.id
+
+    if agent.agent_type == AGENT_TYPE_STANDALONE:
+        # Org-level templated agents (triager, planner, estimator, priority,
+        # quality_reviewer, security_reviewer, architecture_reviewer, etc.)
+        # are designed to operate across every board in their gateway's
+        # organization. Grant org-membership access automatically without
+        # requiring an explicit AgentBoardAccess row per (agent, board) pair.
+        profile = agent.identity_profile or {}
+        role_template = profile.get("role_template")
+        if (
+            role_template
+            and role_template in STANDALONE_ROLE_TEMPLATES
+            and agent.gateway_id is not None
+        ):
+            gateway = await Gateway.objects.by_id(agent.gateway_id).first(session)
+            if gateway is not None and gateway.organization_id == board.organization_id:
+                return True
+            # Fall through to explicit-grant lookup if org check fails.
+        grant = (
+            await session.exec(
+                select(AgentBoardAccess).where(
+                    col(AgentBoardAccess.agent_id) == agent.id,
+                    col(AgentBoardAccess.board_id) == board.id,
+                )
+            )
+        ).first()
+        if grant is None:
+            return False
+        return not write or grant.access_level == ACCESS_LEVEL_WRITE
+
+    gateway = await Gateway.objects.by_id(agent.gateway_id).first(session)
+    return gateway is not None and gateway.organization_id == board.organization_id
 
 
 async def require_org_member(
@@ -234,7 +294,15 @@ async def get_board_for_actor_read(
     if board is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     if actor.actor_type == "agent":
-        if actor.agent and actor.agent.board_id and actor.agent.board_id != board.id:
+        if actor.agent is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        allowed = await agent_has_board_access(
+            session,
+            agent=actor.agent,
+            board=board,
+            write=False,
+        )
+        if not allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
         return board
     if actor.user is None:
@@ -253,7 +321,15 @@ async def get_board_for_actor_write(
     if board is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     if actor.actor_type == "agent":
-        if actor.agent and actor.agent.board_id and actor.agent.board_id != board.id:
+        if actor.agent is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        allowed = await agent_has_board_access(
+            session,
+            agent=actor.agent,
+            board=board,
+            write=True,
+        )
+        if not allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
         return board
     if actor.user is None:

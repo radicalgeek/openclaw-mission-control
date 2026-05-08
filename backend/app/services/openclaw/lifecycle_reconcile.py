@@ -13,17 +13,34 @@ from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.services.openclaw.constants import (  # noqa: F401 (kept for import compat)
     MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN,
+    OFFLINE_AFTER,
 )
 from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
 from app.services.openclaw.lifecycle_queue import decode_lifecycle_task, defer_lifecycle_reconcile
 from app.services.queue import QueuedTask
 
 logger = get_logger(__name__)
-_RECONCILE_TIMEOUT_SECONDS = 60.0
+# Reconcile fans out into multiple openclaw RPC calls (agents.create idempotent
+# fail, agents.update, ensure_session, send_message, patch_heartbeat). On the
+# Premium NFS-backed gateway state, individual config writes have been observed
+# at 24+s under concurrent reconcile load and session-write locks at 30–42s.
+# 60s was tighter than the realistic worst-case path; reconciles were timing
+# out before they could deliver the wake message, leaving agents stuck with
+# last_seen_at=NULL forever. 240s gives realistic headroom; the worker only
+# runs one task at a time anyway so the longer slot is acceptable.
+_RECONCILE_TIMEOUT_SECONDS = 240.0
 
 
 def _has_checked_in_since_wake(agent: Agent) -> bool:
     if agent.last_seen_at is None:
+        return False
+    # An old heartbeat doesn't count — if the agent's last_seen_at is older
+    # than OFFLINE_AFTER, it has effectively gone offline since its last
+    # wake and needs to be re-woken. Without this guard, agents whose
+    # heartbeat loop stopped (gateway restart, model rate limit, etc.) are
+    # treated as "still checked in" forever and the reconciler skips them
+    # with skip_not_stuck even though the sweep correctly re-queued them.
+    if agent.last_seen_at < utcnow() - OFFLINE_AFTER:
         return False
     if agent.last_wake_sent_at is None:
         return True
@@ -118,6 +135,18 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
                 )
                 return
 
+        # Reset-session policy:
+        # - Agents that have heartbeated at least once (last_seen_at is set) —
+        #   preserve session. The reconcile fires because they missed the
+        #   *latest* check-in window, but their bootstrap completed; resetting
+        #   would wipe in-flight task work, memory writes, etc.
+        # - Agents that have NEVER heartbeated — reset the session. They're
+        #   mid-bootstrap with a stale or rotated token, and the orchestrator
+        #   above just re-minted a fresh one. Without a session reset the
+        #   agent's running turn keeps using the old token in its env vars and
+        #   401s on every API call. Resetting forces openclaw to inject the
+        #   newly-rendered workspace/TOOLS.md (with the new token) on next wake.
+        reset_session = agent.last_seen_at is None
         orchestrator = AgentLifecycleOrchestrator(session)
         await asyncio.wait_for(
             orchestrator.run_lifecycle(
@@ -128,7 +157,7 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
                 action="update",
                 auth_token=None,
                 force_bootstrap=False,
-                reset_session=True,
+                reset_session=reset_session,
                 wake=True,
                 deliver_wakeup=True,
                 wakeup_verb="updated",

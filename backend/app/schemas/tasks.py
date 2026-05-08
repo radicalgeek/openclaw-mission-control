@@ -63,6 +63,7 @@ class TaskBase(SQLModel):
     tag_ids: list[UUID] = Field(default_factory=list)
     estimate_minutes: int | None = None
     actual_minutes: int | None = None
+    plan_id: UUID | None = None
 
 
 class TaskCreate(TaskBase):

@@ -12,7 +12,11 @@ _GATEWAY_AGENT_PREFIX = f"agent:{_GATEWAY_OPENCLAW_AGENT_PREFIX}"
 _GATEWAY_AGENT_SUFFIX = ":main"
 
 DEFAULT_HEARTBEAT_CONFIG: dict[str, Any] = {
-    "every": "1m",
+    # 5-minute interval (was 1m). With 17+ standalone+board agents, a 1m
+    # heartbeat creates concurrent LLM call bursts that saturate Azure
+    # Foundry per-minute TPM quotas. 5m gives the model providers room to
+    # serve all agents without throttling.
+    "every": "5m",
     "target": "last",
     "includeReasoning": False,
 }
@@ -75,13 +79,8 @@ DEFAULT_GATEWAY_FILES = frozenset(
         "USER.md",
         "HEARTBEAT.md",
         "MEMORY.md",
-        "skills/product-foundry-charts/SKILL.md",
     },
 )
-
-# MCP Apps manifest: auto-provisioned as pure JSON (not Jinja-rendered).
-# Written alongside DEFAULT_GATEWAY_FILES but via a dedicated code path.
-MCP_APPS_MANIFEST_FILE = "tools/mcp-apps.json"
 
 # Lead-only workspace contract. Used for board leads to allow an iterative rollout
 # without changing worker templates.
@@ -95,7 +94,6 @@ LEAD_GATEWAY_FILES = frozenset(
         "MEMORY.md",
         "TOOLS.md",
         "HEARTBEAT.md",
-        "skills/product-foundry-charts/SKILL.md",
     },
 )
 
@@ -114,6 +112,7 @@ _SESSION_KEY_PARTS_MIN = SESSION_KEY_PARTS_MIN
 
 MAIN_TEMPLATE_MAP = {
     "AGENTS.md": "BOARD_AGENTS.md.j2",
+    "BOOTSTRAP.md": "BOARD_BOOTSTRAP.md.j2",
     "IDENTITY.md": "BOARD_IDENTITY.md.j2",
     "SOUL.md": "BOARD_SOUL.md.j2",
     "MEMORY.md": "BOARD_MEMORY.md.j2",
@@ -131,7 +130,6 @@ BOARD_SHARED_TEMPLATE_MAP = {
     "HEARTBEAT.md": "BOARD_HEARTBEAT.md.j2",
     "USER.md": "BOARD_USER.md.j2",
     "TOOLS.md": "BOARD_TOOLS.md.j2",
-    "skills/product-foundry-charts/SKILL.md": "BOARD_CHARTS_SKILL.md.j2",
 }
 
 LEAD_TEMPLATE_MAP: dict[str, str] = {}
@@ -140,13 +138,13 @@ LEAD_TEMPLATE_MAP: dict[str, str] = {}
 # Reuses BOARD_* templates which already branch on is_main / agent_type.
 STANDALONE_TEMPLATE_MAP = {
     "AGENTS.md": "BOARD_AGENTS.md.j2",
+    "BOOTSTRAP.md": "BOARD_BOOTSTRAP.md.j2",
     "IDENTITY.md": "BOARD_IDENTITY.md.j2",
     "SOUL.md": "BOARD_SOUL.md.j2",
     "MEMORY.md": "BOARD_MEMORY.md.j2",
     "HEARTBEAT.md": "BOARD_HEARTBEAT.md.j2",
     "USER.md": "BOARD_USER.md.j2",
     "TOOLS.md": "BOARD_TOOLS.md.j2",
-    "skills/product-foundry-charts/SKILL.md": "BOARD_CHARTS_SKILL.md.j2",
 }
 
 _TOOLS_KV_RE = re.compile(r"^(?P<key>[A-Z0-9_]+)=(?P<value>.*)$")

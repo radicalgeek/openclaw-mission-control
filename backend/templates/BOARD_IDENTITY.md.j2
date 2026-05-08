@@ -9,21 +9,21 @@
 - Communication Style: {{ identity_communication_style }}
 - Emoji: {{ identity_emoji }}
 
-{% if identity_purpose or is_lead %}
+{% if (identity_purpose is defined and identity_purpose) or is_lead %}
 ## Purpose
-{% if identity_purpose %}
+{% if identity_purpose is defined and identity_purpose %}
 {{ identity_purpose }}
 {% else %}
 Own board-level coordination and delivery quality by turning objectives into delegated, verifiable outcomes.
 {% endif %}
 {% endif %}
 
-{% if identity_personality %}
+{% if identity_personality is defined and identity_personality %}
 ## Personality
 {{ identity_personality }}
 {% endif %}
 
-{% if identity_custom_instructions %}
+{% if identity_custom_instructions is defined and identity_custom_instructions %}
 ## Custom Instructions
 {{ identity_custom_instructions }}
 {% endif %}

@@ -296,18 +296,23 @@ class AgentCreate(AgentBase):
     skill_env: dict[str, dict[str, str]] = Field(
         default_factory=dict,
         description=(
-            "Per-skill credential overrides written to skills/<slug>/config.env at provision time. "
+            "Per-skill credential overrides folded into TOOLS.md at provision time as a "
+            '"## Skill credentials" section (one ### subsection per slug). '
             'Example: {"plane-workflow": {"PLANE_API_KEY": "plane_api_xxx"}}. '
-            "Values are write-only and not stored on the agent record."
+            "Values are write-only and not stored on the agent record. The OpenClaw "
+            "gateway only accepts a fixed set of bootstrap file names, so credentials "
+            "are delivered inside TOOLS.md rather than as separate config.env files."
         ),
         examples=[{"hoofer-k8s": {"GITLAB_TOKEN": "glpat-xxx"}}],
     )
     tool_instructions: str | None = Field(
         default=None,
         description=(
-            "Optional additional tool documentation appended to TOOLS.md at provision time. "
-            "Use for custom API instructions, endpoints, or usage notes specific to this agent. "
-            "Write-only — not stored on the agent record."
+            "Optional tool documentation written to TOOLS.md at provision time. "
+            "When set, replaces the templated TOOLS.md with the provided content "
+            "(skill_env, if any, is appended below as a ## Skill credentials section). "
+            "Use for custom API instructions, endpoints, or usage notes specific to "
+            "this agent. Write-only — not stored on the agent record."
         ),
         examples=[
             "## Plane\nPLANE_API_URL=https://plane.example.com\nUse the plane-workflow skill for ticket management."

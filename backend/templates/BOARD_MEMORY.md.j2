@@ -24,7 +24,7 @@ Update during consolidation, not constantly.
 - What I learned about the human:
 - What changed recently:
 
-{% if board_id %}
+{% if board_id is defined and board_id %}
 ## Board Context (read-only unless board goal changes)
 
 - Board: {{ board_name }}

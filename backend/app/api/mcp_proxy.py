@@ -27,6 +27,7 @@ from app.api.deps import (
     get_board_for_actor_write,
     require_user_or_agent,
 )
+from app.core.config import settings as _settings
 from app.db.session import get_session
 from app.schemas.mcp_proxy import (
     McpResourceResponse,
@@ -57,7 +58,6 @@ ACTOR_DEP = Depends(require_user_or_agent)
 # Configurable via MCP_RATE_LIMIT_MAX / MCP_RATE_LIMIT_WINDOW env vars.
 # Set RATE_LIMIT_ENABLED=false to disable entirely.
 # ---------------------------------------------------------------------------
-from app.core.config import settings as _settings
 
 _RATE_LIMIT_WINDOW_S = _settings.mcp_rate_limit_window
 _RATE_LIMIT_MAX_CALLS = _settings.mcp_rate_limit_max

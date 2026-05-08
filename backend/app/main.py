@@ -625,6 +625,11 @@ api_v1.include_router(org_templates_router)
 api_v1.include_router(board_memory_router)
 api_v1.include_router(board_webhooks_router)
 api_v1.include_router(sprints_router)
+# Also expose the sprints router under /agent/* so agent-token clients can hit
+# the same paths their HEARTBEAT.md / planner / charts templates reference
+# (e.g. GET /api/v1/agent/boards/{board_id}/sprints?status=active). The
+# underlying handlers already accept agent auth via BOARD_ACTOR_READ_DEP.
+api_v1.include_router(sprints_router, prefix="/agent")
 api_v1.include_router(sprint_webhooks_router)
 api_v1.include_router(board_onboarding_router)
 api_v1.include_router(approvals_router)

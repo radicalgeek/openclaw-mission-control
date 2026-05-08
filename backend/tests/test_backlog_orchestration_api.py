@@ -77,6 +77,7 @@ async def _seed(session: AsyncSession) -> tuple[User, Board, Agent, Agent]:
         name="Estimator",
         agent_type=AGENT_TYPE_STANDALONE,
         openclaw_session_id="estimator-session",
+        identity_profile={"role_template": "estimator"},
     )
     prioritiser = Agent(
         id=uuid4(),
@@ -84,6 +85,7 @@ async def _seed(session: AsyncSession) -> tuple[User, Board, Agent, Agent]:
         name="Prioritiser",
         agent_type=AGENT_TYPE_STANDALONE,
         openclaw_session_id="prioritiser-session",
+        identity_profile={"role_template": "priority"},
     )
     session.add_all(
         [
@@ -266,7 +268,9 @@ async def test_estimate_returns_unavailable_when_no_estimator_configured() -> No
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with sm() as session:
-            user, board, _est, _prio = await _seed(session)
+            user, board, estimator, _prio = await _seed(session)
+            estimator.identity_profile = {}
+            session.add(estimator)
             session.add(Task(board_id=board.id, title="t", status="backlog", is_backlog=True))
             await session.commit()
         app = _build_app(sm, user=user)
@@ -280,6 +284,28 @@ async def test_estimate_returns_unavailable_when_no_estimator_configured() -> No
         # Tasks were identified but not dispatched
         assert body["task_count"] == 1
         assert captured == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_estimate_dispatches_by_role_template_when_env_id_empty() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, _estimator, _prio = await _seed(session)
+            session.add(Task(board_id=board.id, title="t", status="backlog", is_backlog=True))
+            await session.commit()
+        app = _build_app(sm, user=user)
+        captured, p1, p2 = _capture_dispatch_patches()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            with p1, p2, patch("app.api.sprints.settings.org_estimator_agent_id", ""):
+                resp = await c.post(f"/api/v1/boards/{board.id}/backlog/estimate")
+        body = resp.json()
+        assert body["dispatched"] is True
+        assert body["agent_session"] == "estimator-session"
+        assert captured[0]["session_key"] == "estimator-session"
     finally:
         await engine.dispose()
 
@@ -340,7 +366,9 @@ async def test_prioritise_returns_unavailable_when_no_prioritiser_configured() -
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with sm() as session:
-            user, board, _est, _prio = await _seed(session)
+            user, board, _est, prioritiser = await _seed(session)
+            prioritiser.identity_profile = {}
+            session.add(prioritiser)
             session.add(Task(board_id=board.id, title="t", status="backlog", is_backlog=True))
             await session.commit()
         app = _build_app(sm, user=user)

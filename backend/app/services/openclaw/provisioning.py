@@ -39,7 +39,6 @@ from app.services.openclaw.constants import (
     LEAD_GATEWAY_FILES,
     LEAD_TEMPLATE_MAP,
     MAIN_TEMPLATE_MAP,
-    MCP_APPS_MANIFEST_FILE,
     PRESERVE_AGENT_EDITABLE_FILES,
     STANDALONE_TEMPLATE_MAP,
 )
@@ -518,62 +517,6 @@ def _session_key(agent: Agent) -> str:
     return board_agent_session_key(agent.id)
 
 
-_MCP_BUILTIN_CHART_TOOL: dict[str, Any] = {
-    "name": "show_chart",
-    "title": "Show Chart",
-    "description": (
-        "Render an interactive chart in Mission Control. "
-        "Use this to visualise sprint metrics, burndowns, or any structured data."
-    ),
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "app": {"type": "string", "enum": ["chart"], "description": "Always 'chart'"},
-            "spec": {
-                "type": "object",
-                "description": "Chart specification (matches the product-foundry-charts SKILL.md schema)",
-                "properties": {
-                    "title": {"type": "string"},
-                    "type": {"type": "string", "enum": ["line", "bar", "pie", "area"]},
-                    "data": {"type": "array"},
-                    "xKey": {"type": "string"},
-                    "yKey": {"type": "string"},
-                    "series": {"type": "array"},
-                },
-                "required": ["type", "data"],
-            },
-        },
-        "required": ["app", "spec"],
-    },
-    "_meta": {
-        "ui": {
-            "resourceUri": "ui://mission-control/chart.html",
-        }
-    },
-}
-
-_MCP_BUILTIN_CHART_RESOURCE: dict[str, Any] = {
-    "uri": "ui://mission-control/chart.html",
-    "mimeType": "text/html;profile=mcp-app",
-    "source": "builtin",
-}
-
-
-def _build_mcp_apps_manifest(agent: Agent) -> str:  # noqa: ARG001
-    """Generate the ``tools/mcp-apps.json`` manifest for an agent workspace.
-
-    The manifest declares MCP App tools that the gateway will expose via
-    ``mcp.tools.list`` once protocol v4 is supported.  Built-in tools (backed
-    by Mission Control's own HTML resources) are always included.
-    """
-    manifest: dict[str, Any] = {
-        "version": 1,
-        "tools": [_MCP_BUILTIN_CHART_TOOL],
-        "resources": [_MCP_BUILTIN_CHART_RESOURCE],
-    }
-    return json.dumps(manifest, indent=2)
-
-
 def _render_agent_files(
     context: dict[str, str],
     agent: Agent,
@@ -723,35 +666,53 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         await openclaw_call("sessions.delete", {"key": session_key}, config=self._config)
 
     async def upsert_agent(self, registration: GatewayAgentRegistration) -> None:
-        # Prefer an idempotent "create then update" flow.
-        # - Avoids enumerating gateway agents for existence checks.
-        # - Ensures we always hit the "create" RPC first, per lifecycle expectations.
-        agent_just_created = False
+        # Update-first, create-on-missing flow.
+        #
+        # Prior implementation always tried `agents.create` first and treated
+        # "already exists" as a soft failure. That approach was correct logically
+        # but expensive on the contended Premium NFS mount: openclaw serializes
+        # all `agents.*` RPCs on its config file, and a failing `agents.create`
+        # has been observed at 5–25 s under concurrent reconcile load (it has
+        # to acquire the config lock and read the entire `openclaw.json` to
+        # decide the agent already exists). With ~12 agents reconciling every
+        # 10 minutes, those 5–25 s "failures" stacked into the 60 s reconcile
+        # timeout and starved out the wake / heartbeat-patch steps further down
+        # the pipeline, leaving agents perpetually `last_seen_at=NULL`.
+        #
+        # By trying `agents.update` first we hit the hot path (sub-second) for
+        # every reconcile of an existing agent. The `agent not found` fallback
+        # to `agents.create` covers fresh provisions and the rare case where
+        # openclaw lost its config (gateway worker rebuild without state).
         try:
             await openclaw_call(
-                "agents.create",
+                "agents.update",
                 {
-                    "name": registration.agent_id,
+                    "agentId": registration.agent_id,
+                    "name": registration.name,
                     "workspace": registration.workspace_path,
                 },
                 config=self._config,
             )
-            agent_just_created = True
+            return
         except OpenClawGatewayError as exc:
-            message = str(exc).lower()
-            if not any(
-                marker in message for marker in ("already", "exist", "duplicate", "conflict")
-            ):
+            if not _is_missing_agent_error(exc):
                 raise
 
-        # Gateway hot-reload has a ~500ms debounce after agents.create writes to disk.
-        # agents.update arriving before the reload completes returns "agent not found".
-        # Wait for the reload window before attempting the update.
-        if agent_just_created:
-            await asyncio.sleep(0.75)
+        # Agent missing on the gateway side — fall back to create.
+        await openclaw_call(
+            "agents.create",
+            {
+                "name": registration.agent_id,
+                "workspace": registration.workspace_path,
+            },
+            config=self._config,
+        )
 
-        # Retry agents.update only when this call just created the agent.
-        # If create reported "already exists", "not found" should fail fast.
+        # Gateway hot-reload has a ~500ms debounce after agents.create writes to
+        # disk. A follow-up call arriving before the reload completes can return
+        # "agent not found". Wait for the reload window, then issue agents.update
+        # so the agent's heartbeat / workspace metadata are captured.
+        await asyncio.sleep(0.75)
         _update_retries = 5
         _update_delay = 0.5
         for _attempt in range(_update_retries):
@@ -767,12 +728,7 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
                 )
                 break
             except OpenClawGatewayError as exc:
-                should_retry = (
-                    agent_just_created
-                    and _is_missing_agent_error(exc)
-                    and _attempt < _update_retries - 1
-                )
-                if should_retry:
+                if _is_missing_agent_error(exc) and _attempt < _update_retries - 1:
                     await asyncio.sleep(_update_delay)
                     _update_delay = min(_update_delay * 2, 4.0)
                     continue
@@ -836,18 +792,29 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         entry_by_id = _heartbeat_entry_map(entries)
         new_list = _updated_agent_list(raw_list, entry_by_id)
 
-        channels_patch = _channel_heartbeat_visibility_patch(config_data)
         tools_patch = _tools_exec_host_patch(config_data)
+
+        # NOTE: we deliberately do NOT emit a `channels` patch here, even though
+        # `_channel_heartbeat_visibility_patch` exists. openclaw treats
+        # `channels` as a non-hot-reloadable path and schedules a full gateway
+        # restart whenever it changes (close code 1012 on every WS connection).
+        # When this ran on every per-agent reconcile, the openclaw config file
+        # was rewritten on each restart — losing the heartbeat-visibility
+        # defaults — so the next reconcile detected them missing again and
+        # emitted another channels patch, restarting the gateway again.
+        # Result: divergent retry loop, agents never finished provisioning.
+        # Channel heartbeat defaults are an ergonomic concern that belongs in
+        # gateway templates/sync (a one-shot bootstrap), not the per-agent
+        # path. See `_channel_heartbeat_visibility_patch`; templates/sync can
+        # call it at gateway-create time without restart-cascade risk.
 
         # Skip config.patch entirely when nothing changed — avoids an unnecessary
         # gateway SIGUSR1 restart that rotates agent tokens and breaks active sessions.
-        if new_list == raw_list and channels_patch is None and tools_patch is None:
+        if new_list == raw_list and tools_patch is None:
             logger.debug("patch_agent_heartbeats: no changes detected, skipping config.patch")
             return
 
         patch: dict[str, Any] = {"agents": {"list": new_list}}
-        if channels_patch is not None:
-            patch["channels"] = channels_patch
         if tools_patch is not None:
             patch["tools"] = tools_patch
         params = {"raw": json.dumps(patch)}
@@ -1075,7 +1042,7 @@ class BaseAgentLifecycleManager(ABC):
         *,
         agent: Agent,
         session_key: str,
-        auth_token: str,
+        auth_token: str | None,
         user: User | None,
         options: ProvisionOptions,
         board: Board | None = None,
@@ -1083,6 +1050,17 @@ class BaseAgentLifecycleManager(ABC):
         extra_files: dict[str, str] | None = None,
         db_templates: dict[str, str] | None = None,
     ) -> None:
+        """Provision an agent on the gateway.
+
+        ``auth_token=None`` means "this is an update for an agent that
+        already has working workspace files (templates contain a token)".
+        We still call ``upsert_agent`` to ensure the agent is registered in
+        the gateway's ``agents.list`` (otherwise ``chat.send`` would fail
+        with "Agent ... no longer exists in configuration" after a gateway
+        restart). We skip the template/file rendering in that case to avoid
+        clobbering the agent's existing AUTH_TOKEN with an empty value.
+        """
+
         if not self._gateway.workspace_root:
             msg = "gateway_workspace_root is required"
             raise ValueError(msg)
@@ -1092,6 +1070,8 @@ class BaseAgentLifecycleManager(ABC):
         agent_id = self._agent_id(agent)
         workspace_path = _workspace_path(agent, self._gateway.workspace_root)
         heartbeat = _heartbeat_config(agent)
+        # Always register the agent — even on a token-preserving update —
+        # so chat.send / heartbeat ticks can find it after a gateway restart.
         await self._control_plane.upsert_agent(
             GatewayAgentRegistration(
                 agent_id=agent_id,
@@ -1100,6 +1080,11 @@ class BaseAgentLifecycleManager(ABC):
                 heartbeat=heartbeat,
             ),
         )
+
+        # Token-preserving update path: agent is registered, files left as-is.
+        # Caller (lifecycle reconcile) will proceed to the wake step.
+        if auth_token is None:
+            return
 
         context = self._build_context(
             agent=agent,
@@ -1160,24 +1145,6 @@ class BaseAgentLifecycleManager(ABC):
                             name,
                         )
                         continue
-                    raise
-
-        # Write MCP Apps manifest unconditionally (always overwrite — manifest is deterministic).
-        mcp_manifest = _build_mcp_apps_manifest(agent)
-        if not _is_file_rejected(gateway_id_str, MCP_APPS_MANIFEST_FILE):
-            try:
-                await self._control_plane.set_agent_file(
-                    agent_id=agent_id,
-                    name=MCP_APPS_MANIFEST_FILE,
-                    content=mcp_manifest,
-                )
-            except OpenClawGatewayError as exc:
-                if _is_unsupported_file_error(exc):
-                    _mark_file_rejected(gateway_id_str, MCP_APPS_MANIFEST_FILE)
-                    logger.debug(
-                        "provisioning.mcp_manifest.unsupported agent_id=%s error=%s", agent_id, exc
-                    )
-                else:
                     raise
 
 
@@ -1271,7 +1238,6 @@ class BoardAgentLifecycleManager(BaseAgentLifecycleManager):
                 "WORKFLOW.md",
                 "STATUS.md",
                 "APIS.md",
-                "skills/product-foundry-charts/SKILL.md",
             }
         )
 
@@ -1401,7 +1367,7 @@ class OpenClawGatewayProvisioner:
         agent: Agent,
         gateway: Gateway,
         board: Board | None,
-        auth_token: str,
+        auth_token: str | None,
         user: User | None,
         action: str = "provision",
         force_bootstrap: bool = False,
@@ -1418,10 +1384,27 @@ class OpenClawGatewayProvisioner:
 
         Lifecycle steps (same for all agent types):
         1) create agent (idempotent)
-        2) set/update all template files
+        2) set/update all template files (skipped when ``auth_token is None``)
         3) wake the agent session (chat.send)
         4) patch heartbeat config (unless ``patch_heartbeat=False``)
+
+        ``auth_token=None`` means "this is an update for an agent that already
+        has working workspace files (and a working token in its env)". The
+        file-push step is skipped — re-rendering with an empty token would
+        clobber the agent's existing AUTH_TOKEN and break all its API calls.
         """
+
+        logger.info(
+            "gateway.apply_agent_lifecycle.start agent_id=%s name=%s action=%s wake=%s "
+            "reset_session=%s board_id=%s auth_token_provided=%s",
+            agent.id,
+            agent.name,
+            action,
+            wake,
+            reset_session,
+            board.id if board is not None else None,
+            auth_token is not None,
+        )
 
         if not gateway.url:
             msg = "Gateway url is required"

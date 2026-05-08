@@ -432,6 +432,12 @@ async def _openclaw_call_once(
     connect_kwargs: dict[str, Any] = {
         "ping_interval": None,
         "additional_headers": {"Origin": GATEWAY_ORIGIN_HEADER},
+        # The gateway can be slow to accept WS upgrades when it's processing a
+        # large config.patch / agents.create batch (NFS-backed writes). The
+        # default 10s open_timeout fires before slow gateways respond, causing
+        # the backend to disconnect mid-handshake and retry — which compounds
+        # load. 60s gives in-flight upgrades room to complete.
+        "open_timeout": 60,
     }
     if ssl_context is not None:
         connect_kwargs["ssl"] = ssl_context
@@ -452,6 +458,7 @@ async def _openclaw_connect_metadata_once(
     connect_kwargs: dict[str, Any] = {
         "ping_interval": None,
         "additional_headers": {"Origin": GATEWAY_ORIGIN_HEADER},
+        "open_timeout": 60,
     }
     if ssl_context is not None:
         connect_kwargs["ssl"] = ssl_context

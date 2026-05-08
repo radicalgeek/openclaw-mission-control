@@ -235,6 +235,8 @@ export function SprintsLayout({ boardId }: Props) {
             sprints={sprints}
             orgTags={orgTags}
             onSprintChange={() => void loadSprints()}
+            autoOrganise={currentBoard?.auto_organise_backlog ?? false}
+            onToggleAutoOrganise={() => void boardsQuery.refetch()}
           />
         )}
       </main>

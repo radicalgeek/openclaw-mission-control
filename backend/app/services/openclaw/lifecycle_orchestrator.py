@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 from sqlmodel import col, select
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.models.agents import Agent
 from app.models.boards import Board
@@ -39,6 +40,9 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
     from app.models.users import User
+
+
+logger = get_logger(__name__)
 
 
 class AgentLifecycleOrchestrator(OpenClawDBService):
@@ -76,7 +80,39 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
     ) -> Agent:
         """Provision or update any agent under a per-agent lock."""
 
+        logger.info(
+            "lifecycle.run_lifecycle.start",
+            extra={
+                "agent_id": str(agent_id),
+                "action": action,
+                "wake": wake,
+                "reset_session": reset_session,
+                "force_bootstrap": force_bootstrap,
+                "board_id": str(board.id) if board is not None else None,
+                "gateway_id": str(gateway.id),
+                "auth_token_provided": auth_token is not None,
+            },
+        )
+
         locked = await self._lock_agent(agent_id=agent_id)
+        # NOTE: `name` is a reserved attribute on Python's LogRecord — passing
+        # it via `extra={...}` raises KeyError("Attempt to overwrite 'name' …").
+        # Use `agent_name` here. Same hazard for `msg`, `args`, `levelname`,
+        # `pathname`, `filename`, `module`, `lineno`, `funcName`, `created`,
+        # `process`, `processName`, `thread`, `threadName`, `message`, `asctime`.
+        logger.info(
+            "lifecycle.run_lifecycle.locked",
+            extra={
+                "agent_id": str(locked.id),
+                "agent_name": locked.name,
+                "current_status": locked.status,
+                "current_generation": locked.lifecycle_generation,
+                "agent_token_hash_set": locked.agent_token_hash is not None,
+                "openclaw_session_id": locked.openclaw_session_id,
+                "last_seen_at": locked.last_seen_at.isoformat() if locked.last_seen_at else None,
+                "wake_attempts": locked.wake_attempts,
+            },
+        )
         template_user = user
         if board is None and template_user is None:
             template_user = await get_org_owner_user(
@@ -84,6 +120,10 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 organization_id=gateway.organization_id,
             )
             if template_user is None:
+                logger.warning(
+                    "lifecycle.run_lifecycle.exit_no_org_owner",
+                    extra={"agent_id": str(locked.id)},
+                )
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=(
@@ -92,7 +132,26 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                     ),
                 )
 
-        raw_token = auth_token or mint_agent_token(locked)
+        # Only mint a new agent token when we genuinely need one — i.e. when
+        # the caller explicitly passed one (None means "use the current"), or
+        # this is the first provision for an agent that has no token hash
+        # yet, or the action is a provision (not an update).
+        # Re-minting on every update invalidates the agent's currently-loaded
+        # token (its env was set at first provisioning) and breaks all its
+        # API calls with a 401 until the next full re-bootstrap. The sweep
+        # re-queues stuck agents repeatedly, so re-minting here turns into a
+        # token-rotation storm that prevents agents from ever staying valid.
+        if auth_token:
+            raw_token = auth_token
+        elif action == "provision" or locked.agent_token_hash is None:
+            raw_token = mint_agent_token(locked)
+        else:
+            # Update with no explicit token and a hash already exists. The
+            # agent already has a working token loaded; keep it. We can't
+            # recover the raw value from the hash, so any downstream step
+            # that needs to write the token into the workspace will need to
+            # tolerate ``raw_token=None`` (use existing TOOLS.md content).
+            raw_token = None
         mark_provision_requested(
             locked,
             action=action,
@@ -108,12 +167,33 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
             locked.last_wake_sent_at = utcnow()
         self.session.add(locked)
         await self.session.flush()
+        logger.info(
+            "lifecycle.run_lifecycle.state_flushed",
+            extra={
+                "agent_id": str(locked.id),
+                "new_generation": locked.lifecycle_generation,
+                "raw_token_minted": raw_token is not None,
+                "wake_attempts": locked.wake_attempts,
+            },
+        )
 
         if not gateway.url:
+            logger.warning(
+                "lifecycle.run_lifecycle.exit_no_gateway_url",
+                extra={"agent_id": str(locked.id), "gateway_id": str(gateway.id)},
+            )
             await self.session.commit()
             await self.session.refresh(locked)
             return locked
 
+        logger.info(
+            "lifecycle.run_lifecycle.apply_start",
+            extra={
+                "agent_id": str(locked.id),
+                "gateway_url": gateway.url,
+                "raw_token_provided": raw_token is not None,
+            },
+        )
         try:
             await OpenClawGatewayProvisioner().apply_agent_lifecycle(
                 agent=locked,
@@ -132,6 +212,10 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 patch_heartbeat=patch_heartbeat,
             )
         except OpenClawGatewayError as exc:
+            logger.warning(
+                "lifecycle.run_lifecycle.apply_gateway_error",
+                extra={"agent_id": str(locked.id), "error": str(exc)},
+            )
             locked.last_provision_error = str(exc)
             locked.updated_at = utcnow()
             self.session.add(locked)
@@ -154,6 +238,14 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 ) from exc
             return locked
         except (OSError, RuntimeError, ValueError) as exc:
+            logger.warning(
+                "lifecycle.run_lifecycle.apply_local_error",
+                extra={
+                    "agent_id": str(locked.id),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
             locked.last_provision_error = str(exc)
             locked.updated_at = utcnow()
             self.session.add(locked)
@@ -176,6 +268,10 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 ) from exc
             return locked
 
+        logger.info(
+            "lifecycle.run_lifecycle.apply_done",
+            extra={"agent_id": str(locked.id)},
+        )
         mark_provision_complete(
             locked,
             status="online",
@@ -198,4 +294,12 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                     checkin_deadline_at=locked.checkin_deadline_at,
                 )
             )
+        logger.info(
+            "lifecycle.run_lifecycle.complete",
+            extra={
+                "agent_id": str(locked.id),
+                "final_status": locked.status,
+                "generation": locked.lifecycle_generation,
+            },
+        )
         return locked

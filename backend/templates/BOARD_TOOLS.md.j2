@@ -15,7 +15,7 @@ BASE_URL={{ base_url }}
 AUTH_TOKEN={{ auth_token }}
 AGENT_NAME={{ agent_name }}
 AGENT_ID={{ agent_id }}
-{% if board_id %}
+{% if board_id is defined and board_id %}
 BOARD_ID={{ board_id }}
 {% endif %}
 WORKSPACE_ROOT={{ workspace_root }}
@@ -55,41 +55,111 @@ jq -r '
 If no confident match exists for current intent, ask one clarifying question.
 
 
-## MCP App Tools
+## Charts (built-in MCP App)
 
-You can register interactive tools that render rich UIs in Mission Control.
-Declare tools in `tools/mcp-apps.json` — Mission Control discovers them at
-runtime and renders their UI inline in the board chat or plan messages.
+You can render interactive charts directly in any {{ product_name }} chat surface
+(board chat, group chat, channel threads, planning chat) by posting a memory
+entry with `content_type: "mcp_app_result"` and `app_metadata.app: "chart"`.
 
-### Manifest format
+### Supported chart types
 
-See `tools/mcp-apps.json` in your workspace — it is pre-seeded with the built-in chart tool.
+| `type`   | Description                                                |
+|----------|------------------------------------------------------------|
+| `line`   | Line chart — burndowns, trends, cumulative flow            |
+| `area`   | Area (filled) chart — velocity, throughput over time       |
+| `bar`    | Bar chart — workload by agent, task counts, comparisons    |
+| `pie`    | Pie chart — status breakdown, priority split               |
+| `donut`  | Donut chart — same as pie, with a centred value label      |
 
-### Built-in tools (always available)
+### Chart spec
 
-| Tool name      | Resource URI                      | Description                |
-|----------------|-----------------------------------|----------------------------|
-| `render_chart` | `ui://mission-control/chart.html` | Interactive chart renderer |
+```json
+{
+  "type":   "<line|area|bar|pie|donut>",
+  "title":  "<optional heading shown above chart>",
+  "xKey":   "<field name used as X axis or pie label>",
+  "yKeys":  "<field name, or array of field names, for Y values>",
+  "xLabel": "<optional X axis label>",
+  "yLabel": "<optional Y axis label>",
+  "data":   [ { "<xKey>": "...", "<yKey>": 0 } ],
+  "colors": ["<optional hex or CSS colour overrides, one per series>"],
+  "height": 260
+}
+```
 
-### Posting an MCP App result
+Required: `type`, `xKey`, `yKeys`, `data`. All `yKeys` values must be numbers.
+Limit `data` to ≤ 500 rows — aggregate larger datasets before charting.
 
-To display a rich UI in the board chat, post a memory entry with:
-
-  POST {{ base_url }}/boards/{{ board_id | default('<BOARD_ID>') }}/memory
-  Content-Type: application/json
-  Authorization: Bearer {{ auth_token }}
-
-  {
-    "content": "Chart rendered.",
+### Posting a chart
+{% if board_id is defined and board_id %}
+Board chat:
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/memory" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Sprint burndown for current sprint.",
+    "tags": ["chat"],
     "content_type": "mcp_app_result",
     "app_metadata": {
-      "agent_id": "{{ agent_id }}",
-      "board_id": "{{ board_id | default('<BOARD_ID>') }}",
-      "resource_uri": "ui://mission-control/chart.html",
-      "resource_html": "<html>...</html>"
+      "app": "chart",
+      "spec": {
+        "type": "line",
+        "title": "Sprint Burndown",
+        "xKey": "day",
+        "yKeys": ["remaining", "ideal"],
+        "data": [
+          {"day": "Mon", "remaining": 24, "ideal": 20},
+          {"day": "Fri", "remaining":  4, "ideal":  4}
+        ]
+      }
     }
-  }
+  }'
+```
 
-- `resource_uri` — which MCP resource to render.
-- `resource_html` — optional pre-rendered HTML (skips gateway round-trip).
-- Both `agent_id` and `board_id` must be set for tool call proxying.
+Group chat (via board context):
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/boards/{{ board_id }}/group-memory" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Team velocity this quarter.",
+    "tags": ["chat"],
+    "content_type": "mcp_app_result",
+    "app_metadata": {
+      "app": "chart",
+      "spec": { "type": "bar", "xKey": "agent", "yKeys": ["tasks"], "data": [...] }
+    }
+  }'
+```
+{% endif %}
+Channel thread:
+```bash
+curl -fsS -X POST "{{ base_url }}/api/v1/threads/{thread_id}/messages" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Deployment timeline.",
+    "content_type": "mcp_app_result",
+    "event_metadata": {
+      "app": "chart",
+      "spec": { "type": "area", "xKey": "sprint", "yKeys": ["completed", "committed"], "data": [...] }
+    }
+  }'
+```
+
+### Chart data sources
+{% if board_id is defined and board_id %}
+Always query the API for real data — never fabricate values.
+
+| Data needed | API path |
+|---|---|
+| Task list with statuses | `GET /api/v1/agent/boards/{{ board_id }}/tasks` |
+| Sprint list | `GET /api/v1/agent/boards/{{ board_id }}/sprints` |
+| Sprint tickets and estimates | `GET /api/v1/agent/boards/{{ board_id }}/sprints/{sprint_id}/tickets` |
+| Board activity events | `GET /api/v1/agent/boards/{{ board_id }}/activity` |
+| Velocity & estimation accuracy | `GET /api/v1/boards/{{ board_id }}/velocity` |
+
+For velocity charts, use `estimate_minutes` and `actual_minutes` from sprint
+tickets or the velocity endpoint. Aggregate and convert to hours where helpful.
+{% endif %}

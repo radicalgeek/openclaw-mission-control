@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlmodel import col, select
+
 from app.core.config import settings
 from app.core.logging import TRACE_LEVEL
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.plans import Plan
@@ -31,16 +33,32 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
 
     async def _resolve_org_agent(
         self,
-        agent_id_setting: str,
+        agent_id_setting: str | None,
+        *,
+        gateway_id: UUID | None = None,
+        role_template: str | None = None,
     ) -> Agent | None:
-        """Look up an org-wide standalone agent by configured ID.
+        """Look up an org-wide standalone agent.
 
-        Returns the ``Agent`` if it exists and has an OpenClaw session,
-        ``None`` otherwise (caller should fall back to the board lead).
-        Standalone agents are provisioned once and only re-registered with
-        the gateway lazily when a dispatch detects them missing from the
-        running config (see ``_dispatch_to_session``).
+        Prefer a live role-template lookup scoped to the board's gateway so
+        recreated standalone agents are picked up without env var changes.
+        ``agent_id_setting`` remains as a compatibility fallback for older
+        deployments and tests.
         """
+        if gateway_id is not None and role_template:
+            agents = (
+                await self.session.exec(
+                    select(Agent)
+                    .where(col(Agent.gateway_id) == gateway_id)
+                    .where(col(Agent.agent_type) == AGENT_TYPE_STANDALONE)
+                    .order_by(col(Agent.updated_at).desc())
+                )
+            ).all()
+            for agent in agents:
+                profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+                if profile.get("role_template") == role_template and agent.openclaw_session_id:
+                    return agent
+
         if not agent_id_setting:
             return None
         try:
@@ -114,9 +132,17 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             "org_triager": settings.org_triager_agent_id,
             "org_planner": settings.org_planner_agent_id,
         }.get(plan.decomposition_target)
+        org_target_role = {
+            "org_triager": "triager",
+            "org_planner": "planner",
+        }.get(plan.decomposition_target)
 
-        if org_target_setting is not None:
-            agent = await self._resolve_org_agent(org_target_setting)
+        if org_target_role is not None:
+            agent = await self._resolve_org_agent(
+                org_target_setting or "",
+                gateway_id=board.gateway_id,
+                role_template=org_target_role,
+            )
             if agent is not None and agent.openclaw_session_id is not None:
                 return await self._dispatch_to_session(
                     board=board,
@@ -144,7 +170,8 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         self,
         *,
         board: Board,
-        configured_agent_id: str,
+        configured_agent_id: str | None,
+        role_template: str | None = None,
         prompt: str,
         log_prefix: str,
         correlation_id: str | None = None,
@@ -154,7 +181,11 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         Returns the session_key used on success, or ``None`` when the
         configured agent is not available (caller decides whether to error).
         """
-        agent = await self._resolve_org_agent(configured_agent_id)
+        agent = await self._resolve_org_agent(
+            configured_agent_id,
+            gateway_id=board.gateway_id,
+            role_template=role_template,
+        )
         if agent is None or agent.openclaw_session_id is None:
             return None
         return await self._dispatch_to_session(

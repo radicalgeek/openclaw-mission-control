@@ -349,6 +349,52 @@ async def test_decompose_routes_to_org_triager_when_target_set() -> None:
 
 
 @pytest.mark.asyncio
+async def test_decompose_routes_to_current_triager_by_role_template_when_env_id_stale() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            board, plan, _lead, _planner = await _seed(
+                session,
+                decomposition_target="org_triager",
+                org_planner_session=None,
+            )
+            triager = Agent(
+                id=uuid4(),
+                gateway_id=board.gateway_id,
+                name="Current Triager",
+                agent_type=AGENT_TYPE_STANDALONE,
+                openclaw_session_id="current-triager-session",
+                identity_profile={"role_template": "triager"},
+                status="online",
+                last_seen_at=utcnow(),
+            )
+            session.add(triager)
+            await session.commit()
+
+            captured, (p1, p2) = _capture_dispatches()
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.services.openclaw.planning_service.settings.org_triager_agent_id",
+                    str(uuid4()),
+                ),
+            ):
+                svc = PlanningMessagingService(session)
+                returned = await svc.dispatch_plan_decompose(
+                    board=board,
+                    plan=plan,
+                    prompt="decompose this plan",
+                )
+        assert returned == "current-triager-session"
+        assert captured[0]["session_key"] == "current-triager-session"
+        assert captured[0]["agent_name"] == "Current Triager"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_decompose_falls_back_to_lead_when_triager_unavailable() -> None:
     """If decomposition_target=org_triager but no triager is configured/found,
     fall back to the board lead — same contract as org_planner."""

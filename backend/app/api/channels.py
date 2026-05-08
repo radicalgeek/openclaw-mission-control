@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import col, select
 
 from app.api.deps import (
+    ACTOR_DEP,
+    get_board_for_actor_read,
     get_board_for_user_read,
     get_board_for_user_write,
     require_org_member,
@@ -51,6 +53,7 @@ SESSION_DEP = Depends(get_session)
 ORG_MEMBER_DEP = Depends(require_org_member)
 USER_AUTH_DEP = Depends(require_user_auth)
 BOARD_USER_READ_DEP = Depends(get_board_for_user_read)
+BOARD_ACTOR_READ_DEP = Depends(get_board_for_actor_read)
 BOARD_USER_WRITE_DEP = Depends(get_board_for_user_write)
 
 
@@ -114,8 +117,9 @@ def _slugify(name: str) -> str:
 
 @router.get("/boards/{board_id}/channels", response_model=list[ChannelRead], tags=["channels"])
 async def list_board_channels(
-    board: Board = BOARD_USER_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: AsyncSession = SESSION_DEP,
+    _actor: object = ACTOR_DEP,
 ) -> list[ChannelRead]:
     """List all non-archived channels for a board."""
     _channels_enabled_check()

@@ -48,6 +48,9 @@ COPY backend/app ./app
 # Copy provisioning templates.
 COPY backend/templates ./templates
 
+# Copy entrypoint scripts (RQ worker, etc.)
+COPY scripts ./scripts
+
 # Default API port
 EXPOSE 8000
 

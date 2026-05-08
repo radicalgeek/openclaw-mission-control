@@ -8,8 +8,15 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.agent import _require_task_creation_permission
+from app.api.agent import _guard_task_access, _require_task_creation_permission
+from app.models.agent_board_access import AgentBoardAccess
+from app.models.boards import Board
+from app.models.gateways import Gateway
+from app.models.organizations import Organization
 from app.schemas.agents import STANDALONE_ROLE_TEMPLATES
 
 
@@ -40,6 +47,13 @@ def _make_standalone_agent(role_template: str | None = None) -> SimpleNamespace:
 
 def _make_ctx(agent: SimpleNamespace) -> SimpleNamespace:
     return SimpleNamespace(agent=agent)
+
+
+async def _make_engine():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.connect() as conn, conn.begin():
+        await conn.run_sync(SQLModel.metadata.create_all)
+    return engine
 
 
 def test_board_lead_on_own_board_can_create_tasks() -> None:
@@ -150,3 +164,107 @@ def test_board_worker_with_spoofed_reviewer_template_cannot_create_tasks() -> No
     with pytest.raises(HTTPException) as exc_info:
         _require_task_creation_permission(ctx, board)  # type: ignore[arg-type]
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_standalone_read_grant_cannot_write_task_updates() -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    board_id = uuid4()
+    agent_id = uuid4()
+    gateway_id = uuid4()
+
+    try:
+        async with session_maker() as session:
+            org = Organization(id=uuid4(), name="org")
+            gateway = Gateway(
+                id=gateway_id,
+                organization_id=org.id,
+                name="gw",
+                url="https://gateway.example",
+                workspace_root="/tmp/ws",
+            )
+            board = Board(
+                id=board_id,
+                organization_id=org.id,
+                gateway_id=gateway_id,
+                name="board",
+                slug="board",
+            )
+            session.add_all(
+                [
+                    org,
+                    gateway,
+                    board,
+                    AgentBoardAccess(agent_id=agent_id, board_id=board_id, access_level="read"),
+                ]
+            )
+            await session.commit()
+
+            agent = SimpleNamespace(
+                id=agent_id,
+                board_id=None,
+                gateway_id=gateway_id,
+                agent_type="standalone",
+                is_board_lead=False,
+                identity_profile={},
+            )
+            ctx = _make_ctx(agent)
+            task = SimpleNamespace(board_id=board_id)
+
+            with pytest.raises(HTTPException) as exc_info:
+                await _guard_task_access(session, ctx, task, write=True)  # type: ignore[arg-type]
+            assert exc_info.value.status_code == 403
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_standalone_read_grant_can_read_task_comments() -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    board_id = uuid4()
+    agent_id = uuid4()
+    gateway_id = uuid4()
+
+    try:
+        async with session_maker() as session:
+            org = Organization(id=uuid4(), name="org")
+            gateway = Gateway(
+                id=gateway_id,
+                organization_id=org.id,
+                name="gw",
+                url="https://gateway.example",
+                workspace_root="/tmp/ws",
+            )
+            board = Board(
+                id=board_id,
+                organization_id=org.id,
+                gateway_id=gateway_id,
+                name="board",
+                slug="board",
+            )
+            session.add_all(
+                [
+                    org,
+                    gateway,
+                    board,
+                    AgentBoardAccess(agent_id=agent_id, board_id=board_id, access_level="read"),
+                ]
+            )
+            await session.commit()
+
+            agent = SimpleNamespace(
+                id=agent_id,
+                board_id=None,
+                gateway_id=gateway_id,
+                agent_type="standalone",
+                is_board_lead=False,
+                identity_profile={},
+            )
+            ctx = _make_ctx(agent)
+            task = SimpleNamespace(board_id=board_id)
+
+            await _guard_task_access(session, ctx, task)  # type: ignore[arg-type]
+    finally:
+        await engine.dispose()

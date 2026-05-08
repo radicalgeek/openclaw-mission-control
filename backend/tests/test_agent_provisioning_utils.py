@@ -473,14 +473,14 @@ async def test_set_agent_files_update_overwrite_writes_preserved_user_md():
 
 
 @pytest.mark.asyncio
-async def test_control_plane_upsert_agent_create_then_update(monkeypatch):
+async def test_control_plane_upsert_agent_existing_agent_updates_only(monkeypatch):
+    """Update-first flow: when the agent already exists on the gateway,
+    `agents.update` succeeds and we never call `agents.create`."""
     calls: list[tuple[str, dict[str, object] | None]] = []
 
     async def _fake_openclaw_call(method, params=None, config=None):
         _ = config
         calls.append((method, params))
-        if method == "agents.create":
-            return {"ok": True}
         if method == "agents.update":
             return {"ok": True}
         if method == "config.get":
@@ -502,46 +502,15 @@ async def test_control_plane_upsert_agent_create_then_update(monkeypatch):
         ),
     )
 
-    assert calls[0][0] == "agents.create"
-    assert calls[1][0] == "agents.update"
+    methods = [method for method, _ in calls]
+    assert methods == ["agents.update"]
 
 
 @pytest.mark.asyncio
-async def test_control_plane_upsert_agent_handles_already_exists(monkeypatch):
-    calls: list[tuple[str, dict[str, object] | None]] = []
-
-    async def _fake_openclaw_call(method, params=None, config=None):
-        _ = config
-        calls.append((method, params))
-        if method == "agents.create":
-            raise agent_provisioning.OpenClawGatewayError("already exists")
-        if method == "agents.update":
-            return {"ok": True}
-        if method == "config.get":
-            return {"hash": None, "config": {"agents": {"list": []}}}
-        if method == "config.patch":
-            return {"ok": True}
-        raise AssertionError(f"Unexpected method: {method}")
-
-    monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
-    cp = agent_provisioning.OpenClawGatewayControlPlane(
-        agent_provisioning.GatewayClientConfig(url="ws://gateway.example/ws", token=None),
-    )
-    await cp.upsert_agent(
-        agent_provisioning.GatewayAgentRegistration(
-            agent_id="board-agent-a",
-            name="Board Agent A",
-            workspace_path="/tmp/workspace-board-agent-a",
-            heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
-        ),
-    )
-
-    assert calls[0][0] == "agents.create"
-    assert calls[1][0] == "agents.update"
-
-
-@pytest.mark.asyncio
-async def test_control_plane_upsert_agent_retries_update_after_create_race(monkeypatch):
+async def test_control_plane_upsert_agent_missing_creates_then_updates(monkeypatch):
+    """Update-first with fallback: when the agent is missing on the gateway,
+    `agents.update` returns "not found" and we fall back to `agents.create`,
+    then re-issue `agents.update` to capture the registration metadata."""
     calls: list[tuple[str, dict[str, object] | None]] = []
     sleeps: list[float] = []
     update_attempts = 0
@@ -553,12 +522,64 @@ async def test_control_plane_upsert_agent_retries_update_after_create_race(monke
         nonlocal update_attempts
         _ = config
         calls.append((method, params))
-        if method == "agents.create":
-            return {"ok": True}
         if method == "agents.update":
             update_attempts += 1
-            if update_attempts < 3:
+            # First update fails (agent doesn't exist yet); subsequent ones succeed.
+            if update_attempts == 1:
                 raise agent_provisioning.OpenClawGatewayError('agent "board-agent-a" not found')
+            return {"ok": True}
+        if method == "agents.create":
+            return {"ok": True}
+        if method == "config.get":
+            return {"hash": None, "config": {"agents": {"list": []}}}
+        if method == "config.patch":
+            return {"ok": True}
+        raise AssertionError(f"Unexpected method: {method}")
+
+    monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
+    monkeypatch.setattr(agent_provisioning.asyncio, "sleep", _fake_sleep)
+    cp = agent_provisioning.OpenClawGatewayControlPlane(
+        agent_provisioning.GatewayClientConfig(url="ws://gateway.example/ws", token=None),
+    )
+    await cp.upsert_agent(
+        agent_provisioning.GatewayAgentRegistration(
+            agent_id="board-agent-a",
+            name="Board Agent A",
+            workspace_path="/tmp/workspace-board-agent-a",
+            heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
+        ),
+    )
+
+    methods = [method for method, _ in calls]
+    assert methods == ["agents.update", "agents.create", "agents.update"]
+    # 0.75 s post-create reload-debounce wait, no further retries needed.
+    assert sleeps == [0.75]
+
+
+@pytest.mark.asyncio
+async def test_control_plane_upsert_agent_retries_followup_update_after_create_race(monkeypatch):
+    """When create succeeds but the post-create `agents.update` races the
+    config-reload debounce (returns "not found" briefly), we retry with
+    exponential backoff up to 5 attempts before giving up."""
+    calls: list[tuple[str, dict[str, object] | None]] = []
+    sleeps: list[float] = []
+    update_attempts = 0
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    async def _fake_openclaw_call(method, params=None, config=None):
+        nonlocal update_attempts
+        _ = config
+        calls.append((method, params))
+        if method == "agents.update":
+            update_attempts += 1
+            # First update fails ("not found" → fall through to create).
+            # Then post-create updates fail twice, succeed on third.
+            if update_attempts < 4:
+                raise agent_provisioning.OpenClawGatewayError('agent "board-agent-a" not found')
+            return {"ok": True}
+        if method == "agents.create":
             return {"ok": True}
         if method == "config.get":
             return {"hash": None, "config": {"agents": {"list": []}}}
@@ -581,12 +602,17 @@ async def test_control_plane_upsert_agent_retries_update_after_create_race(monke
     )
 
     update_calls = [method for method, _ in calls if method == "agents.update"]
-    assert len(update_calls) == 3
+    assert len(update_calls) == 4  # initial probe + 3 post-create
+    # 0.75 s reload-debounce, then 0.5 → 1.0 backoff for the two retries.
     assert sleeps == [0.75, 0.5, 1.0]
 
 
 @pytest.mark.asyncio
-async def test_control_plane_upsert_agent_missing_after_already_exists_fails_fast(monkeypatch):
+async def test_control_plane_upsert_agent_non_missing_update_error_fails_fast(monkeypatch):
+    """A non-"not-found" error from the initial `agents.update` should
+    propagate immediately — no fallback to create, no retries. This covers
+    transport errors, 5xx, auth failures, etc. that we don't want to mask
+    by attempting a redundant create."""
     calls: list[tuple[str, dict[str, object] | None]] = []
     sleeps: list[float] = []
 
@@ -596,10 +622,8 @@ async def test_control_plane_upsert_agent_missing_after_already_exists_fails_fas
     async def _fake_openclaw_call(method, params=None, config=None):
         _ = config
         calls.append((method, params))
-        if method == "agents.create":
-            raise agent_provisioning.OpenClawGatewayError("already exists")
         if method == "agents.update":
-            raise agent_provisioning.OpenClawGatewayError('agent "board-agent-a" not found')
+            raise agent_provisioning.OpenClawGatewayError("dial tcp: connection refused")
         raise AssertionError(f"Unexpected method: {method}")
 
     monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
@@ -618,8 +642,8 @@ async def test_control_plane_upsert_agent_missing_after_already_exists_fails_fas
             ),
         )
 
-    update_calls = [method for method, _ in calls if method == "agents.update"]
-    assert len(update_calls) == 1
+    methods = [method for method, _ in calls]
+    assert methods == ["agents.update"]
     assert sleeps == []
 
 

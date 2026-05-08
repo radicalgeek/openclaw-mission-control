@@ -27,7 +27,7 @@ from app.models.agents import (
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.schemas.agents import STANDALONE_ROLE_TEMPLATES
-from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG
+from app.services.openclaw.constants import DEFAULT_HEARTBEAT_CONFIG, OFFLINE_AFTER
 from app.services.openclaw.db_agent_state import mint_agent_token
 from app.services.openclaw.internal.session_keys import standalone_agent_session_key
 from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
@@ -242,13 +242,22 @@ async def reconcile_all_orgs(session: Any) -> None:
 async def sweep_stuck_provisioning_agents(session: Any) -> int:
     """Re-enqueue lifecycle reconcile tasks for agents that need re-waking.
 
-    Catches three conditions so agents auto-recover after a gateway worker
+    Catches four conditions so agents auto-recover after a gateway worker
     restart (which wipes the in-memory ``agents.list`` and leaves every agent
     in ``offline`` / ``updating`` with a stale ``last_seen_at``):
 
     - ``status == 'provisioning'`` and ``last_seen_at IS NULL`` and
       ``updated_at < now - threshold`` — agent was created but never
       heartbeated; lifecycle queue task was lost.
+    - ``status == 'online'`` and ``(last_seen_at IS NULL OR last_seen_at <
+      now - OFFLINE_AFTER)`` and ``updated_at < now - threshold`` — gateway
+      provision succeeded (``mark_provision_complete`` set status='online')
+      but either the agent never sent its first heartbeat, or its last
+      heartbeat is stale (heartbeat loop stopped). The API serialiser's
+      ``with_computed_status`` shows these as 'provisioning' (no last_seen)
+      or 'offline' (stale last_seen) even though the DB column is 'online',
+      so without this case the ``status='offline'`` filter below silently
+      misses them and they stay stuck in the UI forever.
     - ``status == 'updating'`` and the agent has not checked in since its
       last wake — a previous update attempt failed (typically a 503 / WS
       handshake timeout from a worker restart).
@@ -276,6 +285,21 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
             .where(col(Agent.updated_at) < threshold)
         )
     )
+    offline_cutoff = utcnow() - OFFLINE_AFTER
+    stuck_online_unseen = list(
+        await session.exec(
+            select(Agent)
+            .where(col(Agent.status) == "online")
+            .where(col(Agent.gateway_id).is_not(None))
+            .where(col(Agent.updated_at) < threshold)
+            .where(
+                or_(
+                    col(Agent.last_seen_at).is_(None),
+                    col(Agent.last_seen_at) < offline_cutoff,
+                )
+            )
+        )
+    )
     stuck_updating = list(
         await session.exec(
             select(Agent)
@@ -284,6 +308,15 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
             .where(
                 or_(
                     col(Agent.last_seen_at).is_(None),
+                    # Heartbeat older than OFFLINE_AFTER — agent is no
+                    # longer responding, regardless of where the last
+                    # wake fell. Without this case, agents whose status
+                    # got wedged at "updating" by a failed-mid-flight
+                    # reconcile (mark_provision_complete never fired)
+                    # but happen to have a stale last_seen_at that's
+                    # newer than last_wake_sent_at sit forever and the
+                    # sweep can't unstick them.
+                    col(Agent.last_seen_at) < offline_cutoff,
                     col(Agent.last_wake_sent_at).is_not(None)
                     & (col(Agent.last_seen_at) < col(Agent.last_wake_sent_at)),
                 )
@@ -298,15 +331,16 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
             .where(col(Agent.updated_at) < threshold)
         )
     )
-    stuck_agents = stuck_provisioning + stuck_updating + stuck_offline
+    stuck_agents = stuck_provisioning + stuck_online_unseen + stuck_updating + stuck_offline
     if not stuck_agents:
         return 0
 
     logger.info(
         "org_agent_reconciler.stuck_sweep found=%d "
-        "(provisioning=%d updating=%d offline=%d) threshold_seconds=%d",
+        "(provisioning=%d online_unseen=%d updating=%d offline=%d) threshold_seconds=%d",
         len(stuck_agents),
         len(stuck_provisioning),
+        len(stuck_online_unseen),
         len(stuck_updating),
         len(stuck_offline),
         settings.agent_stuck_provisioning_sweep_seconds,
@@ -316,7 +350,18 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
     needs_commit = False
     for agent in stuck_agents:
         try:
-            if agent.status in ("updating", "offline") and agent.wake_attempts > 0:
+            # Reset wake budget for any agent we're re-waking so lifecycle
+            # reconcile doesn't immediately bounce it to offline. Includes
+            # the ``online_unseen`` case (status='online' but heartbeat is
+            # missing or stale): the gateway provision call returned ok and
+            # incremented wake_attempts, but the agent didn't (or stopped)
+            # heartbeating, so those attempts shouldn't count against budget.
+            online_but_unseen = agent.status == "online" and (
+                agent.last_seen_at is None or agent.last_seen_at < offline_cutoff
+            )
+            if (
+                agent.status in ("updating", "offline") or online_but_unseen
+            ) and agent.wake_attempts > 0:
                 agent.wake_attempts = 0
                 agent.updated_at = now
                 session.add(agent)

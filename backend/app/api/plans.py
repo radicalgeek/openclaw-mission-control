@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import col, select
 
 from app.api.deps import (
+    ACTOR_DEP,
     get_board_for_actor_read,
     get_board_for_user_read,
     get_board_for_user_write,
@@ -55,6 +56,8 @@ SESSION_DEP = Depends(get_session)
 USER_AUTH_DEP = Depends(require_user_auth)
 BOARD_READ_DEP = Depends(get_board_for_user_read)
 BOARD_WRITE_DEP = Depends(get_board_for_user_write)
+# Agent-accessible read dep: accepts both user and agent tokens
+BOARD_ACTOR_READ_DEP = Depends(get_board_for_actor_read)
 
 
 def _planning_enabled_check() -> None:
@@ -93,6 +96,7 @@ def _plan_to_read(plan: Plan, task_status: str | None) -> PlanRead:
         task_id=plan.task_id,
         task_status=task_status,
         messages=plan.messages,
+        decomposed_tickets=plan.decomposed_tickets,
         created_at=plan.created_at,
         updated_at=plan.updated_at,
     )
@@ -105,12 +109,12 @@ def _plan_to_read(plan: Plan, task_status: str | None) -> PlanRead:
 
 @router.get("", response_model=list[PlanRead])
 async def list_plans(
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: AsyncSession = SESSION_DEP,
-    _auth: AuthContext = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
     plan_status: str | None = Query(default=None, alias="status"),
 ) -> list[PlanRead]:
-    """List plans for a board, optionally filtered by status."""
+    """List plans for a board, optionally filtered by status. Accepts agent tokens."""
     _planning_enabled_check()
     query = select(Plan).where(col(Plan.board_id) == board.id)
     if plan_status:
@@ -214,11 +218,11 @@ async def create_plan(
 @router.get("/{plan_id}", response_model=PlanRead)
 async def get_plan(
     plan_id: UUID,
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: AsyncSession = SESSION_DEP,
-    _auth: AuthContext = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
 ) -> PlanRead:
-    """Get a single plan with its full chat transcript and current content."""
+    """Get a single plan. Accepts agent tokens."""
     _planning_enabled_check()
     plan = await _require_plan(session, plan_id, board)
     task_status = await _task_status_for_plan(session, plan)
@@ -461,7 +465,13 @@ async def agent_update_plan(
     # Store decomposed tickets if agent provided them
     if payload.tickets:
         plan.decomposed_tickets = [
-            {"title": t.title, "description": t.description, "priority": t.priority}
+            {
+                "title": t.title,
+                "description": t.description,
+                "priority": t.priority,
+                "priority_score": t.priority_score,
+                "estimate_minutes": t.estimate_minutes,
+            }
             for t in payload.tickets
         ]
 

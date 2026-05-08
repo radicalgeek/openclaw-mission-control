@@ -84,6 +84,7 @@ class BoardUpdate(SQLModel):
     max_agents: int | None = Field(default=None, ge=0)
     is_platform: bool | None = None
     auto_advance_sprint: bool | None = None
+    auto_organise_backlog: bool | None = None
     context: dict[str, object] | None = None
 
     @model_validator(mode="after")
@@ -108,5 +109,6 @@ class BoardRead(BoardBase):
     id: UUID
     organization_id: UUID
     auto_advance_sprint: bool = False
+    auto_organise_backlog: bool = False
     created_at: datetime
     updated_at: datetime

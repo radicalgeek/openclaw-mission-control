@@ -279,6 +279,47 @@ export const updateBacklogTask = (
     { method: "PATCH", body: JSON.stringify(payload) },
   );
 
+// ─── Backlog Organise ─────────────────────────────────────────────────────────
+
+export type BacklogOrganiseResponse = {
+  estimate_dispatched: boolean;
+  estimate_task_count: number;
+  estimate_agent_session: string | null;
+  prioritise_dispatched: boolean;
+  prioritise_task_count: number;
+  prioritise_agent_session: string | null;
+  sprint_id: string | null;
+  sprint_name: string | null;
+  sprint_task_ids: string[];
+  reason: string | null;
+};
+
+export const organiseBacklog = (
+  boardId: string,
+  opts?: { includeSprint?: boolean; force?: boolean; sprintName?: string },
+): Promise<ApiResponse<BacklogOrganiseResponse>> => {
+  const params = new URLSearchParams();
+  if (opts?.includeSprint) params.set("include_sprint", "true");
+  if (opts?.force) params.set("force", "true");
+  if (opts?.sprintName) params.set("sprint_name", opts.sprintName);
+  const qs = params.toString();
+  const url = qs
+    ? `${backlogBase(boardId)}/organise?${qs}`
+    : `${backlogBase(boardId)}/organise`;
+  return customFetch<ApiResponse<BacklogOrganiseResponse>>(url, { method: "POST" });
+};
+
+// ─── Board settings ───────────────────────────────────────────────────────────
+
+export const updateBoardSettings = (
+  boardId: string,
+  patch: { auto_organise_backlog?: boolean; auto_advance_sprint?: boolean },
+): Promise<ApiResponse<unknown>> =>
+  customFetch<ApiResponse<unknown>>(`/api/v1/boards/${boardId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
 // ─── Velocity ─────────────────────────────────────────────────────────────────
 
 export type SprintVelocityItem = {

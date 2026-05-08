@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Calendar, Plus, Tag, X, ChevronDown, ArrowRight, Pencil, Check } from "lucide-react";
+import { Calendar, Plus, Tag, X, ChevronDown, ArrowRight, Pencil, Check, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type TaskRead,
@@ -9,11 +9,14 @@ import {
   type BacklogTaskUpdate,
   type SprintRead,
   type TagRef,
+  type BacklogOrganiseResponse,
   listBacklog,
   createBacklogTask,
   updateBacklogTask,
   addSprintTickets,
   removeSprintTicket,
+  organiseBacklog,
+  updateBoardSettings,
 } from "@/api/sprints";
 import { ApiError } from "@/api/mutator";
 import { TaskCard } from "@/components/molecules/TaskCard";
@@ -23,6 +26,8 @@ type Props = {
   sprints: SprintRead[];
   orgTags: TagRef[];
   onSprintChange?: () => void;
+  autoOrganise?: boolean;
+  onToggleAutoOrganise?: (enabled: boolean) => void;
 };
 
 const PRIORITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
@@ -50,7 +55,7 @@ const STATUS_LABELS: Record<string, string> = {
 /** Statuses shown in the backlog view by default (not on the sprint board) */
 const BACKLOG_STATUSES = new Set(["triage", "backlog"]);
 
-export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props) {
+export function BacklogView({ boardId, sprints, orgTags, onSprintChange, autoOrganise = false, onToggleAutoOrganise }: Props) {
   const [tasks, setTasks] = useState<TaskRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -72,6 +77,12 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
   // Backlog filter — show triage + backlog tasks by default
   const [showNonBacklog, setShowNonBacklog] = useState(false);
 
+  // Organise backlog
+  const [organising, setOrganising] = useState(false);
+  const [organiseResult, setOrganiseResult] = useState<BacklogOrganiseResponse | null>(null);
+  const [organiseError, setOrganiseError] = useState<string | null>(null);
+  const [toggleBusy, setToggleBusy] = useState(false);
+
   // Detail panel
   const [selectedTask, setSelectedTask] = useState<TaskRead | null>(null);
   const [editDraft, setEditDraft] = useState<BacklogTaskUpdate>({});
@@ -92,6 +103,44 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
       setLoading(false);
     }
   }, [boardId]);
+
+  const handleOrganise = useCallback(
+    async (includeSprint: boolean) => {
+      setOrganising(true);
+      setOrganiseError(null);
+      setOrganiseResult(null);
+      try {
+        const res = await organiseBacklog(boardId, { includeSprint });
+        setOrganiseResult(res.data);
+        await loadTasks();
+        if (includeSprint && res.data.sprint_id) onSprintChange?.();
+      } catch (err) {
+        setOrganiseError(err instanceof ApiError ? (err.message ?? "Failed") : "Failed");
+      } finally {
+        setOrganising(false);
+      }
+    },
+    [boardId, loadTasks, onSprintChange],
+  );
+
+  const handleToggleAutoOrganise = useCallback(
+    async (enabled: boolean) => {
+      setToggleBusy(true);
+      try {
+        await updateBoardSettings(boardId, { auto_organise_backlog: enabled });
+        onToggleAutoOrganise?.(enabled);
+        // When turning on, immediately organise the existing backlog into a sprint.
+        if (enabled) {
+          void handleOrganise(true);
+        }
+      } catch {
+        // silent — toggle will snap back via parent re-render
+      } finally {
+        setToggleBusy(false);
+      }
+    },
+    [boardId, handleOrganise, onToggleAutoOrganise],
+  );
 
   useEffect(() => {
     void loadTasks();
@@ -255,41 +304,120 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange }: Props
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
-          <div>
-            <h2 className="text-base font-semibold text-slate-800">Backlog</h2>
-            {(() => {
-              const backlogCount = tasks.filter((t) => BACKLOG_STATUSES.has(t.status)).length;
-              const hiddenCount = tasks.length - backlogCount;
-              return (
-                <div className="flex items-center gap-2">
-                  {backlogCount > 0 && (
-                    <p className="text-xs text-slate-400">
-                      {backlogCount} ticket{backlogCount !== 1 ? "s" : ""}
-                    </p>
+        <div className="border-b border-slate-200 bg-white px-5 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-800">Backlog</h2>
+              {(() => {
+                const backlogCount = tasks.filter((t) => BACKLOG_STATUSES.has(t.status)).length;
+                const hiddenCount = tasks.length - backlogCount;
+                return (
+                  <div className="flex items-center gap-2">
+                    {backlogCount > 0 && (
+                      <p className="text-xs text-slate-400">
+                        {backlogCount} ticket{backlogCount !== 1 ? "s" : ""}
+                      </p>
+                    )}
+                    {hiddenCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowNonBacklog((v) => !v)}
+                        className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline transition"
+                      >
+                        {showNonBacklog
+                          ? `Hide completed (${hiddenCount})`
+                          : `Show completed (${hiddenCount})`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Organise button with sprint option */}
+              <div className="relative group">
+                <button
+                  disabled={organising || tasks.length === 0}
+                  onClick={() => void handleOrganise(false)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 transition"
+                  title="Dispatch agents to estimate and prioritise backlog tickets"
+                >
+                  {organising ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
                   )}
-                  {hiddenCount > 0 && (
+                  {organising ? "Organising…" : "Organise"}
+                </button>
+                {/* Dropdown for "organise + create sprint" */}
+                {!organising && tasks.length > 0 && (
+                  <div className="absolute right-0 top-8 z-20 hidden w-52 rounded-xl border border-slate-200 bg-white py-1 shadow-lg group-focus-within:block">
                     <button
-                      type="button"
-                      onClick={() => setShowNonBacklog((v) => !v)}
-                      className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline transition"
+                      onClick={() => void handleOrganise(false)}
+                      className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-[color:var(--accent-soft)] transition"
                     >
-                      {showNonBacklog
-                        ? `Hide completed (${hiddenCount})`
-                        : `Show completed (${hiddenCount})`}
+                      <span className="font-medium">Estimate + prioritise</span>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Dispatch agents, keep in backlog</p>
                     </button>
-                  )}
-                </div>
-              );
-            })()}
+                    <button
+                      onClick={() => void handleOrganise(true)}
+                      className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-[color:var(--accent-soft)] transition"
+                    >
+                      <span className="font-medium">Organise into sprint</span>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Estimate + prioritise, then create draft sprint</p>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setShowForm((v) => !v)}
+                className="flex items-center gap-1.5 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] shadow-sm hover:bg-[color:var(--accent-strong)] transition"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {showForm ? "Cancel" : "Add ticket"}
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1.5 rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] shadow-sm hover:bg-[color:var(--accent-strong)] transition"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {showForm ? "Cancel" : "Add ticket"}
-          </button>
+
+          {/* Auto-organise toggle */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoOrganise}
+                disabled={toggleBusy}
+                onClick={() => void handleToggleAutoOrganise(!autoOrganise)}
+                className={cn(
+                  "relative inline-flex h-4 w-7 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50",
+                  autoOrganise ? "bg-[color:var(--accent)]" : "bg-slate-200",
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200",
+                    autoOrganise ? "translate-x-3" : "translate-x-0",
+                  )}
+                />
+              </button>
+              <span className="text-[11px] text-slate-500">
+                Auto-organise new tickets
+              </span>
+            </label>
+            {organiseResult && !organising && (
+              <p className="text-[10px] text-slate-400">
+                {organiseResult.estimate_dispatched || organiseResult.prioritise_dispatched
+                  ? `Agents dispatched (${organiseResult.estimate_task_count + organiseResult.prioritise_task_count} tasks)`
+                  : organiseResult.sprint_id
+                    ? `Sprint created`
+                    : "Nothing to do"}
+                {organiseResult.sprint_name ? ` · "${organiseResult.sprint_name}"` : ""}
+              </p>
+            )}
+            {organiseError && !organising && (
+              <p className="text-[10px] text-danger">{organiseError}</p>
+            )}
+          </div>
         </div>
 
         {/* Create form */}

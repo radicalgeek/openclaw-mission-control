@@ -90,8 +90,11 @@ class Settings(BaseSettings):
     rq_queue_name: str = "default"
     rq_dispatch_throttle_seconds: float = 15.0
     rq_dispatch_max_retries: int = 3
-    rq_dispatch_retry_base_seconds: float = 10.0
-    rq_dispatch_retry_max_seconds: float = 120.0
+    # Backoff used when a queue task fails (exponential, capped). 60s base
+    # avoids hammering a slow gateway with 10s retries during transport
+    # failures (which compounds the load and causes a retry storm).
+    rq_dispatch_retry_base_seconds: float = 60.0
+    rq_dispatch_retry_max_seconds: float = 600.0
 
     # Org-level standalone agent reconciliation interval (seconds).
     # Runs reconcile_all_orgs + sweep_stuck_provisioning_agents on this cadence.
@@ -102,9 +105,15 @@ class Settings(BaseSettings):
 
     # Agent provisioning watchdog: how long (seconds) after a wake call the agent
     # must send its first heartbeat before the reconcile worker retries.
-    # A generous window (120 s) is needed when several agents are provisioned
-    # concurrently and the gateway worker queues WebSocket handshakes serially.
-    agent_checkin_deadline_seconds: int = 120
+    #
+    # Bootstrap is multi-turn: read AGENTS.md → BOOTSTRAP.md → run shell setup
+    # → curl /healthz → curl /heartbeat. Each LLM turn is 5–30 s; on NFS-backed
+    # sessions an `agents.create` write can stall 30–89 s under contention.
+    # The previous 120 s budget guaranteed retries fired mid-bootstrap, before
+    # the agent could send its first heartbeat — and combined with session
+    # resets on retry, the agent never made progress. 600 s gives realistic
+    # headroom while still catching genuinely-dead agents within OFFLINE_AFTER.
+    agent_checkin_deadline_seconds: int = 600
 
     # Maximum number of wake retries before the reconciler gives up and marks
     # the agent offline.
@@ -114,7 +123,11 @@ class Settings(BaseSettings):
     # heartbeat is treated as orphaned and re-enqueued for a retry.  This sweep
     # runs inside the periodic org-agent reconcile cycle and catches agents that
     # were provisioned before the enqueue-on-failure fix was deployed.
-    agent_stuck_provisioning_sweep_seconds: int = 300
+    #
+    # Aligned with the checkin deadline above: the sweep should not fire faster
+    # than the lifecycle's own retry budget, otherwise the org sweep races the
+    # lifecycle reconcile and we get duplicate enqueues during bootstrap.
+    agent_stuck_provisioning_sweep_seconds: int = 900
 
     # OpenClaw gateway runtime compatibility
     gateway_min_version: str = "2026.02.9"

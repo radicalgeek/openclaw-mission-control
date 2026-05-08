@@ -386,8 +386,6 @@ Developer Agent stuck (3 attempts)
           → Still stuck: Escalate to human via Board Lead (ask-user endpoint)
 ```
 
-
-
 ---
 
 ## Model Configuration

@@ -11,6 +11,7 @@ import type { BoardUpdateSuccessMetrics } from "./boardUpdateSuccessMetrics";
  */
 export interface BoardUpdate {
   auto_advance_sprint?: boolean | null;
+  auto_organise_backlog?: boolean | null;
   block_status_changes_with_pending_approval?: boolean | null;
   board_group_id?: string | null;
   board_type?: string | null;

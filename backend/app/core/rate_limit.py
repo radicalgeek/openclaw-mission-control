@@ -17,6 +17,7 @@ from typing import Awaitable, cast
 import redis as redis_lib
 import redis.asyncio as aioredis
 
+from app.core.config import settings as _settings
 from app.core.logging import get_logger
 from app.core.rate_limit_backend import RateLimitBackend
 
@@ -224,7 +225,6 @@ def create_rate_limiter(
 
 # Shared limiter instances for specific endpoints — thresholds read from settings
 # so they can be tuned or disabled via environment variables without a rebuild.
-from app.core.config import settings as _settings
 
 # Agent auth: configurable via AGENT_AUTH_RATE_LIMIT_MAX / AGENT_AUTH_RATE_LIMIT_WINDOW.
 agent_auth_limiter: RateLimiter = create_rate_limiter(

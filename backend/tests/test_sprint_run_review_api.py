@@ -83,13 +83,14 @@ async def _seed_with_sprint_and_reviewers(
 
     reviewers: dict[str, Agent] = {}
 
-    def _make_reviewer(name: str) -> Agent:
+    def _make_reviewer(name: str, role_template: str) -> Agent:
         return Agent(
             id=uuid4(),
             gateway_id=gw_id,
             name=name,
             agent_type=AGENT_TYPE_STANDALONE,
             openclaw_session_id=f"{name.lower()}-session",
+            identity_profile={"role_template": role_template},
         )
 
     objects: list[object] = [
@@ -112,13 +113,13 @@ async def _seed_with_sprint_and_reviewers(
         user,
     ]
     if with_qa:
-        reviewers["qa"] = _make_reviewer("QA")
+        reviewers["qa"] = _make_reviewer("QA", "quality_reviewer")
         objects.append(reviewers["qa"])
     if with_security:
-        reviewers["security"] = _make_reviewer("Security")
+        reviewers["security"] = _make_reviewer("Security", "security_reviewer")
         objects.append(reviewers["security"])
     if with_architecture:
-        reviewers["architecture"] = _make_reviewer("Architecture")
+        reviewers["architecture"] = _make_reviewer("Architecture", "architecture_reviewer")
         objects.append(reviewers["architecture"])
 
     sprint = Sprint(
@@ -240,7 +241,7 @@ async def test_run_review_skips_unconfigured_reviewers() -> None:
         assert body["dispatched_reviewers"] == ["qa"]
         skipped_roles = [s["role"] for s in body["skipped_reviewers"]]
         assert sorted(skipped_roles) == ["architecture", "security"]
-        assert all(s["reason"] == "agent_not_configured" for s in body["skipped_reviewers"])
+        assert all(s["reason"] == "agent_offline_or_missing" for s in body["skipped_reviewers"])
     finally:
         await engine.dispose()
 

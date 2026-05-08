@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from sqlmodel import col, select
 
 from app.api.deps import (
+    ACTOR_DEP,
+    get_board_for_actor_read,
     get_board_for_user_read,
     get_board_for_user_write,
     require_user_auth,
@@ -48,6 +50,7 @@ SESSION_DEP = Depends(get_session)
 BOARD_READ_DEP = Depends(get_board_for_user_read)
 BOARD_WRITE_DEP = Depends(get_board_for_user_write)
 USER_AUTH_DEP = Depends(require_user_auth)
+BOARD_ACTOR_READ_DEP = Depends(get_board_for_actor_read)
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +192,9 @@ async def _tasks_to_read_with_tags(
 
 @router.get("/sprints", response_model=list[SprintRead])
 async def list_sprints(
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
     sprint_status: str | None = Query(default=None, alias="status"),
 ) -> list[SprintRead]:
     """List sprints for a board, optionally filtered by status."""
@@ -243,9 +246,9 @@ async def create_sprint(
 @router.get("/sprints/{sprint_id}", response_model=SprintRead)
 async def get_sprint(
     sprint_id: UUID,
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
 ) -> SprintRead:
     """Get a single sprint with ticket counts."""
     sprint = await _require_sprint(session, sprint_id, board)
@@ -550,19 +553,17 @@ async def run_sprint_review(
     dispatcher = PlanningMessagingService(session)
     dispatched: list[str] = []
     skipped: list[dict[str, str]] = []
-    role_to_setting = {
-        "qa": settings.org_qa_reviewer_agent_id,
-        "security": settings.org_security_reviewer_agent_id,
-        "architecture": settings.org_architecture_reviewer_agent_id,
+    role_to_agent = {
+        "qa": ("quality_reviewer", settings.org_qa_reviewer_agent_id),
+        "security": ("security_reviewer", settings.org_security_reviewer_agent_id),
+        "architecture": ("architecture_reviewer", settings.org_architecture_reviewer_agent_id),
     }
-    for role, agent_id in role_to_setting.items():
-        if not agent_id:
-            skipped.append({"role": role, "reason": "agent_not_configured"})
-            continue
+    for role, (role_template, agent_id) in role_to_agent.items():
         prompt = _build_review_prompt(board, sprint, role, tasks)
         session_key = await dispatcher.dispatch_to_configured_org_agent(
             board=board,
             configured_agent_id=agent_id,
+            role_template=role_template,
             prompt=prompt,
             log_prefix=f"sprint.review.{role}",
             correlation_id=f"sprint.review.{role}:{sprint.id}",
@@ -612,9 +613,9 @@ async def cancel_sprint(
 @router.get("/sprints/{sprint_id}/tickets", response_model=list[TaskRead])
 async def list_sprint_tickets(
     sprint_id: UUID,
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
     ticket_status: str | None = Query(default=None, alias="status"),
 ) -> list[TaskRead]:
     """List tasks linked to this sprint."""
@@ -755,9 +756,9 @@ async def reorder_sprint_tickets(
 
 @router.get("/backlog", response_model=list[TaskRead])
 async def list_backlog(
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
     sprint_id: UUID | None = Query(default=None),
     unassigned: bool = Query(default=False),
     task_status: str | None = Query(default=None, alias="status"),
@@ -824,6 +825,14 @@ async def create_backlog_task(
     )
     await session.commit()
     await session.refresh(task)
+
+    if board.auto_organise_backlog:
+        try:
+            await _dispatch_organise_agents(session, board=board)
+            await session.commit()
+        except Exception:
+            logger.warning("backlog.auto_organise.failed board_id=%s", board.id)
+
     reads = await _tasks_to_read_with_tags(session, [task])
     return reads[0]
 
@@ -962,6 +971,7 @@ async def dispatch_backlog_estimate(
     session_key = await dispatcher.dispatch_to_configured_org_agent(
         board=board,
         configured_agent_id=settings.org_estimator_agent_id,
+        role_template="estimator",
         prompt=prompt,
         log_prefix="backlog.estimate",
         correlation_id=f"backlog.estimate:{board.id}",
@@ -1042,6 +1052,7 @@ async def dispatch_backlog_prioritise(
     session_key = await dispatcher.dispatch_to_configured_org_agent(
         board=board,
         configured_agent_id=settings.org_prioritiser_agent_id,
+        role_template="priority",
         prompt=prompt,
         log_prefix="backlog.prioritise",
         correlation_id=f"backlog.prioritise:{board.id}",
@@ -1068,6 +1079,214 @@ async def dispatch_backlog_prioritise(
         task_ids=[t.id for t in tasks],
         skipped_existing=skipped,
         agent_session=session_key,
+    )
+
+
+class _BacklogOrganiseResponse(BaseModel):
+    """Response from POST /backlog/organise."""
+
+    estimate_dispatched: bool
+    estimate_task_count: int
+    estimate_agent_session: str | None
+    prioritise_dispatched: bool
+    prioritise_task_count: int
+    prioritise_agent_session: str | None
+    sprint_id: UUID | None = None
+    sprint_name: str | None = None
+    sprint_task_ids: list[UUID] = []
+    reason: str | None = None
+
+
+async def _dispatch_organise_agents(
+    session: "AsyncSession",
+    *,
+    board: Board,
+    force: bool = False,
+) -> tuple[bool, str | None, int, bool, str | None, int]:
+    """Dispatch estimate + prioritise agents for the board backlog.
+
+    Returns (est_dispatched, est_session, est_count, pri_dispatched, pri_session, pri_count).
+    Swallows exceptions so callers (auto-trigger) do not fail on agent errors.
+    """
+    from app.services.openclaw.planning_service import (  # noqa: PLC0415
+        PlanningMessagingService,
+    )
+
+    dispatcher = PlanningMessagingService(session)
+
+    # --- estimate ---
+    if force:
+        from sqlalchemy import or_  # noqa: PLC0415
+
+        stmt = (
+            select(Task)
+            .where(col(Task.board_id) == board.id)
+            .where(
+                or_(
+                    col(Task.status).in_(["triage", "backlog"]),
+                    col(Task.is_backlog).is_(True),
+                ),
+            )
+        )
+        est_tasks = list((await session.exec(stmt)).all())
+    else:
+        est_tasks, _ = await _select_backlog_tasks_missing_field(
+            session, board_id=board.id, field="estimate_minutes"
+        )
+
+    est_dispatched = False
+    est_session: str | None = None
+    if est_tasks:
+        prompt = _build_estimate_prompt(board, est_tasks)
+        est_session = await dispatcher.dispatch_to_configured_org_agent(
+            board=board,
+            configured_agent_id=settings.org_estimator_agent_id,
+            role_template="estimator",
+            prompt=prompt,
+            log_prefix="backlog.organise.estimate",
+            correlation_id=f"backlog.organise.estimate:{board.id}",
+        )
+        est_dispatched = est_session is not None
+
+    # --- prioritise ---
+    if force:
+        from sqlalchemy import or_  # noqa: PLC0415
+
+        stmt = (
+            select(Task)
+            .where(col(Task.board_id) == board.id)
+            .where(
+                or_(
+                    col(Task.status).in_(["triage", "backlog"]),
+                    col(Task.is_backlog).is_(True),
+                ),
+            )
+        )
+        pri_tasks = list((await session.exec(stmt)).all())
+    else:
+        pri_tasks, _ = await _select_backlog_tasks_missing_field(
+            session, board_id=board.id, field="priority_score"
+        )
+
+    pri_dispatched = False
+    pri_session: str | None = None
+    if pri_tasks:
+        prompt = _build_prioritise_prompt(board, pri_tasks)
+        pri_session = await dispatcher.dispatch_to_configured_org_agent(
+            board=board,
+            configured_agent_id=settings.org_prioritiser_agent_id,
+            role_template="priority",
+            prompt=prompt,
+            log_prefix="backlog.organise.prioritise",
+            correlation_id=f"backlog.organise.prioritise:{board.id}",
+        )
+        pri_dispatched = pri_session is not None
+
+    return est_dispatched, est_session, len(est_tasks), pri_dispatched, pri_session, len(pri_tasks)
+
+
+@router.post("/backlog/organise", response_model=_BacklogOrganiseResponse)
+async def organise_backlog(
+    board: Board = BOARD_WRITE_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    auth: "AuthContext" = USER_AUTH_DEP,
+    include_sprint: bool = Query(default=False),
+    force: bool = Query(default=False),
+    sprint_name: str | None = Query(default=None),
+) -> _BacklogOrganiseResponse:
+    """Dispatch estimate + prioritise agents over the backlog, and optionally build a sprint.
+
+    Idempotent for agent dispatch (skips tasks with existing data unless ``force=true``).
+    With ``include_sprint=true``, a draft sprint is created from the current backlog sorted by
+    ``priority_score`` desc. The sprint name is auto-generated if not supplied.
+    """
+    est_dispatched, est_session, est_count, pri_dispatched, pri_session, pri_count = (
+        await _dispatch_organise_agents(session, board=board, force=force)
+    )
+
+    sprint_id: UUID | None = None
+    sprint_out_name: str | None = None
+    sprint_task_ids: list[UUID] = []
+
+    if include_sprint:
+        from sqlalchemy import or_  # noqa: PLC0415
+
+        backlog_stmt = (
+            select(Task)
+            .where(col(Task.board_id) == board.id)
+            .where(
+                or_(
+                    col(Task.status).in_(["triage", "backlog"]),
+                    col(Task.is_backlog).is_(True),
+                ),
+            )
+            .where(col(Task.sprint_id).is_(None))
+            .order_by(col(Task.priority_score).desc(), col(Task.created_at).asc())
+        )
+        backlog_tasks = list((await session.exec(backlog_stmt)).all())
+
+        if backlog_tasks:
+            # Auto-name: Sprint N+1 based on total sprint count for this board.
+            if sprint_name:
+                auto_name = sprint_name
+            else:
+                existing_count = len(
+                    (
+                        await session.exec(select(Sprint).where(col(Sprint.board_id) == board.id))
+                    ).all()
+                )
+                auto_name = f"Sprint {existing_count + 1}"
+
+            sprint = Sprint(
+                organization_id=board.organization_id,
+                board_id=board.id,
+                name=auto_name,
+                slug=generate_slug(auto_name),
+                status="draft",
+                position=0,
+                created_by_user_id=auth.user.id if auth.user else None,
+            )
+            session.add(sprint)
+            await session.flush()
+
+            for idx, task in enumerate(backlog_tasks):
+                link = SprintTicket(sprint_id=sprint.id, task_id=task.id, position=idx)
+                session.add(link)
+                task.sprint_id = sprint.id
+                task.updated_at = utcnow()
+                session.add(task)
+
+            sprint_id = sprint.id
+            sprint_out_name = auto_name
+            sprint_task_ids = [t.id for t in backlog_tasks]
+
+    record_activity(
+        session,
+        event_type="backlog_organised",
+        message=(
+            f"Backlog organised: {est_count} tasks dispatched for estimation, "
+            f"{pri_count} for prioritisation"
+            + (f", sprint '{sprint_out_name}' created" if sprint_out_name else "")
+        ),
+        board_id=board.id,
+    )
+    await session.commit()
+
+    reason: str | None = None
+    if not est_dispatched and not pri_dispatched and not sprint_id:
+        reason = "no_tasks_need_processing"
+
+    return _BacklogOrganiseResponse(
+        estimate_dispatched=est_dispatched,
+        estimate_task_count=est_count,
+        estimate_agent_session=est_session,
+        prioritise_dispatched=pri_dispatched,
+        prioritise_task_count=pri_count,
+        prioritise_agent_session=pri_session,
+        sprint_id=sprint_id,
+        sprint_name=sprint_out_name,
+        sprint_task_ids=sprint_task_ids,
+        reason=reason,
     )
 
 
@@ -1113,6 +1332,14 @@ async def batch_create_backlog(
         board_id=board.id,
     )
     await session.commit()
+
+    if board.auto_organise_backlog:
+        try:
+            await _dispatch_organise_agents(session, board=board)
+            await session.commit()
+        except Exception:
+            logger.warning("backlog.auto_organise.failed board_id=%s", board.id)
+
     return created
 
 
