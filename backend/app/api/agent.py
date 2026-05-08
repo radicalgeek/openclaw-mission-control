@@ -15,6 +15,7 @@ from app.api import agents as agents_api
 from app.api import approvals as approvals_api
 from app.api import board_memory as board_memory_api
 from app.api import board_onboarding as onboarding_api
+from app.api import plans as plans_api
 from app.api import tasks as tasks_api
 from app.api.deps import ActorContext, agent_has_board_access, get_board_or_404, get_task_or_404
 from app.core.agent_auth import AgentAuthContext, get_agent_auth_context
@@ -24,6 +25,7 @@ from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.boards import Board
 from app.models.gateways import Gateway
+from app.models.plans import Plan
 from app.models.tags import Tag
 from app.models.task_dependencies import TaskDependency
 from app.models.tasks import Task
@@ -52,6 +54,7 @@ from app.schemas.gateway_coordination import (
 )
 from app.schemas.health import AgentHealthStatusResponse
 from app.schemas.pagination import DefaultLimitOffsetPage
+from app.schemas.plans import PlanRead
 from app.schemas.tags import TagRef
 from app.schemas.tasks import TaskCommentCreate, TaskCommentRead, TaskCreate, TaskRead, TaskUpdate
 from app.services.activity_log import record_activity
@@ -507,6 +510,41 @@ async def get_board(
     """
     await _guard_board_access(session, agent_ctx, board, write=True)
     return board
+
+
+@router.get(
+    "/boards/{board_id}/plans/{plan_id}",
+    response_model=PlanRead,
+    tags=AGENT_ALL_ROLE_TAGS,
+    summary="Fetch a board plan by id",
+    description=(
+        "Agent-scoped plan detail lookup.\n\n"
+        "This mirrors the board plan detail route for agents that naturally stay under "
+        "the /agent/boards namespace after discovering boards."
+    ),
+    openapi_extra={
+        "x-llm-intent": "agent_plan_lookup",
+        "x-when-to-use": [
+            "Fetch the full content for a known active plan before decomposing it",
+            "Recover from a plan list item when the agent wants a detail endpoint",
+        ],
+        "x-required-actor": "any_agent_with_board_access",
+        "x-side-effects": ["No persisted side effects"],
+    },
+)
+async def get_board_plan(
+    plan_id: UUID,
+    board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> PlanRead:
+    """Return a board plan if the authenticated agent can access the board."""
+    await _guard_board_access(session, agent_ctx, board)
+    plan = await session.get(Plan, plan_id)
+    if plan is None or plan.board_id != board.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    task_status = await plans_api._task_status_for_plan(session, plan)
+    return plans_api._plan_to_read(plan, task_status)
 
 
 @router.get(

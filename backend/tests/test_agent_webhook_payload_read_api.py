@@ -22,6 +22,7 @@ from app.models.board_webhooks import BoardWebhook
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
+from app.models.plans import Plan
 
 
 async def _make_engine() -> AsyncEngine:
@@ -146,6 +147,44 @@ async def test_agent_can_fetch_webhook_payload() -> None:
         assert body["webhook_id"] == str(webhook.id)
         assert body["payload"] == {"event": "push", "ref": "refs/heads/master"}
         assert body["headers"]["x-github-event"] == "push"
+
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_can_fetch_board_plan_detail() -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    app = _build_test_app(session_maker)
+
+    async with session_maker() as session:
+        token, board, _webhook, _payload = await _seed_payload(session)
+        plan = Plan(
+            id=uuid4(),
+            board_id=board.id,
+            title="CargoFlights Runway approval",
+            slug="cargoflights-runway-approval",
+            content="# Plan\nBreak this into backlog tickets.",
+            status="active",
+            decomposition_target="org_triager",
+        )
+        session.add(plan)
+        await session.commit()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(
+                f"/api/v1/agent/boards/{board.id}/plans/{plan.id}",
+                headers={"X-Agent-Token": token},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == str(plan.id)
+        assert body["board_id"] == str(board.id)
+        assert body["content"] == "# Plan\nBreak this into backlog tickets."
+        assert body["decomposition_target"] == "org_triager"
 
     finally:
         await engine.dispose()
