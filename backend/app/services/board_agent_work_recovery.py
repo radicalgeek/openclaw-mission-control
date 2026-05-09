@@ -15,6 +15,7 @@ from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.tasks import Task
 from app.services.activity_log import record_activity
+from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.provisioning import (
     OpenClawGatewayProvisioner,
@@ -139,7 +140,7 @@ def _agent_needs_work_wake(agent: Agent) -> bool:
         return True
     if agent.last_seen_at is None:
         return True
-    return agent.last_seen_at < now - timedelta(seconds=settings.agent_offline_after_seconds)
+    return agent.last_seen_at < now - OFFLINE_AFTER
 
 
 async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int:

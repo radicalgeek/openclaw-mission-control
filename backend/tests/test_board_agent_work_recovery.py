@@ -17,6 +17,7 @@ from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
 from app.services import board_agent_work_recovery as recovery
+from app.services.openclaw.constants import OFFLINE_AFTER
 
 
 async def _make_engine() -> AsyncEngine:
@@ -206,5 +207,67 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
             assert woken == 0
             assert wake_calls == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_wakes_online_agent_with_stale_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    openclaw_session_id="agent:worker:main",
+                    last_seen_at=utcnow() - OFFLINE_AFTER - timedelta(minutes=1),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Do the work",
+                    status="in_progress",
+                    assigned_agent_id=agent_id,
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert wake_calls
     finally:
         await engine.dispose()
