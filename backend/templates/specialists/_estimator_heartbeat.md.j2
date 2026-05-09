@@ -40,7 +40,43 @@ an incomplete heartbeat.
    `is_backlog` flag, and the required discovery query is
    `tasks?is_backlog=true`.
 
-2. **Estimate every discovered ticket in this heartbeat.** Do not estimate only
+2. **Load historical velocity and accuracy before estimating.** For each board
+   with missing estimates, gather the last completed sprint velocity and
+   completed task actuals. Historical data is optional, but when it exists it is
+   the primary calibration signal.
+
+   ```bash
+   jq -r '.[].estimator_board_id' /tmp/estimator-missing-estimates.json \
+     | sort -u \
+     | while read -r board_id; do
+       curl -fsS "{{ base_url }}/api/v1/agent/boards/${board_id}/sprints/velocity?window=5" \
+         -H "X-Agent-Token: {{ auth_token }}" \
+         > "/tmp/estimator-velocity-${board_id}.json"
+
+       curl -fsS "{{ base_url }}/api/v1/agent/boards/${board_id}/tasks?status=done&limit=200" \
+         -H "X-Agent-Token: {{ auth_token }}" \
+         | jq '[.items[]
+             | select(.estimate_minutes != null or .actual_minutes != null)
+             | {id, title, priority, estimate_minutes, actual_minutes, done_at}
+           ]' > "/tmp/estimator-completed-${board_id}.json"
+     done
+   ```
+
+   Use this data in order:
+   - Prefer comparable completed tickets with `actual_minutes`.
+   - Next prefer comparable completed tickets with `estimate_minutes`.
+   - Use sprint `rolling_accuracy` to adjust new estimates when actuals show a
+     consistent bias. If historical estimates were optimistic
+     (`rolling_accuracy > 1.15`), increase similar new estimates. If historical
+     estimates were conservative (`rolling_accuracy < 0.85`), reduce similar
+     new estimates. Keep the final value in a defensible bucket.
+   - Use `rolling_velocity_minutes` as a capacity sanity check: if one ticket
+     consumes more than roughly half of recent sprint velocity, either choose
+     `480` and recommend splitting, or explain why it still fits.
+   - If there are fewer than three useful historical data points for a board,
+     say that history is insufficient and fall back to the methodology buckets.
+
+3. **Estimate every discovered ticket in this heartbeat.** Do not estimate only
    the top few, a sample, or a priority slice. Prioritisation only decides the
    order when there are many tickets; it does not reduce the set you must
    process.
@@ -52,9 +88,12 @@ an incomplete heartbeat.
    - Requested by the planner or lead.
    - Closest to sprint boundary (likely to be pulled next).
 
-3. **For each ticket:**
+4. **For each ticket:**
    - Read title, description, acceptance criteria, and any comments.
-   - Identify comparable historic tickets from MEMORY.md calibration data.
+   - Identify comparable historic tickets from MEMORY.md calibration data and
+     from the completed-task/velocity files gathered above.
+   - Base the estimate on historical ticket velocity/actuals when useful
+     historical data exists; otherwise use the methodology buckets.
    - Apply estimation methodology (see below).
    - If information is sparse, still set a conservative estimate from the available title/description; only mark `needs_refinement` after setting an estimate.
    - Set `estimate_minutes` via PATCH. Use `-o /dev/null` so large task
@@ -66,19 +105,20 @@ an incomplete heartbeat.
        -d '{"estimate_minutes": 120, "comment": "Estimate: 120 minutes. Rationale: moderate multi-step implementation with validation and deployment checks."}' \
        -o /dev/null
      ```
-   - Add a comment with estimation rationale and comparable tickets used.
+   - Add a comment with estimation rationale, comparable tickets used, and
+     whether historical velocity was available or insufficient.
    - If confidence is below 60%, tag ticket `needs_refinement` with specific questions.
    - If estimate >480 minutes, recommend splitting and mention `@triager`.
 
-4. **Calibration check** (end of sprint or when lead requests):
+5. **Calibration check** (end of sprint or when lead requests):
    - Pull recently completed tickets that had estimates.
    - Compare `estimate_minutes` to `actual_minutes`.
    - Calculate per-category calibration ratios.
    - Post calibration summary to MEMORY.md if significant drift detected.
 
-5. **Update MEMORY.md** with estimation log and calibration data.
+6. **Update MEMORY.md** with estimation log and calibration data.
 
-6. **Verify completion before returning OK.** Re-run the discovery command after
+7. **Verify completion before returning OK.** Re-run the discovery command after
    all PATCH calls. If any backlog ticket still has `estimate_minutes == null`,
    keep estimating those remaining tickets. Return `HEARTBEAT_OK` only when a
    fresh API read proves the missing-estimate result is `[]`.
@@ -95,6 +135,8 @@ an incomplete heartbeat.
 | >480 min | Should almost certainly be split by the triager |
 
 Estimation inputs for each ticket:
+- **Historical velocity**: comparable completed tickets, actual minutes,
+  estimation accuracy, and recent rolling sprint velocity.
 - **Scope**: number of files/modules affected.
 - **Complexity**: algorithmic difficulty, new vs existing patterns.
 - **Dependencies**: external services, API changes, migration complexity.

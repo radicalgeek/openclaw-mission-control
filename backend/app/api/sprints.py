@@ -1367,9 +1367,9 @@ class _VelocityResponse(BaseModel):
 
 @router.get("/velocity", response_model=_VelocityResponse)
 async def board_velocity(
-    board: Board = BOARD_READ_DEP,
+    board: Board = BOARD_ACTOR_READ_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: object = ACTOR_DEP,
     window: int = Query(default=5, ge=1, le=20),
 ) -> _VelocityResponse:
     """Return velocity and estimation accuracy for the last N completed sprints."""

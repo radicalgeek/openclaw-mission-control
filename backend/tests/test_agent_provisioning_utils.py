@@ -117,6 +117,8 @@ def test_estimator_heartbeat_prompt_requires_missing_estimate_discovery():
     assert "all backlog tickets have estimate_minutes" in heartbeat["prompt"]
     assert "not just a sample" in heartbeat["prompt"]
     assert "Do not ask for permission" in heartbeat["prompt"]
+    assert "historical ticket velocity" in heartbeat["prompt"]
+    assert "completed-task actuals" in heartbeat["prompt"]
     assert "do not return HEARTBEAT_OK" in heartbeat["prompt"]
 
 
