@@ -39,6 +39,7 @@ class _AgentStub:
     identity_template: str | None = None
     soul_template: str | None = None
     agent_type: str = "gateway_main"
+    board_id: UUID | None = None
 
 
 def test_agent_key_uses_session_key_when_present():
@@ -183,6 +184,22 @@ def test_agent_model_config_uses_role_template_model_policy():
         "primary": "azure-foundry/gpt-5-4"
     }
     assert agent_provisioning._agent_model_config(planner) is None
+
+
+def test_agent_model_config_pins_board_agents_to_gpt_4_1():
+    lead = _AgentStub(name="Board Lead", board_id=uuid4())
+    merger = _AgentStub(
+        name="Merge Agent",
+        board_id=uuid4(),
+        identity_profile={"role_template": "merger"},
+    )
+
+    assert agent_provisioning._agent_model_config(lead) == {
+        "primary": "azure-foundry/gpt-4.1"
+    }
+    assert agent_provisioning._agent_model_config(merger) == {
+        "primary": "azure-foundry/gpt-4.1"
+    }
 
 
 def test_agent_model_config_explicit_identity_profile_override_wins():

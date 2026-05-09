@@ -27,6 +27,7 @@ from app.models.organizations import Organization
 from app.services import souls_directory
 from app.services.openclaw.constants import (
     BOARD_SHARED_TEMPLATE_MAP,
+    DEFAULT_BOARD_AGENT_MODEL_PRIMARY,
     DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY,
     DEFAULT_EXTRA_IDENTITY_PROFILE,
     DEFAULT_GATEWAY_FILES,
@@ -184,9 +185,13 @@ def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
 
     role_template = profile.get("role_template")
     if not isinstance(role_template, str):
+        if getattr(agent, "board_id", None) is not None:
+            return {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY}
         return None
     primary = ROLE_TEMPLATE_MODEL_PRIMARY.get(role_template)
     if not primary:
+        if getattr(agent, "board_id", None) is not None:
+            return {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY}
         return None
     return {"primary": primary}
 

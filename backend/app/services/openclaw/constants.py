@@ -36,6 +36,8 @@ ROLE_TEMPLATE_MODEL_PRIMARY: dict[str, str] = {
     "architecture_reviewer": "azure-foundry/gpt-5-4",
 }
 
+DEFAULT_BOARD_AGENT_MODEL_PRIMARY = "azure-foundry/gpt-4.1"
+
 ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
     "estimator": (
         "You are the Estimator. Read HEARTBEAT.md and immediately run the backlog "
