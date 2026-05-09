@@ -58,6 +58,25 @@ def clear_usage_poll_lock(task_id: str | None) -> None:
         logger.warning("usage_poll.lock_clear_failed", exc_info=True)
 
 
+def is_current_usage_poll_task(task_id: str | None) -> bool:
+    """Return whether this task owns the current usage-poll slot.
+
+    Older releases could enqueue many duplicate usage polls. Keep one owner and
+    let stale queue entries drain quickly instead of monopolizing the worker.
+    """
+    try:
+        client = _redis_client(redis_url=settings.rq_redis_url)
+        raw_value = client.get(_INFLIGHT_KEY)
+    except Exception:
+        logger.warning("usage_poll.lock_check_failed", exc_info=True)
+        return True
+
+    value = raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+    if value is None:
+        return True
+    return task_id == value
+
+
 def requeue_usage_poll_task(task: QueuedTask, *, delay_seconds: float = 0) -> bool:
     return generic_requeue_if_failed(
         task,

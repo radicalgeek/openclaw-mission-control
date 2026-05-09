@@ -17,6 +17,7 @@ from app.services.telemetry.usage_poll_queue import (
     USAGE_POLL_INTERVAL_SECONDS,
     clear_usage_poll_lock,
     enqueue_usage_poll,
+    is_current_usage_poll_task,
 )
 
 logger = get_logger(__name__)
@@ -138,7 +139,10 @@ async def process_usage_poll_task(task: QueuedTask) -> None:
     """Process a usage poll task: poll all gateways, persist snapshots, re-enqueue."""
     logger.info("usage_poll.start")
     raw_task_id = task.payload.get("task_id") if isinstance(task.payload, dict) else None
-    clear_usage_poll_lock(raw_task_id if isinstance(raw_task_id, str) else None)
+    task_id = raw_task_id if isinstance(raw_task_id, str) else None
+    if not is_current_usage_poll_task(task_id):
+        logger.info("usage_poll.skip_stale")
+        return
 
     async with async_session_maker() as session:
         from sqlmodel import select
@@ -164,4 +168,5 @@ async def process_usage_poll_task(task: QueuedTask) -> None:
     logger.info("usage_poll.complete", extra={"total_snapshots": total_snapshots})
 
     # Re-enqueue for next poll cycle
+    clear_usage_poll_lock(task_id)
     enqueue_usage_poll(delay_seconds=float(USAGE_POLL_INTERVAL_SECONDS))
