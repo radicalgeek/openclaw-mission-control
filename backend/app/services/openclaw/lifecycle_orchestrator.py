@@ -13,10 +13,11 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlmodel import col, select
 
+from app.core.agent_tokens import verify_agent_token
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.services.openclaw.constants import (  # noqa: F401 (kept for import compat)
@@ -29,11 +30,15 @@ from app.services.openclaw.db_agent_state import (
 )
 from app.services.openclaw.db_service import OpenClawDBService
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
+from app.services.openclaw.gateway_rpc import openclaw_call
+from app.services.openclaw.internal.agent_key import agent_key as _agent_key
 from app.services.openclaw.lifecycle_queue import (
     QueuedAgentLifecycleReconcile,
     enqueue_lifecycle_reconcile,
 )
 from app.services.openclaw.provisioning import OpenClawGatewayProvisioner
+from app.services.openclaw.shared import GatewayAgentIdentity
 from app.services.organizations import get_org_owner_user
 
 if TYPE_CHECKING:
@@ -43,6 +48,103 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+
+def _agent_gateway_id(agent: Agent, gateway: Gateway, board: Board | None) -> str:
+    if board is None and agent.agent_type != AGENT_TYPE_STANDALONE:
+        return GatewayAgentIdentity.openclaw_agent_id(gateway)
+    return _agent_key(agent)
+
+
+def _extract_tools_auth_token(content: str) -> str | None:
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "AUTH_TOKEN":
+            token = value.strip()
+            return token or None
+    return None
+
+
+def _agent_file_content(payload: object) -> str | None:
+    if isinstance(payload, str):
+        return payload
+    if not isinstance(payload, dict):
+        return None
+    content = payload.get("content")
+    if isinstance(content, str):
+        return content
+    file_obj = payload.get("file")
+    if isinstance(file_obj, dict):
+        nested = file_obj.get("content")
+        if isinstance(nested, str):
+            return nested
+    return None
+
+
+async def _read_workspace_auth_token(
+    *,
+    gateway: Gateway,
+    agent: Agent,
+    board: Board | None,
+) -> str | None:
+    if not gateway.url:
+        return None
+    config = GatewayClientConfig(
+        url=gateway.url,
+        token=gateway.token,
+        allow_insecure_tls=gateway.allow_insecure_tls,
+        disable_device_pairing=gateway.disable_device_pairing,
+    )
+    try:
+        payload = await openclaw_call(
+            "agents.files.get",
+            {"agentId": _agent_gateway_id(agent, gateway, board), "name": "TOOLS.md"},
+            config=config,
+        )
+    except (OpenClawGatewayError, TimeoutError) as exc:
+        logger.warning(
+            "lifecycle.workspace_token.read_failed",
+            extra={"agent_id": str(agent.id), "error": str(exc)},
+        )
+        return None
+    content = _agent_file_content(payload)
+    if not content:
+        return None
+    return _extract_tools_auth_token(content)
+
+
+async def _resolve_update_auth_token(
+    *,
+    gateway: Gateway,
+    agent: Agent,
+    board: Board | None,
+) -> str | None:
+    """Resolve a raw token for an update without causing token churn.
+
+    Existing update flows usually only have the hashed DB token, so they used
+    to skip template writes entirely. That preserves a valid workspace, but it
+    also means a stale TOOLS.md token can never self-heal. Reading TOOLS.md lets
+    us distinguish "valid current token" from "stale token" and only rotate
+    when the workspace is already broken.
+    """
+
+    workspace_token = await _read_workspace_auth_token(
+        gateway=gateway,
+        agent=agent,
+        board=board,
+    )
+    if not workspace_token:
+        return None
+    if agent.agent_token_hash and verify_agent_token(workspace_token, agent.agent_token_hash):
+        return workspace_token
+    logger.warning(
+        "lifecycle.workspace_token.mismatch_rotating",
+        extra={"agent_id": str(agent.id)},
+    )
+    return mint_agent_token(agent)
 
 
 class AgentLifecycleOrchestrator(OpenClawDBService):
@@ -132,26 +234,21 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                     ),
                 )
 
-        # Only mint a new agent token when we genuinely need one — i.e. when
-        # the caller explicitly passed one (None means "use the current"), or
-        # this is the first provision for an agent that has no token hash
-        # yet, or the action is a provision (not an update).
-        # Re-minting on every update invalidates the agent's currently-loaded
-        # token (its env was set at first provisioning) and breaks all its
-        # API calls with a 401 until the next full re-bootstrap. The sweep
-        # re-queues stuck agents repeatedly, so re-minting here turns into a
-        # token-rotation storm that prevents agents from ever staying valid.
+        # Only mint a new agent token when we genuinely need one. For updates,
+        # try to recover the current raw token from TOOLS.md first: if it still
+        # matches the DB hash we can safely refresh workspace files; if it does
+        # not match, the agent is already broken with 401s, so rotate once and
+        # rewrite the workspace before waking it.
         if auth_token:
             raw_token = auth_token
         elif action == "provision" or locked.agent_token_hash is None:
             raw_token = mint_agent_token(locked)
         else:
-            # Update with no explicit token and a hash already exists. The
-            # agent already has a working token loaded; keep it. We can't
-            # recover the raw value from the hash, so any downstream step
-            # that needs to write the token into the workspace will need to
-            # tolerate ``raw_token=None`` (use existing TOOLS.md content).
-            raw_token = None
+            raw_token = await _resolve_update_auth_token(
+                gateway=gateway,
+                agent=locked,
+                board=board,
+            )
         mark_provision_requested(
             locked,
             action=action,
