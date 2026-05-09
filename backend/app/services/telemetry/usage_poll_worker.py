@@ -18,6 +18,7 @@ from app.services.telemetry.usage_poll_queue import (
     clear_usage_poll_lock,
     enqueue_usage_poll,
     is_current_usage_poll_task,
+    purge_stale_usage_poll_tasks,
 )
 
 logger = get_logger(__name__)
@@ -142,6 +143,9 @@ async def process_usage_poll_task(task: QueuedTask) -> None:
     task_id = raw_task_id if isinstance(raw_task_id, str) else None
     if not is_current_usage_poll_task(task_id):
         logger.info("usage_poll.skip_stale")
+        removed = purge_stale_usage_poll_tasks(task_id)
+        if removed:
+            logger.info("usage_poll.stale_purged", extra={"count": removed})
         return
 
     async with async_session_maker() as session:

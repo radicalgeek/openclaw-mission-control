@@ -7,7 +7,13 @@ from uuid import uuid4
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
-from app.services.queue import QueuedTask, _redis_client, enqueue_task_with_delay
+from app.services.queue import (
+    QueuedTask,
+    _decode_task,
+    _redis_client,
+    _scheduled_queue_name,
+    enqueue_task_with_delay,
+)
 from app.services.queue import requeue_if_failed as generic_requeue_if_failed
 
 TASK_TYPE = "usage_poll"
@@ -75,6 +81,38 @@ def is_current_usage_poll_task(task_id: str | None) -> bool:
     if value is None:
         return True
     return task_id == value
+
+
+def purge_stale_usage_poll_tasks(current_task_id: str | None) -> int:
+    """Remove queued/scheduled duplicate usage polls that are not the lock owner."""
+    try:
+        client = _redis_client(redis_url=settings.rq_redis_url)
+        queue_name = settings.rq_queue_name
+        scheduled_queue_name = _scheduled_queue_name(queue_name)
+        removed = 0
+
+        for raw_item in client.lrange(queue_name, 0, -1):
+            task = _decode_task(raw_item, queue_name)
+            if task.task_type != TASK_TYPE:
+                continue
+            task_id = task.payload.get("task_id")
+            if current_task_id is not None and task_id == current_task_id:
+                continue
+            removed += int(client.lrem(queue_name, 0, raw_item) or 0)
+
+        for raw_item in client.zrange(scheduled_queue_name, 0, -1):
+            task = _decode_task(raw_item, scheduled_queue_name)
+            if task.task_type != TASK_TYPE:
+                continue
+            task_id = task.payload.get("task_id")
+            if current_task_id is not None and task_id == current_task_id:
+                continue
+            removed += int(client.zrem(scheduled_queue_name, raw_item) or 0)
+
+        return removed
+    except Exception:
+        logger.warning("usage_poll.stale_purge_failed", exc_info=True)
+        return 0
 
 
 def requeue_usage_poll_task(task: QueuedTask, *, delay_seconds: float = 0) -> bool:
