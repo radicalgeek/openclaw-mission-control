@@ -68,7 +68,12 @@ from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
-from app.services.openclaw.provisioning import OpenClawGatewayProvisioner
+from app.services.openclaw.provisioning import (
+    OpenClawGatewayProvisioner,
+    _board_code_repo_url,
+    _board_code_workspace_root,
+    _board_code_worktree_path,
+)
 from app.services.organizations import require_board_access
 from app.services.tags import (
     TagState,
@@ -665,7 +670,7 @@ def _assignment_notification_message(*, board: Board, task: Task, agent: Agent) 
     )
 
 
-def _task_wake_message(*, board: Board, task: Task, reason: str) -> str:
+def _task_wake_message(*, board: Board, task: Task, agent: Agent, gateway_workspace_root: str, reason: str) -> str:
     description = _truncate_snippet(task.description or "")
     details = [
         f"Board: {board.name}",
@@ -677,12 +682,23 @@ def _task_wake_message(*, board: Board, task: Task, reason: str) -> str:
     ]
     if description:
         details.append(f"Description: {description}")
+    repo_url = _board_code_repo_url(board)
+    if repo_url:
+        details.append(f"Repo URL: {repo_url}")
+    if gateway_workspace_root:
+        details.extend(
+            [
+                f"CODE_WORKSPACE_ROOT: {_board_code_workspace_root(board, gateway_workspace_root)}",
+                f"CODE_WORKTREE_PATH: {_board_code_worktree_path(agent, board, gateway_workspace_root)}",
+            ]
+        )
     return (
         "TASK WAKE\n"
         + "\n".join(details)
         + "\n\nTake action now: read TOOLS.md and HEARTBEAT.md, verify the code workspace, "
-        "then continue this task. If code access is missing, add a task comment with the exact "
-        "missing path or credential instead of going silent."
+        "then continue this task. If the worktree is missing, clone/create it from the repo URL "
+        "above. If code access is still missing, add a task comment with the exact missing path "
+        "or credential instead of going silent."
     )
 
 
@@ -746,7 +762,13 @@ async def _wake_agent_online_for_task(
     try:
         gateway, config = await dispatch.require_gateway_config_for_board(board)
         await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(gateway, [agent])
-        message = _task_wake_message(board=board, task=task, reason=reason)
+        message = _task_wake_message(
+            board=board,
+            task=task,
+            agent=agent,
+            gateway_workspace_root=gateway.workspace_root,
+            reason=reason,
+        )
         error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
