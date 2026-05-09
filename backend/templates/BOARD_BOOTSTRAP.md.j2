@@ -80,15 +80,24 @@ curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
 8) Use the values below from this file/TOOLS.md to check in:
 - `BASE_URL={{ base_url }}`
 - `AUTH_TOKEN={{ auth_token }}`
-- `BOARD_ID={{ board_id }}`
+- `BOARD_ID={{ board_id | default('') }}`
 to {{ product_name }} to mark the agent online:
 
+{% if board_id is defined and board_id %}
 ```bash
 curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
   -H "X-Agent-Token: {{ auth_token }}" \
   -H "Content-Type: application/json" \
   -d '{"name":"{{ agent_name }}","board_id":"{{ board_id }}","status":"online"}'
 ```
+{% else %}
+```bash
+curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
+  -H "X-Agent-Token: {{ auth_token }}" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"{{ agent_name }}","status":"online"}'
+```
+{% endif %}
 
 9) Write a short note to `MEMORY.md` that bootstrap completed and list any
 missing fields (e.g., user name, timezone).
