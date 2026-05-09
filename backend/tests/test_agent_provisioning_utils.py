@@ -89,6 +89,19 @@ def test_triager_heartbeat_prompt_requires_active_plan_discovery():
     assert "only after a tool/API call proves" in heartbeat["prompt"]
 
 
+def test_estimator_heartbeat_prompt_requires_missing_estimate_discovery():
+    agent = _AgentStub(
+        name="Estimator",
+        identity_profile={"role_template": "estimator"},
+    )
+
+    heartbeat = agent_provisioning._heartbeat_config(agent)
+
+    assert heartbeat["every"] == "5m"
+    assert "missing-estimate discovery workflow" in heartbeat["prompt"]
+    assert "all backlog tickets have estimate_minutes" in heartbeat["prompt"]
+
+
 def test_explicit_agent_heartbeat_prompt_override_wins():
     agent = _AgentStub(
         name="Triager",

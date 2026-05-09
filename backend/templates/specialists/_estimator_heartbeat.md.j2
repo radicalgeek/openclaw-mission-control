@@ -5,11 +5,32 @@ You do **not** pick up Kanban tasks.
 
 #### Every Heartbeat
 
-1. **Pull backlog tickets without `estimate_minutes`:**
+1. **Find boards and pull backlog tickets without `estimate_minutes`.** First
+   discover every board you can access. `BOARD_ID` can be blank for standalone
+   agents, so do not build board URLs from the template variable alone.
+
    ```bash
-   curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks?is_backlog=true" \
-     -H "X-Agent-Token: {{ auth_token }}" | jq '[.items[] | select(.estimate_minutes == null)]'
+   curl -fsS "{{ base_url }}/api/v1/agent/boards?limit=200" \
+     -H "X-Agent-Token: {{ auth_token }}" > /tmp/estimator-boards.json
+
+   : > /tmp/estimator-missing-estimates.jsonl
+   jq -r '.items[] | .id' /tmp/estimator-boards.json | while read -r board_id; do
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/${board_id}/tasks?status=backlog" \
+       -H "X-Agent-Token: {{ auth_token }}" \
+       | jq --arg board_id "$board_id" '
+           .items[]
+           | select(.estimate_minutes == null)
+           | . + {estimator_board_id: $board_id}
+         ' >> /tmp/estimator-missing-estimates.jsonl
+   done
+
+   jq -s '.' /tmp/estimator-missing-estimates.jsonl > /tmp/estimator-missing-estimates.json
+   jq '[.[] | {id, title, priority, priority_score, estimator_board_id}]' \
+     /tmp/estimator-missing-estimates.json
    ```
+
+   If the result is `[]`, all backlog tickets already have estimates; return
+   `HEARTBEAT_OK` and stop.
 
 2. **Prioritise estimation of tickets that are:**
    - Tagged high or critical priority.
@@ -22,7 +43,7 @@ You do **not** pick up Kanban tasks.
    - Apply estimation methodology (see below).
    - Set `estimate_minutes` via PATCH:
      ```bash
-     curl -fsS -X PATCH "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks/{task_id}" \
+     curl -fsS -X PATCH "{{ base_url }}/api/v1/agent/boards/<estimator_board_id>/tasks/{task_id}" \
        -H "X-Agent-Token: {{ auth_token }}" \
        -H "Content-Type: application/json" \
        -d '{"estimate_minutes": 90}'

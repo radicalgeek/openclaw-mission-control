@@ -37,6 +37,13 @@ ROLE_TEMPLATE_MODEL_PRIMARY: dict[str, str] = {
 }
 
 ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
+    "estimator": (
+        "You are the Estimator. Read HEARTBEAT.md and immediately run the backlog "
+        "missing-estimate discovery workflow from it. Do not rely on memory or prior "
+        "chat state. You may return HEARTBEAT_OK only after a tool/API call proves "
+        "all backlog tickets have estimate_minutes, or after you set estimates on "
+        "the discovered backlog tickets."
+    ),
     "triager": (
         "You are the Triager. Read HEARTBEAT.md and immediately run the active-plan "
         "discovery workflow from it. Do not rely on memory or prior chat state. "
