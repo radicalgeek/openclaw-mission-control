@@ -13,7 +13,11 @@ from app.models.usage_snapshots import SNAPSHOT_TYPE_PERIODIC, UsageSnapshot
 from app.services.openclaw.gateway_resolver import optional_gateway_client_config
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
 from app.services.queue import QueuedTask
-from app.services.telemetry.usage_poll_queue import USAGE_POLL_INTERVAL_SECONDS, enqueue_usage_poll
+from app.services.telemetry.usage_poll_queue import (
+    USAGE_POLL_INTERVAL_SECONDS,
+    clear_usage_poll_lock,
+    enqueue_usage_poll,
+)
 
 logger = get_logger(__name__)
 
@@ -133,6 +137,8 @@ async def _poll_gateway(gateway: Gateway) -> list[UsageSnapshot]:
 async def process_usage_poll_task(task: QueuedTask) -> None:
     """Process a usage poll task: poll all gateways, persist snapshots, re-enqueue."""
     logger.info("usage_poll.start")
+    raw_task_id = task.payload.get("task_id") if isinstance(task.payload, dict) else None
+    clear_usage_poll_lock(raw_task_id if isinstance(raw_task_id, str) else None)
 
     async with async_session_maker() as session:
         from sqlmodel import select
