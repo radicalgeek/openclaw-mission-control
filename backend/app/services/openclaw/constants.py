@@ -17,6 +17,11 @@ DEFAULT_HEARTBEAT_CONFIG: dict[str, Any] = {
     # Foundry per-minute TPM quotas. 5m gives the model providers room to
     # serve all agents without throttling.
     "every": "5m",
+    "prompt": (
+        "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. "
+        "Do not infer or repeat old tasks from prior chats. If nothing needs "
+        "attention, reply HEARTBEAT_OK."
+    ),
     "target": "last",
     "includeReasoning": False,
 }
