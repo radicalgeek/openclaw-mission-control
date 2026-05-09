@@ -62,7 +62,18 @@ def test_wakeup_text_includes_bootstrap_before_agents():
 
     text = agent_provisioning._wakeup_text(agent, verb="created")
 
-    assert "If BOOTSTRAP.md exists, read it first, then read AGENTS.md." in text
+    assert "If BOOTSTRAP.md exists, read it first" in text
+    assert "then read AGENTS.md" in text
+
+
+def test_wakeup_text_requires_immediate_heartbeat_execution():
+    agent = _AgentStub(name="Triager")
+
+    text = agent_provisioning._wakeup_text(agent, verb="updated")
+
+    assert "read AGENTS.md and HEARTBEAT.md" in text
+    assert "Execute HEARTBEAT.md in this same turn" in text
+    assert "Return HEARTBEAT_OK only after the heartbeat cycle is complete" in text
 
 
 def test_agent_lifecycle_workspace_path_preserves_tilde_in_workspace_root():
