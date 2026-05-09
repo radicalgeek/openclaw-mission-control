@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 import app.services.openclaw.gateway_rpc as gateway_rpc
@@ -192,6 +194,21 @@ async def test_openclaw_call_surfaces_scope_error_without_device_fallback(
             "status",
             config=GatewayConfig(url="ws://gateway.example/ws", token="secret-token"),
         )
+
+
+@pytest.mark.asyncio
+async def test_await_response_times_out_when_gateway_stops_replying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _SilentWebSocket:
+        async def recv(self) -> str:
+            await asyncio.sleep(1)
+            return "{}"
+
+    monkeypatch.setattr(gateway_rpc, "GATEWAY_RPC_RESPONSE_TIMEOUT_SECONDS", 0.001)
+
+    with pytest.raises(TimeoutError):
+        await gateway_rpc._await_response(_SilentWebSocket(), "request-id")  # type: ignore[arg-type]
 
 
 class _FakeConnectContext:

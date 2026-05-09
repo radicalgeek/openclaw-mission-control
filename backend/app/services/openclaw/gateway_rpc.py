@@ -28,6 +28,7 @@ from app.services.openclaw.device_identity import (
 )
 
 PROTOCOL_VERSION = 3
+GATEWAY_RPC_RESPONSE_TIMEOUT_SECONDS = 120
 logger = get_logger(__name__)
 GATEWAY_OPERATOR_SCOPES = (
     "operator.read",
@@ -296,7 +297,10 @@ async def _await_response(
     request_id: str,
 ) -> object:
     while True:
-        raw = await ws.recv()
+        raw = await asyncio.wait_for(
+            ws.recv(),
+            timeout=GATEWAY_RPC_RESPONSE_TIMEOUT_SECONDS,
+        )
         data = json.loads(raw)
         logger.log(
             TRACE_LEVEL,
