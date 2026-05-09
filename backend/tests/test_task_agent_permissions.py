@@ -33,6 +33,43 @@ async def _make_session(engine: AsyncEngine) -> AsyncSession:
     return AsyncSession(engine, expire_on_commit=False)
 
 
+def _patch_task_wake_services(
+    monkeypatch: pytest.MonkeyPatch,
+    wake_calls: list[dict[str, Any]],
+) -> None:
+    class _FakeDispatch:
+        def __init__(self, session: AsyncSession) -> None:
+            self.session = session
+
+        async def require_gateway_config_for_board(self, board: Board) -> tuple[Gateway, object]:
+            gateway = await Gateway.objects.by_id(board.gateway_id).first(self.session)
+            assert gateway is not None
+            return gateway, object()
+
+        async def try_wake_agent_session(self, **kwargs: Any) -> None:
+            wake_calls.append(kwargs)
+            return None
+
+        async def optional_gateway_config_for_board(self, board: Board) -> object:
+            _ = board
+            return object()
+
+        async def try_send_agent_message(self, **_: Any) -> None:
+            return None
+
+    class _FakeProvisioner:
+        async def sync_gateway_agent_heartbeats(
+            self,
+            gateway: Gateway,
+            agents: list[Agent],
+        ) -> None:
+            assert gateway.workspace_root
+            assert agents
+
+    monkeypatch.setattr(tasks_api, "GatewayDispatchService", _FakeDispatch)
+    monkeypatch.setattr(tasks_api, "OpenClawGatewayProvisioner", _FakeProvisioner)
+
+
 @pytest.mark.asyncio
 async def test_non_lead_agent_can_update_status_for_assigned_task() -> None:
     engine = await _make_engine()
@@ -1315,12 +1352,8 @@ async def test_non_lead_agent_moves_to_review_without_comment_or_recent_comment_
 async def test_lead_assignment_and_in_progress_wakes_assignee_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_send_agent_task_message(**_: Any) -> str | None:
-        return None
-
-    monkeypatch.setattr(
-        tasks_api, "_send_agent_task_message", _fake_send_agent_task_message
-    )
+    wake_calls: list[dict[str, Any]] = []
+    _patch_task_wake_services(monkeypatch, wake_calls)
 
     engine = await _make_engine()
     try:
@@ -1407,8 +1440,13 @@ async def test_lead_assignment_and_in_progress_wakes_assignee_once(
                 await session.exec(select(Agent).where(col(Agent.id) == worker_id))
             ).first()
             assert reloaded_worker is not None
-            assert reloaded_worker.status == "online"
-            assert reloaded_worker.last_seen_at is not None
+            assert reloaded_worker.status == "offline"
+            assert reloaded_worker.last_seen_at is None
+            assert reloaded_worker.last_wake_sent_at is not None
+            assert reloaded_worker.checkin_deadline_at is not None
+            assert wake_calls
+            assert wake_calls[0]["session_key"] == "session-worker"
+            assert "TASK WAKE" in wake_calls[0]["message"]
 
             wake_events = (
                 await session.exec(
@@ -1428,12 +1466,8 @@ async def test_lead_assignment_and_in_progress_wakes_assignee_once(
 async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_send_agent_task_message(**_: Any) -> str | None:
-        return None
-
-    monkeypatch.setattr(
-        tasks_api, "_send_agent_task_message", _fake_send_agent_task_message
-    )
+    wake_calls: list[dict[str, Any]] = []
+    _patch_task_wake_services(monkeypatch, wake_calls)
 
     engine = await _make_engine()
     try:
@@ -1508,8 +1542,13 @@ async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
                 await session.exec(select(Agent).where(col(Agent.id) == worker_id))
             ).first()
             assert reloaded_worker is not None
-            assert reloaded_worker.status == "online"
-            assert reloaded_worker.last_seen_at is not None
+            assert reloaded_worker.status == "offline"
+            assert reloaded_worker.last_seen_at is None
+            assert reloaded_worker.last_wake_sent_at is not None
+            assert reloaded_worker.checkin_deadline_at is not None
+            assert wake_calls
+            assert wake_calls[0]["session_key"] == "session-worker"
+            assert "TASK WAKE" in wake_calls[0]["message"]
 
             wake_events = (
                 await session.exec(

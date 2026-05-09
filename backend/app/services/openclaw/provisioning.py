@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import posixpath
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -297,6 +298,47 @@ def _workspace_path(agent: Agent, workspace_root: str) -> str:
     return f"{root}/workspace-{slugify(key)}"
 
 
+def _shared_source_root(workspace_root: str) -> str:
+    """Return the shared source-code root adjacent to the gateway agent workspaces."""
+    root = workspace_root.rstrip("/")
+    parent, leaf = posixpath.split(root)
+    if leaf == "agents" and parent:
+        return posixpath.join(parent, "shared-src")
+    return posixpath.join(root, "shared-src")
+
+
+def _board_code_workspace_root(board: Board, workspace_root: str) -> str:
+    board_slug = slugify(board.slug or board.name or str(board.id))
+    return posixpath.join(_shared_source_root(workspace_root), "boards", board_slug)
+
+
+def _board_code_worktree_path(agent: Agent, board: Board, workspace_root: str) -> str:
+    root = _board_code_workspace_root(board, workspace_root)
+    profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+    role_template = str(profile.get("role_template") or "").strip()
+    if agent.is_board_lead:
+        return posixpath.join(root, "main")
+    if role_template == "merger":
+        return posixpath.join(root, "worktrees", "merge")
+    worktree_slug = slugify(f"{agent.name}-{str(agent.id)[:8]}")
+    return posixpath.join(root, "worktrees", worktree_slug)
+
+
+def _board_code_repo_url(board: Board) -> str:
+    context = board.context if isinstance(board.context, dict) else {}
+    for key in (
+        "production_repo_url",
+        "repo_url",
+        "repository_url",
+        "source_repo_url",
+        "prototype_repo_url",
+    ):
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _email_local_part(email: str) -> str:
     normalized = email.strip()
     if not normalized:
@@ -452,6 +494,8 @@ def _build_context(
     agent_id = str(agent.id)
     workspace_root = gateway.workspace_root
     workspace_path = _workspace_path(agent, workspace_root)
+    code_workspace_root = _board_code_workspace_root(board, workspace_root)
+    code_worktree_path = _board_code_worktree_path(agent, board, workspace_root)
     session_key = agent.openclaw_session_id or ""
     base_url = settings.base_url
     main_session_key = GatewayAgentIdentity.session_key(gateway)
@@ -480,6 +524,9 @@ def _build_context(
         "is_main_agent": "false",
         "session_key": session_key,
         "workspace_path": workspace_path,
+        "code_repo_url": _board_code_repo_url(board),
+        "code_workspace_root": code_workspace_root,
+        "code_worktree_path": code_worktree_path,
         "base_url": base_url,
         "auth_token": auth_token,
         "main_session_key": main_session_key,

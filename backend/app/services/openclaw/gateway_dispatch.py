@@ -19,7 +19,12 @@ from app.services.openclaw.gateway_resolver import (
     require_gateway_for_board,
 )
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
-from app.services.openclaw.gateway_rpc import OpenClawGatewayError, ensure_session, send_message
+from app.services.openclaw.gateway_rpc import (
+    OpenClawGatewayError,
+    ensure_session,
+    send_message,
+    send_session_message_nonblocking,
+)
 
 
 class GatewayDispatchService(OpenClawDBService):
@@ -59,6 +64,22 @@ class GatewayDispatchService(OpenClawDBService):
         await ensure_session(session_key, config=config, label=agent_name)
         await send_message(message, session_key=session_key, config=config, deliver=deliver)
 
+    async def wake_agent_session(
+        self,
+        *,
+        session_key: str,
+        config: GatewayClientConfig,
+        agent_name: str,
+        message: str,
+    ) -> None:
+        """Start an agent turn without blocking the API request on completion."""
+        await ensure_session(session_key, config=config, label=agent_name)
+        await send_session_message_nonblocking(
+            message,
+            session_key=session_key,
+            config=config,
+        )
+
     async def try_send_agent_message(
         self,
         *,
@@ -75,6 +96,25 @@ class GatewayDispatchService(OpenClawDBService):
                 agent_name=agent_name,
                 message=message,
                 deliver=deliver,
+            )
+        except OpenClawGatewayError as exc:
+            return exc
+        return None
+
+    async def try_wake_agent_session(
+        self,
+        *,
+        session_key: str,
+        config: GatewayClientConfig,
+        agent_name: str,
+        message: str,
+    ) -> OpenClawGatewayError | None:
+        try:
+            await self.wake_agent_session(
+                session_key=session_key,
+                config=config,
+                agent_name=agent_name,
+                message=message,
             )
         except OpenClawGatewayError as exc:
             return exc

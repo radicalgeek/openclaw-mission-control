@@ -163,6 +163,36 @@ curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks" \
 
 3) If any check fails, stop and retry next heartbeat.
 
+## Code Workspace Check (Before Task Work)
+Use the shared source workspace for implementation tasks. Do not work from an empty
+private folder when a task requires repository changes.
+
+```bash
+CODE_REPO_URL="{{ code_repo_url | default('') }}"
+CODE_REPO_URL="${CODE_REPO_URL:-${REPO_URL:-}}"
+CODE_WORKSPACE_ROOT="{{ code_workspace_root | default('') }}"
+CODE_WORKTREE_PATH="{{ code_worktree_path | default('') }}"
+
+if [ -n "$CODE_WORKTREE_PATH" ] && [ -n "$CODE_REPO_URL" ]; then
+  mkdir -p "$CODE_WORKSPACE_ROOT"
+  if [ ! -d "$CODE_WORKSPACE_ROOT/main/.git" ]; then
+    git clone "$CODE_REPO_URL" "$CODE_WORKSPACE_ROOT/main"
+  fi
+  if [ "$CODE_WORKTREE_PATH" != "$CODE_WORKSPACE_ROOT/main" ] && [ ! -d "$CODE_WORKTREE_PATH/.git" ]; then
+    mkdir -p "$(dirname "$CODE_WORKTREE_PATH")"
+    branch="agent/{{ agent_id }}"
+    git -C "$CODE_WORKSPACE_ROOT/main" worktree add -B "$branch" "$CODE_WORKTREE_PATH"
+  fi
+fi
+
+if [ -n "$CODE_WORKTREE_PATH" ] && [ ! -d "$CODE_WORKTREE_PATH/.git" ]; then
+  echo "CODE_WORKTREE_MISSING=$CODE_WORKTREE_PATH"
+fi
+```
+
+If `CODE_WORKTREE_MISSING` is printed for a code task, add a task comment naming the
+missing path and whether `CODE_REPO_URL`/`REPO_URL` was available, then stop that task.
+
 ## Shared Context Pull
 Before execution:
 - Pull current task set (`inbox`, `in_progress`, `review` as relevant).

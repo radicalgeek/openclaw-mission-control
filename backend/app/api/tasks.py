@@ -6,7 +6,7 @@ import asyncio
 import json
 from collections import deque
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
@@ -24,6 +24,7 @@ from app.api.deps import (
     require_user_or_agent,
 )
 from app.core.logging import get_logger
+from app.core.config import settings
 from app.core.time import utcnow
 from app.db import crud
 from app.db.pagination import paginate
@@ -67,7 +68,7 @@ from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
-from app.services.openclaw.provisioning_db import AgentLifecycleService
+from app.services.openclaw.provisioning import OpenClawGatewayProvisioner
 from app.services.organizations import require_board_access
 from app.services.tags import (
     TagState,
@@ -664,6 +665,27 @@ def _assignment_notification_message(*, board: Board, task: Task, agent: Agent) 
     )
 
 
+def _task_wake_message(*, board: Board, task: Task, reason: str) -> str:
+    description = _truncate_snippet(task.description or "")
+    details = [
+        f"Board: {board.name}",
+        f"Board ID: {board.id}",
+        f"Task: {task.title}",
+        f"Task ID: {task.id}",
+        f"Status: {task.status}",
+        f"Wake reason: {reason}",
+    ]
+    if description:
+        details.append(f"Description: {description}")
+    return (
+        "TASK WAKE\n"
+        + "\n".join(details)
+        + "\n\nTake action now: read TOOLS.md and HEARTBEAT.md, verify the code workspace, "
+        "then continue this task. If code access is missing, add a task comment with the exact "
+        "missing path or credential instead of going silent."
+    )
+
+
 def _rework_notification_message(
     *,
     board: Board,
@@ -720,13 +742,29 @@ async def _wake_agent_online_for_task(
 ) -> None:
     if not agent.openclaw_session_id:
         return
-    service = AgentLifecycleService(session)
+    dispatch = GatewayDispatchService(session)
     try:
-        await service.commit_heartbeat(agent=agent, status_value="online")
+        gateway, config = await dispatch.require_gateway_config_for_board(board)
+        await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(gateway, [agent])
+        message = _task_wake_message(board=board, task=task, reason=reason)
+        error = await dispatch.try_wake_agent_session(
+            session_key=agent.openclaw_session_id,
+            config=config,
+            agent_name=agent.name,
+            message=message,
+        )
+        if error is not None:
+            raise error
+        agent.last_wake_sent_at = utcnow()
+        agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
+            seconds=settings.agent_checkin_deadline_seconds,
+        )
+        agent.wake_attempts += 1
+        agent.updated_at = utcnow()
         record_activity(
             session,
             event_type="task.assignee_woken",
-            message=(f"Assignee heartbeat set online ({reason}): {agent.name}."),
+            message=(f"Assignee session wake sent ({reason}): {agent.name}."),
             agent_id=agent.id,
             task_id=task.id,
             board_id=board.id,

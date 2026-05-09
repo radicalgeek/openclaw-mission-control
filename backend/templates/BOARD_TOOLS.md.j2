@@ -22,6 +22,23 @@ WORKSPACE_ROOT={{ workspace_root }}
 {% if workspace_path is defined %}
 WORKSPACE_PATH={{ workspace_path }}
 {% endif %}
+{% if code_workspace_root is defined %}
+CODE_WORKSPACE_ROOT={{ code_workspace_root }}
+{% endif %}
+{% if code_worktree_path is defined %}
+CODE_WORKTREE_PATH={{ code_worktree_path }}
+{% endif %}
+{% if code_repo_url is defined %}
+CODE_REPO_URL={{ code_repo_url }}
+{% endif %}
+
+## Source Code Workspace
+
+- `WORKSPACE_PATH` is this agent's private operating workspace.
+- `CODE_WORKSPACE_ROOT` is the board's shared source-code area.
+- `CODE_WORKTREE_PATH` is the git worktree this agent should use for implementation work.
+- If `CODE_REPO_URL` is blank, use runtime `REPO_URL` if it exists.
+- Before changing a task that requires code, verify `CODE_WORKTREE_PATH` is a git worktree. If it is missing and no repo URL/credential is available, add a task comment with the exact blocker.
 
 ## Notes
 

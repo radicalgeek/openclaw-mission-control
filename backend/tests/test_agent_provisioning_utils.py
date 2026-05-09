@@ -42,6 +42,14 @@ class _AgentStub:
     board_id: UUID | None = None
 
 
+@dataclass
+class _BoardStub:
+    name: str = "CargoFlights Runway"
+    slug: str = "cargoflights-runway"
+    id: UUID = field(default_factory=uuid4)
+    context: dict | None = None
+
+
 def test_agent_key_uses_session_key_when_present():
     agent = _AgentStub(name="Alice", openclaw_session_id="agent:alice:main")
     assert agent_provisioning._agent_key(agent) == "alice"
@@ -56,6 +64,42 @@ def test_workspace_path_preserves_tilde_in_workspace_root():
     # filesystem path since that behavior depends on the host environment.
     agent = _AgentStub(name="Alice", openclaw_session_id="agent:alice:main")
     assert agent_provisioning._workspace_path(agent, "~/.openclaw") == "~/.openclaw/workspace-alice"
+
+
+def test_board_code_workspace_uses_shared_source_next_to_agent_root():
+    board = _BoardStub()
+
+    assert (
+        agent_provisioning._board_code_workspace_root(board, "/home/node/.openclaw/agents")
+        == "/home/node/.openclaw/shared-src/boards/cargoflights-runway"
+    )
+
+
+def test_board_code_worktree_path_is_agent_specific_for_workers():
+    board = _BoardStub()
+    agent_id = UUID("11111111-1111-1111-1111-111111111111")
+    agent = _AgentStub(name="Developer Agent 2", id=agent_id, board_id=board.id)
+
+    assert (
+        agent_provisioning._board_code_worktree_path(
+            agent,
+            board,
+            "/home/node/.openclaw/agents",
+        )
+        == "/home/node/.openclaw/shared-src/boards/cargoflights-runway/worktrees/"
+        "developer-agent-2-11111111"
+    )
+
+
+def test_board_code_repo_url_reads_graduation_context():
+    board = _BoardStub(
+        context={"production_repo_url": " https://dev.azure.com/oag/_git/cargoflights "}
+    )
+
+    assert (
+        agent_provisioning._board_code_repo_url(board)
+        == "https://dev.azure.com/oag/_git/cargoflights"
+    )
 
 
 def test_wakeup_text_includes_bootstrap_before_agents():
