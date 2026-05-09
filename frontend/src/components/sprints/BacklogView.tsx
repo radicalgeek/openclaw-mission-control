@@ -94,7 +94,7 @@ export function BacklogView({ boardId, sprints, orgTags, onSprintChange, autoOrg
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listBacklog(boardId, { unassigned: false });
+      const res = await listBacklog(boardId, { unassigned: true });
       // Store all tasks; filtering is done at render time
       setTasks(res.data);
     } catch {
