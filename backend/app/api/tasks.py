@@ -2538,6 +2538,22 @@ async def _apply_non_lead_agent_task_rules(
             code="task_assignee_mismatch",
             message="Agents can only change status on tasks assigned to them.",
         )
+    # Org-level estimator agents are intentionally boardless, but their whole
+    # job is to annotate backlog tickets with estimates. Keep that permission
+    # narrow so estimators cannot claim or otherwise manage task flow.
+    role_template = None
+    if update.actor.agent and isinstance(update.actor.agent.identity_profile, dict):
+        role_template = update.actor.agent.identity_profile.get("role_template")
+    if (
+        role_template == "estimator"
+        and "estimate_minutes" in update.updates
+        and update.task.status in {"triage", "backlog"}
+        and update.task.is_backlog
+    ):
+        allowed_estimator_fields = {"estimate_minutes", "comment"}
+        if set(update.updates).issubset(allowed_estimator_fields):
+            return
+
     # Agents are limited to status/comment updates, and non-inbox status moves
     # must pass dependency checks before they can proceed.
     allowed_fields = {"status", "comment", "custom_field_values"}
