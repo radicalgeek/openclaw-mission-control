@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid5
 
 from sqlmodel import col, select
@@ -193,6 +193,7 @@ async def _wake_board_lead_for_started_sprint(
     from app.services.openclaw.gateway_resolver import gateway_client_config  # noqa: PLC0415
     from app.services.openclaw.gateway_rpc import OpenClawGatewayError  # noqa: PLC0415
     from app.services.openclaw.gateway_rpc import ensure_session  # noqa: PLC0415
+    from app.services.openclaw.gateway_rpc import openclaw_call  # noqa: PLC0415
     from app.services.openclaw.gateway_rpc import send_session_message_nonblocking  # noqa: PLC0415
     from app.services.openclaw.provisioning import OpenClawGatewayProvisioner  # noqa: PLC0415
 
@@ -247,6 +248,11 @@ async def _wake_board_lead_for_started_sprint(
     )
 
     async def _send_lead_wake() -> None:
+        await _reset_failed_lead_session_if_needed(
+            openclaw_call=openclaw_call,
+            session_key=lead.openclaw_session_id,
+            config=config,
+        )
         await ensure_session(lead.openclaw_session_id, config=config, label=lead.name)
         await send_session_message_nonblocking(
             message,
@@ -289,6 +295,46 @@ async def _wake_board_lead_for_started_sprint(
             board.id,
             lead.id,
         )
+
+
+async def _reset_failed_lead_session_if_needed(
+    *,
+    openclaw_call: Any,
+    session_key: str,
+    config: object,
+) -> None:
+    """Reset a canonical lead session that is already known failed.
+
+    A failed OpenClaw session can persist across later runtime fixes. If sprint
+    start only sends another message to that poisoned session, the lead may not
+    resume heartbeat/check-in even though the agent is registered correctly.
+    """
+    if not session_key:
+        return
+    try:
+        sessions = await openclaw_call("sessions.list", {}, config=config)
+    except Exception:
+        return
+    raw_items = []
+    if isinstance(sessions, dict):
+        maybe_items = sessions.get("sessions") or sessions.get("items") or []
+        if isinstance(maybe_items, list):
+            raw_items = maybe_items
+    elif isinstance(sessions, list):
+        raw_items = sessions
+
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("key") != session_key:
+            continue
+        if item.get("status") != "failed":
+            return
+        try:
+            await openclaw_call("sessions.reset", {"key": session_key}, config=config)
+        except Exception:
+            return
+        return
 
 
 class SprintService:

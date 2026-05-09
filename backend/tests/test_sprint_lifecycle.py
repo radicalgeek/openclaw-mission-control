@@ -228,6 +228,7 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
 
     synced: list[tuple[Gateway, list[Agent]]] = []
     ensured: list[dict[str, Any]] = []
+    gateway_calls: list[dict[str, Any]] = []
     sent: list[dict[str, Any]] = []
 
     class _Provisioner:
@@ -262,8 +263,15 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
             },
         )
 
+    async def _openclaw_call(method: str, params: dict[str, Any], *, config: Any) -> Any:
+        gateway_calls.append({"method": method, "params": params, "config": config})
+        if method == "sessions.list":
+            return {"sessions": [{"key": lead.openclaw_session_id, "status": "failed"}]}
+        return {}
+
     monkeypatch.setattr(provisioning, "OpenClawGatewayProvisioner", _Provisioner)
     monkeypatch.setattr(gateway_rpc, "ensure_session", _ensure_session)
+    monkeypatch.setattr(gateway_rpc, "openclaw_call", _openclaw_call)
     monkeypatch.setattr(
         gateway_rpc,
         "send_session_message_nonblocking",
@@ -287,6 +295,8 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
             "config": ensured[0]["config"],
         },
     ]
+    assert [call["method"] for call in gateway_calls] == ["sessions.list", "sessions.reset"]
+    assert gateway_calls[1]["params"] == {"key": lead.openclaw_session_id}
     assert sent == [
         {
             "session_key": lead.openclaw_session_id,
