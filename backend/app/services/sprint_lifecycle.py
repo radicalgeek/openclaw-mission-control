@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SPRINT_ALLOWED_START_STATUSES = frozenset({"draft", "queued"})
+_AGENT_MISSING_HINT = "no longer exists in configuration"
 
 
 def _utc_iso(dt: datetime | None) -> str | None:
@@ -135,6 +136,139 @@ async def _dispatch_sprint_webhooks(
             )
 
 
+def _build_sprint_started_lead_message(
+    *,
+    sprint: Sprint,
+    board: Board,
+    ticket_count: int,
+) -> str:
+    return (
+        f"Sprint started on board {board.name}: {sprint.name}.\n\n"
+        f"There are {ticket_count} committed sprint tickets now in inbox. "
+        "Read HEARTBEAT.md, inspect the active sprint/backlog state, and assign "
+        "the sprint inbox tickets to the available developer agents. Do not create "
+        "new tickets for this sprint-start event. Wake developers only when they "
+        "have assigned work."
+    )
+
+
+async def _wake_board_lead_for_started_sprint(
+    session: AsyncSession,
+    *,
+    sprint: Sprint,
+    board: Board,
+    ticket_count: int,
+) -> None:
+    """Ensure board agents are in the runtime config, then wake the lead.
+
+    This is intentionally lighter than lifecycle/provisioning. Sprint start only
+    needs the already-provisioned agents to be visible to OpenClaw after a worker
+    restart; it should not rewrite templates, rotate tokens, reset sessions, or
+    mark agents as updating.
+    """
+    if board.gateway_id is None:
+        return
+
+    from app.models.agents import Agent  # noqa: PLC0415
+    from app.models.gateways import Gateway  # noqa: PLC0415
+    from app.services.openclaw.gateway_dispatch import GatewayDispatchService  # noqa: PLC0415
+    from app.services.openclaw.gateway_resolver import gateway_client_config  # noqa: PLC0415
+    from app.services.openclaw.gateway_rpc import OpenClawGatewayError  # noqa: PLC0415
+    from app.services.openclaw.provisioning import OpenClawGatewayProvisioner  # noqa: PLC0415
+
+    gateway = await session.get(Gateway, board.gateway_id)
+    if gateway is None or gateway.organization_id != board.organization_id:
+        logger.warning(
+            "sprint.start.lead_wake.skipped_invalid_gateway board_id=%s gateway_id=%s",
+            board.id,
+            board.gateway_id,
+        )
+        return
+    if not (gateway.url or "").strip() or not (gateway.workspace_root or "").strip():
+        logger.warning(
+            "sprint.start.lead_wake.skipped_incomplete_gateway board_id=%s gateway_id=%s",
+            board.id,
+            gateway.id,
+        )
+        return
+
+    agents = (
+        await session.exec(
+            select(Agent)
+            .where(col(Agent.board_id) == board.id)
+            .where(col(Agent.gateway_id) == gateway.id)
+            .order_by(col(Agent.created_at).asc())
+        )
+    ).all()
+    if not agents:
+        logger.warning("sprint.start.lead_wake.skipped_no_agents board_id=%s", board.id)
+        return
+
+    lead = next((agent for agent in agents if agent.is_board_lead), None)
+    if lead is None or not lead.openclaw_session_id:
+        logger.warning("sprint.start.lead_wake.skipped_no_lead board_id=%s", board.id)
+        return
+
+    try:
+        await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(gateway, list(agents))
+    except Exception:
+        logger.exception(
+            "sprint.start.lead_wake.runtime_register_failed board_id=%s gateway_id=%s",
+            board.id,
+            gateway.id,
+        )
+        return
+
+    config = gateway_client_config(gateway)
+    message = _build_sprint_started_lead_message(
+        sprint=sprint,
+        board=board,
+        ticket_count=ticket_count,
+    )
+    dispatcher = GatewayDispatchService(session)
+    try:
+        await dispatcher.send_agent_message(
+            session_key=lead.openclaw_session_id,
+            config=config,
+            agent_name=lead.name,
+            message=message,
+            deliver=True,
+        )
+    except OpenClawGatewayError as exc:
+        if _AGENT_MISSING_HINT in str(exc).lower():
+            try:
+                await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(
+                    gateway,
+                    list(agents),
+                )
+                await dispatcher.send_agent_message(
+                    session_key=lead.openclaw_session_id,
+                    config=config,
+                    agent_name=lead.name,
+                    message=message,
+                    deliver=True,
+                )
+                return
+            except Exception:
+                logger.exception(
+                    "sprint.start.lead_wake.retry_failed board_id=%s lead_agent_id=%s",
+                    board.id,
+                    lead.id,
+                )
+                return
+        logger.exception(
+            "sprint.start.lead_wake.failed board_id=%s lead_agent_id=%s",
+            board.id,
+            lead.id,
+        )
+    except Exception:
+        logger.exception(
+            "sprint.start.lead_wake.failed board_id=%s lead_agent_id=%s",
+            board.id,
+            lead.id,
+        )
+
+
 class SprintService:
     """Encapsulates sprint state transitions and side-effects."""
 
@@ -214,6 +348,12 @@ class SprintService:
         await _dispatch_sprint_webhooks(
             session,
             event="sprint_started",
+            sprint=sprint,
+            board=board,
+            ticket_count=len(tickets),
+        )
+        await _wake_board_lead_for_started_sprint(
+            session,
             sprint=sprint,
             board=board,
             ticket_count=len(tickets),

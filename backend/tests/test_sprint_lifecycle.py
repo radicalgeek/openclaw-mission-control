@@ -9,7 +9,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.models.agents import Agent
 from app.models.boards import Board
+from app.models.gateways import Gateway
 from app.models.sprints import Sprint, SprintTicket
 from app.models.tasks import Task
 
@@ -177,6 +179,113 @@ async def test_start_sprint_succeeds_no_active_sprint() -> None:
 
     assert sprint.status == "active"
     assert sprint.started_at is not None
+
+
+@pytest.mark.asyncio
+async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch: Any) -> None:
+    from app.services import sprint_lifecycle
+    from app.services.openclaw import provisioning
+    from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+
+    board = _board()
+    board.gateway_id = uuid4()
+    sprint = _sprint(board, status="draft")
+    task = _task(board, task_status="inbox", is_backlog=False)
+    ticket = _sprint_ticket(sprint, task)
+    gateway = Gateway(
+        id=board.gateway_id,
+        organization_id=board.organization_id,
+        name="Gateway",
+        url="ws://gateway",
+        token="token",
+        workspace_root="/home/node/.openclaw/agents",
+        disable_device_pairing=True,
+    )
+    lead = Agent(
+        id=uuid4(),
+        board_id=board.id,
+        gateway_id=gateway.id,
+        name="Board Lead",
+        is_board_lead=True,
+        openclaw_session_id=f"agent:lead-{board.id}:main",
+        status="updating",
+    )
+    developer = Agent(
+        id=uuid4(),
+        board_id=board.id,
+        gateway_id=gateway.id,
+        name="Developer",
+        openclaw_session_id=f"agent:mc-{uuid4()}:main",
+        status="offline",
+    )
+    session = _FakeSession()
+    session.objects[task.id] = task
+    session.objects[gateway.id] = gateway
+    session._push_result([])  # no active sprint
+    session._push_result([ticket])  # sprint tickets
+    session._push_result([])  # sprint webhooks
+    session._push_result([lead, developer])  # board agents
+
+    synced: list[tuple[Gateway, list[Agent]]] = []
+    sent: list[dict[str, Any]] = []
+
+    class _Provisioner:
+        async def sync_gateway_agent_heartbeats(
+            self,
+            gateway_arg: Gateway,
+            agents_arg: list[Agent],
+        ) -> None:
+            synced.append((gateway_arg, agents_arg))
+
+    async def _send_agent_message(
+        self: GatewayDispatchService,
+        *,
+        session_key: str,
+        config: Any,
+        agent_name: str,
+        message: str,
+        deliver: bool = False,
+    ) -> None:
+        sent.append(
+            {
+                "session_key": session_key,
+                "agent_name": agent_name,
+                "message": message,
+                "deliver": deliver,
+                "config": config,
+            },
+        )
+
+    monkeypatch.setattr(provisioning, "OpenClawGatewayProvisioner", _Provisioner)
+    monkeypatch.setattr(
+        GatewayDispatchService,
+        "send_agent_message",
+        _send_agent_message,
+    )
+
+    await sprint_lifecycle.SprintService.start_sprint(
+        session,
+        sprint=sprint,
+        board=board,
+    )  # type: ignore[arg-type]
+
+    assert [(item.name, item.status) for item in synced[0][1]] == [
+        ("Board Lead", "updating"),
+        ("Developer", "offline"),
+    ]
+    assert sent == [
+        {
+            "session_key": lead.openclaw_session_id,
+            "agent_name": "Board Lead",
+            "message": sent[0]["message"],
+            "deliver": True,
+            "config": sent[0]["config"],
+        },
+    ]
+    assert "Sprint started on board Test Board" in sent[0]["message"]
+    assert "assign the sprint inbox tickets" in sent[0]["message"]
+    assert lead.status == "updating"
+    assert developer.status == "offline"
 
 
 # ---------------------------------------------------------------------------
