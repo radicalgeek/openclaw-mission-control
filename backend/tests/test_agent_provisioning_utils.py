@@ -76,6 +76,78 @@ def test_wakeup_text_requires_immediate_heartbeat_execution():
     assert "Return HEARTBEAT_OK only after the heartbeat cycle is complete" in text
 
 
+def test_agent_model_config_uses_role_template_model_policy():
+    triager = _AgentStub(
+        name="Triager",
+        identity_profile={"role_template": "triager"},
+    )
+    reviewer = _AgentStub(
+        name="Security Reviewer",
+        identity_profile={"role_template": "security_reviewer"},
+    )
+    planner = _AgentStub(
+        name="Planner",
+        identity_profile={"role_template": "planner"},
+    )
+
+    assert agent_provisioning._agent_model_config(triager) == {
+        "primary": "azure-foundry/gpt-5-4"
+    }
+    assert agent_provisioning._agent_model_config(reviewer) == {
+        "primary": "azure-foundry/gpt-5-4"
+    }
+    assert agent_provisioning._agent_model_config(planner) is None
+
+
+def test_agent_model_config_explicit_identity_profile_override_wins():
+    agent = _AgentStub(
+        name="Custom",
+        identity_profile={
+            "role_template": "triager",
+            "model_primary": "azure-foundry/deepseek-v3",
+            "model_fallbacks": ["azure-foundry/gpt-4.1"],
+        },
+    )
+
+    assert agent_provisioning._agent_model_config(agent) == {
+        "primary": "azure-foundry/deepseek-v3",
+        "fallbacks": ["azure-foundry/gpt-4.1"],
+    }
+
+
+def test_updated_agent_list_sets_and_clears_model_override():
+    raw = [
+        {
+            "id": "triager",
+            "workspace": "/old",
+            "heartbeat": {"every": "1m"},
+        },
+        {
+            "id": "planner",
+            "workspace": "/old-planner",
+            "heartbeat": {"every": "1m"},
+            "model": {"primary": "azure-foundry/gpt-5-4"},
+        },
+    ]
+    entry_by_id = agent_provisioning._heartbeat_entry_map(
+        [
+            (
+                "triager",
+                "/agents/triager",
+                {"every": "5m"},
+                {"primary": "azure-foundry/gpt-5-4"},
+            ),
+            ("planner", "/agents/planner", {"every": "5m"}, None),
+        ]
+    )
+
+    updated = agent_provisioning._updated_agent_list(raw, entry_by_id)
+
+    assert updated[0]["model"] == {"primary": "azure-foundry/gpt-5-4"}
+    assert updated[0]["workspace"] == "/agents/triager"
+    assert "model" not in updated[1]
+
+
 def test_agent_lifecycle_workspace_path_preserves_tilde_in_workspace_root():
     assert (
         AgentLifecycleService.workspace_path("Alice", "~/.openclaw")

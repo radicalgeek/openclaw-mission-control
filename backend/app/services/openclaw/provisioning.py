@@ -40,6 +40,7 @@ from app.services.openclaw.constants import (
     LEAD_TEMPLATE_MAP,
     MAIN_TEMPLATE_MAP,
     PRESERVE_AGENT_EDITABLE_FILES,
+    ROLE_TEMPLATE_MODEL_PRIMARY,
     STANDALONE_TEMPLATE_MAP,
 )
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
@@ -153,6 +154,28 @@ def _heartbeat_config(agent: Agent) -> dict[str, Any]:
     if isinstance(agent.heartbeat_config, dict):
         merged.update(agent.heartbeat_config)
     return merged
+
+
+def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
+    """Return an OpenClaw agents.list[].model override for an agent."""
+
+    profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+    explicit_primary = profile.get("model_primary")
+    if isinstance(explicit_primary, str) and explicit_primary.strip():
+        primary = explicit_primary.strip()
+        raw_fallbacks = profile.get("model_fallbacks")
+        if isinstance(raw_fallbacks, list):
+            fallbacks = [str(item).strip() for item in raw_fallbacks if str(item).strip()]
+            return {"primary": primary, "fallbacks": fallbacks}
+        return {"primary": primary}
+
+    role_template = profile.get("role_template")
+    if not isinstance(role_template, str):
+        return None
+    primary = ROLE_TEMPLATE_MODEL_PRIMARY.get(role_template)
+    if not primary:
+        return None
+    return {"primary": primary}
 
 
 def _tools_exec_host_patch(config_data: dict[str, Any]) -> dict[str, Any] | None:
@@ -588,6 +611,7 @@ class GatewayAgentRegistration:
     name: str
     workspace_path: str
     heartbeat: dict[str, Any]
+    model: dict[str, object] | str | None = None
 
 
 class GatewayControlPlane(ABC):
@@ -636,7 +660,7 @@ class GatewayControlPlane(ABC):
     @abstractmethod
     async def patch_agent_heartbeats(
         self,
-        entries: list[tuple[str, str, dict[str, Any]]],
+        entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]],
     ) -> None:
         raise NotImplementedError
 
@@ -797,7 +821,7 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
 
     async def patch_agent_heartbeats(
         self,
-        entries: list[tuple[str, str, dict[str, Any]]],
+        entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]],
     ) -> None:
         base_hash, raw_list, config_data = await _gateway_config_agent_list(self._config)
         entry_by_id = _heartbeat_entry_map(entries)
@@ -856,16 +880,17 @@ async def _gateway_config_agent_list(
 
 
 def _heartbeat_entry_map(
-    entries: list[tuple[str, str, dict[str, Any]]],
-) -> dict[str, tuple[str, dict[str, Any]]]:
+    entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]],
+) -> dict[str, tuple[str, dict[str, Any], dict[str, object] | str | None]]:
     return {
-        agent_id: (workspace_path, heartbeat) for agent_id, workspace_path, heartbeat in entries
+        agent_id: (workspace_path, heartbeat, model)
+        for agent_id, workspace_path, heartbeat, model in entries
     }
 
 
 def _updated_agent_list(
     raw_list: list[object],
-    entry_by_id: dict[str, tuple[str, dict[str, Any]]],
+    entry_by_id: dict[str, tuple[str, dict[str, Any], dict[str, object] | str | None]],
 ) -> list[object]:
     updated_ids: set[str] = set()
     new_list: list[object] = []
@@ -879,19 +904,28 @@ def _updated_agent_list(
             new_list.append(raw_entry)
             continue
 
-        workspace_path, heartbeat = entry_by_id[agent_id]
+        workspace_path, heartbeat, model = entry_by_id[agent_id]
         new_entry = dict(raw_entry)
         new_entry["workspace"] = workspace_path
         new_entry["heartbeat"] = heartbeat
+        if model is not None:
+            new_entry["model"] = model
+        elif "model" in new_entry:
+            del new_entry["model"]
         new_list.append(new_entry)
         updated_ids.add(agent_id)
 
-    for agent_id, (workspace_path, heartbeat) in entry_by_id.items():
+    for agent_id, (workspace_path, heartbeat, model) in entry_by_id.items():
         if agent_id in updated_ids:
             continue
-        new_list.append(
-            {"id": agent_id, "workspace": workspace_path, "heartbeat": heartbeat},
-        )
+        entry: dict[str, object] = {
+            "id": agent_id,
+            "workspace": workspace_path,
+            "heartbeat": heartbeat,
+        }
+        if model is not None:
+            entry["model"] = model
+        new_list.append(entry)
 
     return new_list
 
@@ -1089,6 +1123,7 @@ class BaseAgentLifecycleManager(ABC):
                 name=agent.name,
                 workspace_path=workspace_path,
                 heartbeat=heartbeat,
+                model=_agent_model_config(agent),
             ),
         )
 
@@ -1322,11 +1357,11 @@ def _control_plane_for_gateway(gateway: Gateway) -> OpenClawGatewayControlPlane:
 async def _patch_gateway_agent_heartbeats(
     gateway: Gateway,
     *,
-    entries: list[tuple[str, str, dict[str, Any]]],
+    entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]],
 ) -> None:
     """Patch multiple agent heartbeat configs in a single gateway config.patch call.
 
-    Each entry is (agent_id, workspace_path, heartbeat_dict).
+    Each entry is (agent_id, workspace_path, heartbeat_dict, model_override).
     """
     control_plane = _control_plane_for_gateway(gateway)
     await control_plane.patch_agent_heartbeats(entries)
@@ -1366,12 +1401,12 @@ class OpenClawGatewayProvisioner:
         if not gateway.workspace_root:
             msg = "gateway workspace_root is required"
             raise OpenClawGatewayError(msg)
-        entries: list[tuple[str, str, dict[str, Any]]] = []
+        entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]] = []
         for agent in agents:
             agent_id = _agent_key(agent)
             workspace_path = _workspace_path(agent, gateway.workspace_root)
             heartbeat = _heartbeat_config(agent)
-            entries.append((agent_id, workspace_path, heartbeat))
+            entries.append((agent_id, workspace_path, heartbeat, _agent_model_config(agent)))
         if not entries:
             return
         await _patch_gateway_agent_heartbeats(gateway, entries=entries)
@@ -1483,7 +1518,7 @@ class OpenClawGatewayProvisioner:
             heartbeat = _heartbeat_config(agent)
             try:
                 await control_plane.patch_agent_heartbeats(
-                    [(agent_id, workspace_path, heartbeat)],
+                    [(agent_id, workspace_path, heartbeat, _agent_model_config(agent))],
                 )
             except (OpenClawGatewayError, TimeoutError) as exc:
                 logger.warning(
