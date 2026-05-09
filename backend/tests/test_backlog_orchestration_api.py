@@ -37,7 +37,9 @@ async def _make_engine() -> AsyncEngine:
     return engine
 
 
-def _build_app(session_maker: async_sessionmaker[AsyncSession], *, user: User) -> FastAPI:
+def _build_app(
+    session_maker: async_sessionmaker[AsyncSession], *, user: User
+) -> FastAPI:
     app = FastAPI()
     api = APIRouter(prefix="/api/v1")
     api.include_router(sprints_router)
@@ -62,7 +64,9 @@ def _build_app(session_maker: async_sessionmaker[AsyncSession], *, user: User) -
     app.dependency_overrides[get_session] = _session_override
     app.dependency_overrides[get_board_for_user_read] = _board_override
     app.dependency_overrides[get_board_for_user_write] = _board_override
-    app.dependency_overrides[require_user_auth] = lambda: AuthContext(actor_type="user", user=user)
+    app.dependency_overrides[require_user_auth] = lambda: AuthContext(
+        actor_type="user", user=user
+    )
     return app
 
 
@@ -150,7 +154,10 @@ async def test_estimate_dispatches_to_estimator_for_unestimated_tasks() -> None:
         async with sm() as session:
             user, board, estimator, _prio = await _seed(session)
             t_unestimated = Task(
-                board_id=board.id, title="Need estimate", status="backlog", is_backlog=True
+                board_id=board.id,
+                title="Need estimate",
+                status="backlog",
+                is_backlog=True,
             )
             t_already = Task(
                 board_id=board.id,
@@ -163,11 +170,15 @@ async def test_estimate_dispatches_to_estimator_for_unestimated_tasks() -> None:
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with (
                 p1,
                 p2,
-                patch("app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)),
+                patch(
+                    "app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)
+                ),
             ):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/estimate")
         assert resp.status_code == 200, resp.text
@@ -181,6 +192,12 @@ async def test_estimate_dispatches_to_estimator_for_unestimated_tasks() -> None:
         # Verify the dispatch was for the estimator session
         assert captured[0]["session_key"] == "estimator-session"
         assert "BACKLOG ESTIMATION REQUEST" in captured[0]["message"]
+        assert (
+            f"PATCH /api/v1/agent/boards/{board.id}/tasks/{{task_id}}"
+            in captured[0]["message"]
+        )
+        assert "estimate_minutes field is the source of truth" in captured[0]["message"]
+        assert "estimate-only comment" in captured[0]["message"]
         assert str(t_unestimated.id) in captured[0]["message"]
     finally:
         await engine.dispose()
@@ -205,11 +222,15 @@ async def test_estimate_returns_no_dispatch_when_all_tasks_already_estimated() -
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with (
                 p1,
                 p2,
-                patch("app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)),
+                patch(
+                    "app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)
+                ),
             ):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/estimate")
         body = resp.json()
@@ -238,17 +259,23 @@ async def test_estimate_force_includes_already_estimated_tasks() -> None:
                         is_backlog=True,
                         estimate_minutes=30,
                     ),
-                    Task(board_id=board.id, title="B", status="backlog", is_backlog=True),
+                    Task(
+                        board_id=board.id, title="B", status="backlog", is_backlog=True
+                    ),
                 ],
             )
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with (
                 p1,
                 p2,
-                patch("app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)),
+                patch(
+                    "app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)
+                ),
             ):
                 resp = await c.post(
                     f"/api/v1/boards/{board.id}/backlog/estimate",
@@ -271,11 +298,15 @@ async def test_estimate_returns_unavailable_when_no_estimator_configured() -> No
             user, board, estimator, _prio = await _seed(session)
             estimator.identity_profile = {}
             session.add(estimator)
-            session.add(Task(board_id=board.id, title="t", status="backlog", is_backlog=True))
+            session.add(
+                Task(board_id=board.id, title="t", status="backlog", is_backlog=True)
+            )
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with p1, p2, patch("app.api.sprints.settings.org_estimator_agent_id", ""):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/estimate")
         body = resp.json()
@@ -295,11 +326,15 @@ async def test_estimate_dispatches_by_role_template_when_env_id_empty() -> None:
     try:
         async with sm() as session:
             user, board, _estimator, _prio = await _seed(session)
-            session.add(Task(board_id=board.id, title="t", status="backlog", is_backlog=True))
+            session.add(
+                Task(board_id=board.id, title="t", status="backlog", is_backlog=True)
+            )
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with p1, p2, patch("app.api.sprints.settings.org_estimator_agent_id", ""):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/estimate")
         body = resp.json()
@@ -342,11 +377,16 @@ async def test_prioritise_dispatches_for_tasks_with_default_score() -> None:
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with (
                 p1,
                 p2,
-                patch("app.api.sprints.settings.org_prioritiser_agent_id", str(prioritiser.id)),
+                patch(
+                    "app.api.sprints.settings.org_prioritiser_agent_id",
+                    str(prioritiser.id),
+                ),
             ):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/prioritise")
         body = resp.json()
@@ -369,11 +409,15 @@ async def test_prioritise_returns_unavailable_when_no_prioritiser_configured() -
             user, board, _est, prioritiser = await _seed(session)
             prioritiser.identity_profile = {}
             session.add(prioritiser)
-            session.add(Task(board_id=board.id, title="t", status="backlog", is_backlog=True))
+            session.add(
+                Task(board_id=board.id, title="t", status="backlog", is_backlog=True)
+            )
             await session.commit()
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with p1, p2, patch("app.api.sprints.settings.org_prioritiser_agent_id", ""):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/prioritise")
         body = resp.json()
@@ -393,11 +437,16 @@ async def test_prioritise_no_tasks_returns_no_dispatch() -> None:
             user, board, _est, prioritiser = await _seed(session)
         app = _build_app(sm, user=user)
         captured, p1, p2 = _capture_dispatch_patches()
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             with (
                 p1,
                 p2,
-                patch("app.api.sprints.settings.org_prioritiser_agent_id", str(prioritiser.id)),
+                patch(
+                    "app.api.sprints.settings.org_prioritiser_agent_id",
+                    str(prioritiser.id),
+                ),
             ):
                 resp = await c.post(f"/api/v1/boards/{board.id}/backlog/prioritise")
         body = resp.json()

@@ -551,6 +551,14 @@ const formatShortTimestamp = (value: string) => {
   });
 };
 
+const formatDurationMinutes = (value?: number | null) => {
+  if (value == null) return "Not set";
+  if (value < 60) return `${value}m`;
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
 const commentElementId = (id: string): string =>
   `task-comment-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
@@ -780,9 +788,7 @@ export default function BoardDetailPage() {
     },
   });
   const allBoards =
-    boardsQuery.data?.status === 200
-      ? (boardsQuery.data.data.items ?? [])
-      : [];
+    boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
   const isPageActive = usePageActive();
   const taskIdFromUrl = searchParams.get("taskId");
   const commentIdFromUrl = searchParams.get("commentId");
@@ -893,7 +899,9 @@ export default function BoardDetailPage() {
   const openedTaskIdFromUrlRef = useRef<string | null>(null);
   const openedPanelFromUrlRef = useRef<string | null>(null);
   const [comments, setComments] = useState<TaskComment[]>([]);
-  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<
+    string | null
+  >(null);
   const [liveFeed, setLiveFeed] = useState<LiveFeedItem[]>([]);
   const liveFeedRef = useRef<LiveFeedItem[]>([]);
   const liveFeedFlashTimersRef = useRef<Record<string, number>>({});
@@ -911,10 +919,16 @@ export default function BoardDetailPage() {
   const [isPostingComment, setIsPostingComment] = useState(false);
   const [postCommentError, setPostCommentError] = useState<string | null>(null);
   // WP-7: Channel thread messages for tasks that have thread_id set
-  const [linkedThread, setLinkedThread] = useState<ChannelThreadRead | null>(null);
-  const [threadMessages, setThreadMessages] = useState<ChannelMessageRead[]>([]);
+  const [linkedThread, setLinkedThread] = useState<ChannelThreadRead | null>(
+    null,
+  );
+  const [threadMessages, setThreadMessages] = useState<ChannelMessageRead[]>(
+    [],
+  );
   const [isLoadingThreadMessages, setIsLoadingThreadMessages] = useState(false);
-  const [threadMessagesError, setThreadMessagesError] = useState<string | null>(null);
+  const [threadMessagesError, setThreadMessagesError] = useState<string | null>(
+    null,
+  );
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const tasksRef = useRef<Task[]>([]);
   const approvalsRef = useRef<Approval[]>([]);
@@ -1234,6 +1248,8 @@ export default function BoardDetailPage() {
   const [editStatus, setEditStatus] = useState<TaskStatus>("inbox");
   const [editPriority, setEditPriority] = useState("medium");
   const [editDueDate, setEditDueDate] = useState("");
+  const [editEstimateMinutes, setEditEstimateMinutes] = useState("");
+  const [editActualMinutes, setEditActualMinutes] = useState("");
   const [editAssigneeId, setEditAssigneeId] = useState("");
   const [editTagIds, setEditTagIds] = useState<string[]>([]);
   const [editDependsOnTaskIds, setEditDependsOnTaskIds] = useState<string[]>(
@@ -1351,7 +1367,6 @@ export default function BoardDetailPage() {
       setAgents((snapshot.agents ?? []).map(normalizeAgent));
       setApprovals((snapshot.approvals ?? []).map(normalizeApproval));
       setChatMessages(snapshot.chat_messages ?? []);
-
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Something went wrong.";
@@ -1444,7 +1459,10 @@ export default function BoardDetailPage() {
     if (!isChatOpen) return;
     const timeout = window.setTimeout(() => {
       if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" });
+        chatContainerRef.current.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
       }
     }, 50);
     return () => window.clearTimeout(timeout);
@@ -1757,6 +1775,8 @@ export default function BoardDetailPage() {
       setEditStatus("inbox");
       setEditPriority("medium");
       setEditDueDate("");
+      setEditEstimateMinutes("");
+      setEditActualMinutes("");
       setEditAssigneeId("");
       setEditTagIds([]);
       setEditDependsOnTaskIds([]);
@@ -1771,6 +1791,16 @@ export default function BoardDetailPage() {
     setEditStatus(selectedTask.status);
     setEditPriority(selectedTask.priority);
     setEditDueDate(toLocalDateInput(selectedTask.due_at));
+    setEditEstimateMinutes(
+      selectedTask.estimate_minutes != null
+        ? String(selectedTask.estimate_minutes)
+        : "",
+    );
+    setEditActualMinutes(
+      selectedTask.actual_minutes != null
+        ? String(selectedTask.actual_minutes)
+        : "",
+    );
     setEditAssigneeId(selectedTask.assigned_agent_id ?? "");
     setEditTagIds(selectedTask.tag_ids ?? []);
     setEditDependsOnTaskIds(selectedTask.depends_on_task_ids ?? []);
@@ -2351,6 +2381,14 @@ export default function BoardDetailPage() {
     const normalizedDescription = editDescription.trim();
     const currentDescription = (selectedTask.description ?? "").trim();
     const currentDueDate = toLocalDateInput(selectedTask.due_at);
+    const currentEstimate =
+      selectedTask.estimate_minutes != null
+        ? String(selectedTask.estimate_minutes)
+        : "";
+    const currentActual =
+      selectedTask.actual_minutes != null
+        ? String(selectedTask.actual_minutes)
+        : "";
     const currentAssignee = selectedTask.assigned_agent_id ?? "";
     const currentTags = [...(selectedTask.tag_ids ?? [])].sort().join("|");
     const nextTags = [...editTagIds].sort().join("|");
@@ -2373,6 +2411,8 @@ export default function BoardDetailPage() {
       editStatus !== selectedTask.status ||
       editPriority !== selectedTask.priority ||
       editDueDate !== currentDueDate ||
+      editEstimateMinutes.trim() !== currentEstimate ||
+      editActualMinutes.trim() !== currentActual ||
       editAssigneeId !== currentAssignee ||
       currentTags !== nextTags ||
       currentDeps !== nextDeps ||
@@ -2380,7 +2420,9 @@ export default function BoardDetailPage() {
     );
   }, [
     editAssigneeId,
+    editActualMinutes,
     editDueDate,
+    editEstimateMinutes,
     editTagIds,
     editDependsOnTaskIds,
     editDescription,
@@ -2503,7 +2545,9 @@ export default function BoardDetailPage() {
         setLinkedThread(threadResult.data);
       }
       if (messagesResult.status === 200) {
-        setThreadMessages(Array.isArray(messagesResult.data) ? messagesResult.data : []);
+        setThreadMessages(
+          Array.isArray(messagesResult.data) ? messagesResult.data : [],
+        );
       }
     } catch (err) {
       setThreadMessagesError(
@@ -2535,9 +2579,12 @@ export default function BoardDetailPage() {
         currentTaskIdFromUrl !== fullTask.id ||
         currentCommentIdFromUrl !== targetCommentId
       ) {
-        router.replace(buildUrlWithTaskAndComment(fullTask.id, targetCommentId), {
-          scroll: false,
-        });
+        router.replace(
+          buildUrlWithTaskAndComment(fullTask.id, targetCommentId),
+          {
+            scroll: false,
+          },
+        );
       }
       selectedTaskIdRef.current = fullTask.id;
       setSelectedTask(fullTask);
@@ -2820,6 +2867,32 @@ export default function BoardDetailPage() {
       );
       return;
     }
+    const parseOptionalMinutes = (value: string, label: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsed = Number(trimmed);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        throw new Error(`${label} must be a whole number of minutes.`);
+      }
+      return parsed;
+    };
+    let nextEstimateMinutes: number | null;
+    let nextActualMinutes: number | null;
+    try {
+      nextEstimateMinutes = parseOptionalMinutes(
+        editEstimateMinutes,
+        "Estimate",
+      );
+      nextActualMinutes = parseOptionalMinutes(
+        editActualMinutes,
+        "Actual time",
+      );
+    } catch (err) {
+      setSaveTaskError(
+        err instanceof Error ? err.message : "Invalid time value.",
+      );
+      return;
+    }
     setIsSavingTask(true);
     setSaveTaskError(null);
     try {
@@ -2833,6 +2906,10 @@ export default function BoardDetailPage() {
       const tagsChanged = currentTags !== nextTags;
       const currentDueDate = toLocalDateInput(selectedTask.due_at);
       const dueDateChanged = editDueDate !== currentDueDate;
+      const estimateChanged =
+        nextEstimateMinutes !== (selectedTask.estimate_minutes ?? null);
+      const actualChanged =
+        nextActualMinutes !== (selectedTask.actual_minutes ?? null);
       const customFieldValuesChanged =
         Object.keys(editCustomFieldPatch).length > 0;
 
@@ -2852,6 +2929,12 @@ export default function BoardDetailPage() {
       }
       if (dueDateChanged) {
         updatePayload.due_at = localDateInputToUtcIso(editDueDate);
+      }
+      if (estimateChanged) {
+        updatePayload.estimate_minutes = nextEstimateMinutes;
+      }
+      if (actualChanged) {
+        updatePayload.actual_minutes = nextActualMinutes;
       }
       if (
         customFieldValuesChanged &&
@@ -2920,6 +3003,16 @@ export default function BoardDetailPage() {
     setEditStatus(selectedTask.status);
     setEditPriority(selectedTask.priority);
     setEditDueDate(toLocalDateInput(selectedTask.due_at));
+    setEditEstimateMinutes(
+      selectedTask.estimate_minutes != null
+        ? String(selectedTask.estimate_minutes)
+        : "",
+    );
+    setEditActualMinutes(
+      selectedTask.actual_minutes != null
+        ? String(selectedTask.actual_minutes)
+        : "",
+    );
     setEditAssigneeId(selectedTask.assigned_agent_id ?? "");
     setEditTagIds(selectedTask.tag_ids ?? []);
     setEditDependsOnTaskIds(selectedTask.depends_on_task_ids ?? []);
@@ -3272,408 +3365,414 @@ export default function BoardDetailPage() {
               isSidePanelOpen ? "overflow-hidden" : "overflow-y-auto",
             )}
           >
-          <div className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
-            <div className="px-4 py-4 md:px-8 md:py-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h1 className="mt-2 text-2xl font-semibold text-slate-900 tracking-tight">
-                    {board?.name ?? "Project"}
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Keep tasks moving through your workflow.
-                  </p>
-                  {isBoardLeadProvisioning ? (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
-                      <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Provisioning project lead…</span>
-                    </div>
-                  ) : null}
-                  {sortedAgents.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {sortedAgents.map((agent) => {
-                        const isWorking = workingAgentIds.has(agent.id);
-                        return (
-                          <button
-                            key={agent.id}
-                            type="button"
-                            className="group flex items-center gap-1.5 rounded-full border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-2 py-1 text-xs transition hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-strong)]"
-                            onClick={() => router.push(`/agents/${agent.id}`)}
-                            title={`${agent.name} · ${agentRoleLabel(agent)}`}
-                          >
-                            <div className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--surface-strong)] text-[9px] font-semibold text-[color:var(--text)]">
-                              {agentAvatarLabel(agent)}
-                              <StatusDot
-                                status={agent.status}
-                                variant="agent"
-                                className={cn(
-                                  "absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full border border-[color:var(--surface)]",
-                                  isWorking && "ring-1 ring-emerald-400",
-                                )}
-                              />
-                            </div>
-                            <span className="max-w-[72px] truncate text-[color:var(--text-muted)] group-hover:text-[color:var(--text)]">
-                              {agent.name}
-                            </span>
-                            {agentRoleLabel(agent) === "Project lead" ? (
-                              <span className="text-[color:var(--accent)] opacity-80">★</span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                      {isOrgAdmin ? (
-                        <button
-                          type="button"
-                          onClick={() => router.push("/agents/new")}
-                          className="flex items-center gap-1 rounded-full border border-dashed border-[color:var(--border-strong)] px-2 py-1 text-xs text-[color:var(--text-quiet)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
-                        >
-                          <Plus className="h-3 w-3" />
-                          <span>Add</span>
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : isOrgAdmin ? (
-                    <button
-                      type="button"
-                      onClick={() => router.push("/agents/new")}
-                      className="mt-3 flex items-center gap-1 rounded-full border border-dashed border-[color:var(--border-strong)] px-2 py-1 text-xs text-[color:var(--text-quiet)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>Add agent</span>
-                    </button>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-                    <button
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                        viewMode === "board"
-                          ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)]"
-                          : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
-                      )}
-                      onClick={() => setViewMode("board")}
-                    >
-                      Task Board
-                    </button>
-                    <button
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                        viewMode === "list"
-                          ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)]"
-                          : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
-                      )}
-                      onClick={() => setViewMode("list")}
-                    >
-                      List
-                    </button>
-                  </div>
-                  <Button
-                    onClick={() => setIsDialogOpen(true)}
-                    className="h-9 w-9 p-0"
-                    aria-label="New task"
-                    title={canWrite ? "New task" : "Read-only access"}
-                    disabled={!canWrite}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/boards/${boardId}/approvals`)}
-                    className="relative h-9 w-9 p-0"
-                    aria-label="Approvals"
-                    title="Approvals"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    {pendingApprovals.length > 0 ? (
-                      <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        {pendingApprovals.length}
-                      </span>
+            <div className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[color:var(--surface)] shadow-sm">
+              <div className="px-4 py-4 md:px-8 md:py-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h1 className="mt-2 text-2xl font-semibold text-slate-900 tracking-tight">
+                      {board?.name ?? "Project"}
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Keep tasks moving through your workflow.
+                    </p>
+                    {isBoardLeadProvisioning ? (
+                      <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+                        <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Provisioning project lead…</span>
+                      </div>
                     ) : null}
-                  </Button>
-                  {isOrgAdmin ? (
+                    {sortedAgents.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {sortedAgents.map((agent) => {
+                          const isWorking = workingAgentIds.has(agent.id);
+                          return (
+                            <button
+                              key={agent.id}
+                              type="button"
+                              className="group flex items-center gap-1.5 rounded-full border border-[color:var(--border)] bg-[color:var(--surface-muted)] px-2 py-1 text-xs transition hover:border-[color:var(--border-strong)] hover:bg-[color:var(--surface-strong)]"
+                              onClick={() => router.push(`/agents/${agent.id}`)}
+                              title={`${agent.name} · ${agentRoleLabel(agent)}`}
+                            >
+                              <div className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--surface-strong)] text-[9px] font-semibold text-[color:var(--text)]">
+                                {agentAvatarLabel(agent)}
+                                <StatusDot
+                                  status={agent.status}
+                                  variant="agent"
+                                  className={cn(
+                                    "absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full border border-[color:var(--surface)]",
+                                    isWorking && "ring-1 ring-emerald-400",
+                                  )}
+                                />
+                              </div>
+                              <span className="max-w-[72px] truncate text-[color:var(--text-muted)] group-hover:text-[color:var(--text)]">
+                                {agent.name}
+                              </span>
+                              {agentRoleLabel(agent) === "Project lead" ? (
+                                <span className="text-[color:var(--accent)] opacity-80">
+                                  ★
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                        {isOrgAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => router.push("/agents/new")}
+                            className="flex items-center gap-1 rounded-full border border-dashed border-[color:var(--border-strong)] px-2 py-1 text-xs text-[color:var(--text-quiet)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span>Add</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : isOrgAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => router.push("/agents/new")}
+                        className="mt-3 flex items-center gap-1 rounded-full border border-dashed border-[color:var(--border-strong)] px-2 py-1 text-xs text-[color:var(--text-quiet)] transition hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>Add agent</span>
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+                      <button
+                        className={cn(
+                          "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                          viewMode === "board"
+                            ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)]"
+                            : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
+                        )}
+                        onClick={() => setViewMode("board")}
+                      >
+                        Task Board
+                      </button>
+                      <button
+                        className={cn(
+                          "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                          viewMode === "list"
+                            ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)]"
+                            : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
+                        )}
+                        onClick={() => setViewMode("list")}
+                      >
+                        List
+                      </button>
+                    </div>
+                    <Button
+                      onClick={() => setIsDialogOpen(true)}
+                      className="h-9 w-9 p-0"
+                      aria-label="New task"
+                      title={canWrite ? "New task" : "Read-only access"}
+                      disabled={!canWrite}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="outline"
                       onClick={() =>
-                        openAgentsControlDialog(
-                          isAgentsPaused ? "resume" : "pause",
-                        )
+                        router.push(`/boards/${boardId}/approvals`)
                       }
-                      disabled={
-                        !isSignedIn ||
-                        !boardId ||
-                        isAgentsControlSending ||
-                        !canWrite
-                      }
-                      className={cn(
-                        "h-9 w-9 p-0",
-                        isAgentsPaused
-                          ? "border-amber-200 bg-amber-50/60 text-amber-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
-                          : "",
-                      )}
-                      aria-label={
-                        isAgentsPaused ? "Resume agents" : "Pause agents"
-                      }
-                      title={
-                        canWrite
-                          ? isAgentsPaused
-                            ? "Resume agents"
-                            : "Pause agents"
-                          : "Read-only access"
-                      }
+                      className="relative h-9 w-9 p-0"
+                      aria-label="Approvals"
+                      title="Approvals"
                     >
-                      {isAgentsPaused ? (
-                        <Play className="h-4 w-4" />
-                      ) : (
-                        <Pause className="h-4 w-4" />
-                      )}
+                      <ShieldCheck className="h-4 w-4" />
+                      {pendingApprovals.length > 0 ? (
+                        <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          {pendingApprovals.length}
+                        </span>
+                      ) : null}
                     </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    onClick={openBoardChat}
-                    className="h-9 w-9 p-0"
-                    aria-label="Project chat"
-                    title="Project chat"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={openLiveFeed}
-                    className="h-9 w-9 p-0"
-                    aria-label="Live feed"
-                    title="Live feed"
-                  >
-                    <Activity className="h-4 w-4" />
-                  </Button>
-                  {isOrgAdmin ? (
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/boards/${boardId}/edit`)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                      aria-label="Project settings"
-                      title="Project settings"
+                    {isOrgAdmin ? (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          openAgentsControlDialog(
+                            isAgentsPaused ? "resume" : "pause",
+                          )
+                        }
+                        disabled={
+                          !isSignedIn ||
+                          !boardId ||
+                          isAgentsControlSending ||
+                          !canWrite
+                        }
+                        className={cn(
+                          "h-9 w-9 p-0",
+                          isAgentsPaused
+                            ? "border-amber-200 bg-amber-50/60 text-amber-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                            : "",
+                        )}
+                        aria-label={
+                          isAgentsPaused ? "Resume agents" : "Pause agents"
+                        }
+                        title={
+                          canWrite
+                            ? isAgentsPaused
+                              ? "Resume agents"
+                              : "Pause agents"
+                            : "Read-only access"
+                        }
+                      >
+                        {isAgentsPaused ? (
+                          <Play className="h-4 w-4" />
+                        ) : (
+                          <Pause className="h-4 w-4" />
+                        )}
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      onClick={openBoardChat}
+                      className="h-9 w-9 p-0"
+                      aria-label="Project chat"
+                      title="Project chat"
                     >
-                      <Settings className="h-4 w-4" />
-                    </button>
-                  ) : null}
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={openLiveFeed}
+                      className="h-9 w-9 p-0"
+                      aria-label="Live feed"
+                      title="Live feed"
+                    >
+                      <Activity className="h-4 w-4" />
+                    </Button>
+                    {isOrgAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/boards/${boardId}/edit`)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                        aria-label="Project settings"
+                        title="Project settings"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="p-4 md:p-6">
-            <div className="space-y-6">
-              {error && (
-                <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm">
-                  {error}
-                </div>
-              )}
+            <div className="p-4 md:p-6">
+              <div className="space-y-6">
+                {error && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm">
+                    {error}
+                  </div>
+                )}
 
-              {isLoading ? (
-                <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-500">
-                  Loading {titleLabel}…
-                </div>
-              ) : (
-                <>
-                  {viewMode === "board" ? (
-                    <TaskBoard
-                      tasks={tasks}
-                      onTaskSelect={openComments}
-                      onTaskMove={canWrite ? handleTaskMove : undefined}
-                      readOnly={!canWrite}
-                    />
-                  ) : (
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                      <div className="border-b border-slate-200 px-5 py-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">
-                              All tasks
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {filteredSortedTasks.length === tasks.length
-                                ? `${tasks.length} task${
-                                    tasks.length === 1 ? "" : "s"
-                                  }`
-                                : `${filteredSortedTasks.length} of ${tasks.length} tasks`}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <select
-                              value={listFilterStatus}
-                              onChange={(e) =>
-                                setListFilterStatus(e.target.value)
-                              }
-                              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300"
-                              aria-label="Filter by status"
-                            >
-                              <option value="all">All statuses</option>
-                              <option value="inbox">Inbox</option>
-                              <option value="in_progress">In progress</option>
-                              <option value="review">Review</option>
-                              <option value="done">Done</option>
-                            </select>
-                            <select
-                              value={listFilterPriority}
-                              onChange={(e) =>
-                                setListFilterPriority(e.target.value)
-                              }
-                              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300"
-                              aria-label="Filter by priority"
-                            >
-                              <option value="all">All priorities</option>
-                              <option value="high">High</option>
-                              <option value="medium">Medium</option>
-                              <option value="low">Low</option>
-                            </select>
-                            <select
-                              value={listSortBy}
-                              onChange={(e) =>
-                                setListSortBy(
-                                  e.target.value as typeof listSortBy,
-                                )
-                              }
-                              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300"
-                              aria-label="Sort by"
-                            >
-                              <option value="updated_at">Updated</option>
-                              <option value="created_at">Created</option>
-                              <option value="title">Title</option>
-                              <option value="status">Status</option>
-                              <option value="priority">Priority</option>
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setListSortDir((d) =>
-                                  d === "asc" ? "desc" : "asc",
-                                )
-                              }
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-xs text-slate-700 transition hover:bg-slate-50"
-                              aria-label={
-                                listSortDir === "asc"
-                                  ? "Sort ascending — click to reverse"
-                                  : "Sort descending — click to reverse"
-                              }
-                              title={
-                                listSortDir === "asc"
-                                  ? "Ascending — click to reverse"
-                                  : "Descending — click to reverse"
-                              }
-                            >
-                              {listSortDir === "asc" ? "↑" : "↓"}
-                            </button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setIsDialogOpen(true)}
-                              disabled={isCreating || !canWrite}
-                              title={canWrite ? "New task" : "Read-only access"}
-                            >
-                              New task
-                            </Button>
+                {isLoading ? (
+                  <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-500">
+                    Loading {titleLabel}…
+                  </div>
+                ) : (
+                  <>
+                    {viewMode === "board" ? (
+                      <TaskBoard
+                        tasks={tasks}
+                        onTaskSelect={openComments}
+                        onTaskMove={canWrite ? handleTaskMove : undefined}
+                        readOnly={!canWrite}
+                      />
+                    ) : (
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div className="border-b border-slate-200 px-5 py-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">
+                                All tasks
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {filteredSortedTasks.length === tasks.length
+                                  ? `${tasks.length} task${
+                                      tasks.length === 1 ? "" : "s"
+                                    }`
+                                  : `${filteredSortedTasks.length} of ${tasks.length} tasks`}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <select
+                                value={listFilterStatus}
+                                onChange={(e) =>
+                                  setListFilterStatus(e.target.value)
+                                }
+                                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                                aria-label="Filter by status"
+                              >
+                                <option value="all">All statuses</option>
+                                <option value="inbox">Inbox</option>
+                                <option value="in_progress">In progress</option>
+                                <option value="review">Review</option>
+                                <option value="done">Done</option>
+                              </select>
+                              <select
+                                value={listFilterPriority}
+                                onChange={(e) =>
+                                  setListFilterPriority(e.target.value)
+                                }
+                                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                                aria-label="Filter by priority"
+                              >
+                                <option value="all">All priorities</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                              </select>
+                              <select
+                                value={listSortBy}
+                                onChange={(e) =>
+                                  setListSortBy(
+                                    e.target.value as typeof listSortBy,
+                                  )
+                                }
+                                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                                aria-label="Sort by"
+                              >
+                                <option value="updated_at">Updated</option>
+                                <option value="created_at">Created</option>
+                                <option value="title">Title</option>
+                                <option value="status">Status</option>
+                                <option value="priority">Priority</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setListSortDir((d) =>
+                                    d === "asc" ? "desc" : "asc",
+                                  )
+                                }
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-xs text-slate-700 transition hover:bg-slate-50"
+                                aria-label={
+                                  listSortDir === "asc"
+                                    ? "Sort ascending — click to reverse"
+                                    : "Sort descending — click to reverse"
+                                }
+                                title={
+                                  listSortDir === "asc"
+                                    ? "Ascending — click to reverse"
+                                    : "Descending — click to reverse"
+                                }
+                              >
+                                {listSortDir === "asc" ? "↑" : "↓"}
+                              </button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsDialogOpen(true)}
+                                disabled={isCreating || !canWrite}
+                                title={
+                                  canWrite ? "New task" : "Read-only access"
+                                }
+                              >
+                                New task
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="divide-y divide-slate-100">
-                        {filteredSortedTasks.length === 0 ? (
-                          <div className="px-5 py-8 text-sm text-slate-500">
-                            {tasks.length === 0
-                              ? "No tasks yet. Create your first task to get started."
-                              : "No tasks match the current filters."}
-                          </div>
-                        ) : (
-                          filteredSortedTasks.map((task) => (
-                            <button
-                              key={task.id}
-                              type="button"
-                              className="w-full px-5 py-4 text-left transition hover:bg-slate-50"
-                              onClick={() => openComments(task)}
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-semibold text-slate-900">
-                                    {task.title}
-                                  </p>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {task.description
-                                      ? task.description
-                                          .toString()
-                                          .trim()
-                                          .slice(0, 120)
-                                      : "No description"}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                                  {task.approvals_pending_count ? (
-                                    <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                      Approval needed ·{" "}
-                                      {task.approvals_pending_count}
+                        <div className="divide-y divide-slate-100">
+                          {filteredSortedTasks.length === 0 ? (
+                            <div className="px-5 py-8 text-sm text-slate-500">
+                              {tasks.length === 0
+                                ? "No tasks yet. Create your first task to get started."
+                                : "No tasks match the current filters."}
+                            </div>
+                          ) : (
+                            filteredSortedTasks.map((task) => (
+                              <button
+                                key={task.id}
+                                type="button"
+                                className="w-full px-5 py-4 text-left transition hover:bg-slate-50"
+                                onClick={() => openComments(task)}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-slate-900">
+                                      {task.title}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {task.description
+                                        ? task.description
+                                            .toString()
+                                            .trim()
+                                            .slice(0, 120)
+                                        : "No description"}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                                    {task.approvals_pending_count ? (
+                                      <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                        Approval needed ·{" "}
+                                        {task.approvals_pending_count}
+                                      </span>
+                                    ) : null}
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                                        statusBadgeClass(task.status),
+                                      )}
+                                    >
+                                      {task.status.replace(/_/g, " ")}
                                     </span>
-                                  ) : null}
-                                  <span
-                                    className={cn(
-                                      "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
-                                      statusBadgeClass(task.status),
-                                    )}
-                                  >
-                                    {task.status.replace(/_/g, " ")}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
-                                      priorityBadgeClass(task.priority),
-                                    )}
-                                  >
-                                    {task.priority}
-                                  </span>
-                                  {task.tags?.length ? (
-                                    <div className="flex flex-wrap items-center gap-1">
-                                      {task.tags.slice(0, 2).map((tag) => (
-                                        <span
-                                          key={tag.id}
-                                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700"
-                                        >
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                                        priorityBadgeClass(task.priority),
+                                      )}
+                                    >
+                                      {task.priority}
+                                    </span>
+                                    {task.tags?.length ? (
+                                      <div className="flex flex-wrap items-center gap-1">
+                                        {task.tags.slice(0, 2).map((tag) => (
                                           <span
-                                            className="h-1.5 w-1.5 rounded-full"
-                                            style={{
-                                              backgroundColor: `#${normalizeTagColor(
-                                                tag.color,
-                                              )}`,
-                                            }}
-                                          />
-                                          {tag.name}
-                                        </span>
-                                      ))}
-                                      {task.tags.length > 2 ? (
-                                        <span className="text-[10px] font-semibold text-slate-500">
-                                          +{task.tags.length - 2}
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-                                  <span className="text-xs text-slate-500">
-                                    {task.assignee ?? "Unassigned"}
-                                  </span>
-                                  <span className="text-xs text-slate-500">
-                                    {formatTaskTimestamp(
-                                      task.updated_at ?? task.created_at,
-                                    )}
-                                  </span>
+                                            key={tag.id}
+                                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                                          >
+                                            <span
+                                              className="h-1.5 w-1.5 rounded-full"
+                                              style={{
+                                                backgroundColor: `#${normalizeTagColor(
+                                                  tag.color,
+                                                )}`,
+                                              }}
+                                            />
+                                            {tag.name}
+                                          </span>
+                                        ))}
+                                        {task.tags.length > 2 ? (
+                                          <span className="text-[10px] font-semibold text-slate-500">
+                                            +{task.tags.length - 2}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                    <span className="text-xs text-slate-500">
+                                      {task.assignee ?? "Unassigned"}
+                                    </span>
+                                    <span className="text-xs text-slate-500">
+                                      {formatTaskTimestamp(
+                                        task.updated_at ?? task.created_at,
+                                      )}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
-                          ))
-                        )}
+                              </button>
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </>
-              )}
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
           </div>
         </main>
       </SignedIn>
@@ -3759,6 +3858,34 @@ export default function BoardDetailPage() {
                   No description provided.
                 </p>
               )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Time
+              </p>
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <dt className="text-xs font-semibold text-slate-600">
+                    Estimate
+                  </dt>
+                  <dd className="mt-1 text-sm text-slate-900">
+                    {formatDurationMinutes(selectedTask?.estimate_minutes)}
+                  </dd>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <dt className="text-xs font-semibold text-slate-600">
+                    Actual
+                  </dt>
+                  <dd className="mt-1 text-sm text-slate-900">
+                    {formatDurationMinutes(selectedTask?.actual_minutes)}
+                  </dd>
+                </div>
+              </dl>
+              {selectedTask?.done_at ? (
+                <p className="text-xs text-slate-500">
+                  Completed {formatTaskTimestamp(selectedTask.done_at)}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -3968,7 +4095,9 @@ export default function BoardDetailPage() {
             </div>
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                {selectedTask && (selectedTask as Task).thread_id ? "Thread messages" : "Comments"}
+                {selectedTask && (selectedTask as Task).thread_id
+                  ? "Thread messages"
+                  : "Comments"}
               </p>
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <BoardChatComposer
@@ -4015,7 +4144,10 @@ export default function BoardDetailPage() {
                           msg.content_type === "system_notification"
                         ) {
                           return (
-                            <div key={msg.id} className="flex justify-center py-1">
+                            <div
+                              key={msg.id}
+                              className="flex justify-center py-1"
+                            >
                               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
                                 {msg.content}
                               </span>
@@ -4059,19 +4191,28 @@ export default function BoardDetailPage() {
                                   isAgent ? "text-teal-700" : "text-slate-700",
                                 )}
                               >
-                                {msg.sender_name || (isCurrentUser ? currentUserDisplayName : "Unknown")}
+                                {msg.sender_name ||
+                                  (isCurrentUser
+                                    ? currentUserDisplayName
+                                    : "Unknown")}
                               </span>
                               <span>
-                                {new Date(msg.created_at).toLocaleString(undefined, {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {new Date(msg.created_at).toLocaleString(
+                                  undefined,
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}
                               </span>
                             </div>
                             <div className="mt-2 text-sm leading-relaxed text-slate-900 break-words">
-                              <Markdown content={msg.content} variant="comment" />
+                              <Markdown
+                                content={msg.content}
+                                variant="comment"
+                              />
                             </div>
                           </div>
                         );
@@ -4138,7 +4279,10 @@ export default function BoardDetailPage() {
             </button>
           </div>
           <div className="flex flex-1 flex-col overflow-hidden px-6 py-4">
-            <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4">
+            <div
+              ref={chatContainerRef}
+              className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4"
+            >
               {chatError ? (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {chatError}
@@ -4352,6 +4496,38 @@ export default function BoardDetailPage() {
                   type="date"
                   value={editDueDate}
                   onChange={(event) => setEditDueDate(event.target.value)}
+                  disabled={!selectedTask || isSavingTask || !canWrite}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Estimate minutes
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={editEstimateMinutes}
+                  onChange={(event) =>
+                    setEditEstimateMinutes(event.target.value)
+                  }
+                  placeholder="Not set"
+                  disabled={!selectedTask || isSavingTask || !canWrite}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Actual minutes
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={editActualMinutes}
+                  onChange={(event) => setEditActualMinutes(event.target.value)}
+                  placeholder="Recorded on completion"
                   disabled={!selectedTask || isSavingTask || !canWrite}
                 />
               </div>
@@ -4781,7 +4957,8 @@ export default function BoardDetailPage() {
                   to project chat.
                 </li>
                 <li>
-                  {branding.productName} forwards it to all agents on this project.
+                  {branding.productName} forwards it to all agents on this
+                  project.
                 </li>
               </ul>
             </div>

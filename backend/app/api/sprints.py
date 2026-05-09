@@ -97,7 +97,9 @@ async def _sprint_ticket_counts(
 ) -> tuple[int, int]:
     """Return (total_tickets, done_tickets) for a sprint."""
     tickets = (
-        await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id))
+        await session.exec(
+            select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id)
+        )
     ).all()
     total = len(tickets)
     done = 0
@@ -485,7 +487,9 @@ class _RunReviewResponse(BaseModel):
     skipped_reviewers: list[dict[str, str]]  # [{role, reason}]
 
 
-def _build_review_prompt(board: Board, sprint: Sprint, role: str, tasks: list[Task]) -> str:
+def _build_review_prompt(
+    board: Board, sprint: Sprint, role: str, tasks: list[Task]
+) -> str:
     role_intros = {
         "qa": "QA REVIEW REQUEST: assess test coverage, acceptance criteria, regression risk.",
         "security": (
@@ -559,7 +563,10 @@ async def run_sprint_review(
     role_to_agent = {
         "qa": ("quality_reviewer", settings.org_qa_reviewer_agent_id),
         "security": ("security_reviewer", settings.org_security_reviewer_agent_id),
-        "architecture": ("architecture_reviewer", settings.org_architecture_reviewer_agent_id),
+        "architecture": (
+            "architecture_reviewer",
+            settings.org_architecture_reviewer_agent_id,
+        ),
     }
     for role, (role_template, agent_id) in role_to_agent.items():
         prompt = _build_review_prompt(board, sprint, role, tasks)
@@ -669,12 +676,16 @@ async def add_sprint_tickets(
             continue
 
         existing_link = (
-            await session.exec(select(SprintTicket).where(col(SprintTicket.task_id) == task_id))
+            await session.exec(
+                select(SprintTicket).where(col(SprintTicket.task_id) == task_id)
+            )
         ).first()
         if existing_link is not None:
             continue
 
-        link = SprintTicket(sprint_id=sprint.id, task_id=task_id, position=next_position)
+        link = SprintTicket(
+            sprint_id=sprint.id, task_id=task_id, position=next_position
+        )
         session.add(link)
         task.sprint_id = sprint.id
         task.updated_at = utcnow()
@@ -769,7 +780,11 @@ async def list_backlog(
     """List all backlog tasks for a board, filterable by sprint or unassigned."""
     from sqlalchemy import or_  # noqa: PLC0415
 
-    query = select(Task).where(col(Task.board_id) == board.id).order_by(col(Task.created_at).desc())
+    query = (
+        select(Task)
+        .where(col(Task.board_id) == board.id)
+        .order_by(col(Task.created_at).desc())
+    )
     if task_status is not None:
         # Explicit status filter
         statuses = [s.strip() for s in task_status.split(",") if s.strip()]
@@ -810,10 +825,13 @@ async def create_backlog_task(
         description=payload.description,
         status="backlog",
         priority=payload.priority,
-        priority_score=payload.priority_score if hasattr(payload, "priority_score") else 35,
+        priority_score=payload.priority_score
+        if hasattr(payload, "priority_score")
+        else 35,
         due_at=payload.due_at,
         assigned_agent_id=payload.assigned_agent_id,
-        created_by_user_id=payload.created_by_user_id or (auth.user.id if auth.user else None),
+        created_by_user_id=payload.created_by_user_id
+        or (auth.user.id if auth.user else None),
         is_backlog=True,
     )
     session.add(task)
@@ -855,8 +873,11 @@ def _build_estimate_prompt(board: Board, tasks: list[Task]) -> str:
     """Build the prompt sent to the org estimator for a batch of backlog tasks."""
     lines = [
         f"BACKLOG ESTIMATION REQUEST for board '{board.name}'.",
-        "Estimate each task in minutes. For each task, call:",
-        '  PATCH /api/v1/tasks/{task_id} with body {"estimate_minutes": <int>}',
+        "Estimate each task in minutes and write the value to the task field, not a comment.",
+        "For each task, call:",
+        f"  PATCH /api/v1/agent/boards/{board.id}/tasks/{{task_id}} "
+        'with body {"estimate_minutes": <int>}',
+        "Do not post an estimate-only comment. The estimate_minutes field is the source of truth.",
         "Use ranges 15, 30, 60, 120, 240, 480 minutes. Pick the closest fit.",
         "",
         "Tasks needing estimates:",
@@ -1185,7 +1206,14 @@ async def _dispatch_organise_agents(
         )
         pri_dispatched = pri_session is not None
 
-    return est_dispatched, est_session, len(est_tasks), pri_dispatched, pri_session, len(pri_tasks)
+    return (
+        est_dispatched,
+        est_session,
+        len(est_tasks),
+        pri_dispatched,
+        pri_session,
+        len(pri_tasks),
+    )
 
 
 @router.post("/backlog/organise", response_model=_BacklogOrganiseResponse)
@@ -1203,9 +1231,14 @@ async def organise_backlog(
     With ``include_sprint=true``, a draft sprint is created from the current backlog sorted by
     ``priority_score`` desc. The sprint name is auto-generated if not supplied.
     """
-    est_dispatched, est_session, est_count, pri_dispatched, pri_session, pri_count = (
-        await _dispatch_organise_agents(session, board=board, force=force)
-    )
+    (
+        est_dispatched,
+        est_session,
+        est_count,
+        pri_dispatched,
+        pri_session,
+        pri_count,
+    ) = await _dispatch_organise_agents(session, board=board, force=force)
 
     sprint_id: UUID | None = None
     sprint_out_name: str | None = None
@@ -1235,7 +1268,9 @@ async def organise_backlog(
             else:
                 existing_count = len(
                     (
-                        await session.exec(select(Sprint).where(col(Sprint.board_id) == board.id))
+                        await session.exec(
+                            select(Sprint).where(col(Sprint.board_id) == board.id)
+                        )
                     ).all()
                 )
                 auto_name = f"Sprint {existing_count + 1}"
@@ -1293,7 +1328,9 @@ async def organise_backlog(
     )
 
 
-@router.post("/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED
+)
 async def batch_create_backlog(
     payload: _BatchBacklogCreate,
     board: Board = BOARD_WRITE_DEP,
@@ -1403,7 +1440,9 @@ async def board_velocity(
                 actual_minutes=sprint.actual_minutes,
                 estimation_accuracy=acc,
                 started_at=sprint.started_at.isoformat() if sprint.started_at else None,
-                completed_at=sprint.completed_at.isoformat() if sprint.completed_at else None,
+                completed_at=sprint.completed_at.isoformat()
+                if sprint.completed_at
+                else None,
             )
         )
         if sprint.completed_minutes is not None:
@@ -1415,7 +1454,9 @@ async def board_velocity(
         round(sum(velocity_values) / len(velocity_values)) if velocity_values else None
     )
     rolling_accuracy = (
-        round(sum(accuracy_values) / len(accuracy_values), 3) if accuracy_values else None
+        round(sum(accuracy_values) / len(accuracy_values), 3)
+        if accuracy_values
+        else None
     )
 
     return _VelocityResponse(

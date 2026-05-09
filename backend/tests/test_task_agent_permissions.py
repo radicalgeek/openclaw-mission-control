@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -83,9 +84,13 @@ async def test_non_lead_agent_can_update_status_for_assigned_task() -> None:
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert actor is not None
 
             updated = await tasks_api.update_task(
@@ -108,8 +113,22 @@ async def test_task_list_statement_can_filter_backlog_flag() -> None:
         async with await _make_session(engine) as session:
             board_id = uuid4()
             other_board_id = uuid4()
-            session.add(Task(board_id=board_id, title="visible backlog", status="backlog", is_backlog=True))
-            session.add(Task(board_id=board_id, title="visible inbox", status="inbox", is_backlog=False))
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="visible backlog",
+                    status="backlog",
+                    is_backlog=True,
+                )
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="visible inbox",
+                    status="inbox",
+                    is_backlog=False,
+                )
+            )
             session.add(
                 Task(
                     board_id=other_board_id,
@@ -140,8 +159,17 @@ async def test_task_list_statement_default_excludes_backlog() -> None:
     try:
         async with await _make_session(engine) as session:
             board_id = uuid4()
-            session.add(Task(board_id=board_id, title="backlog", status="backlog", is_backlog=True))
-            session.add(Task(board_id=board_id, title="inbox", status="inbox", is_backlog=False))
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="backlog",
+                    status="backlog",
+                    is_backlog=True,
+                )
+            )
+            session.add(
+                Task(board_id=board_id, title="inbox", status="inbox", is_backlog=False)
+            )
             await session.commit()
 
             statement = tasks_api._task_list_statement(
@@ -210,9 +238,13 @@ async def test_non_lead_agent_can_update_status_for_unassigned_task() -> None:
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == actor_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == actor_id))
+            ).first()
             assert actor is not None
 
             updated = await tasks_api.update_task(
@@ -289,9 +321,13 @@ async def test_non_lead_agent_forbidden_when_task_assigned_to_other_agent() -> N
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == actor_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == actor_id))
+            ).first()
             assert actor is not None
 
             with pytest.raises(HTTPException) as exc:
@@ -364,9 +400,13 @@ async def test_non_lead_agent_forbidden_for_lead_only_patch_fields() -> None:
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == actor_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == actor_id))
+            ).first()
             assert actor is not None
 
             with pytest.raises(HTTPException) as exc:
@@ -436,9 +476,13 @@ async def test_standalone_estimator_can_set_backlog_estimate() -> None:
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == estimator_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == estimator_id))
+            ).first()
             assert actor is not None
 
             updated = await tasks_api.update_task(
@@ -519,9 +563,13 @@ async def test_estimator_cannot_set_estimate_on_kanban_task() -> None:
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == estimator_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == estimator_id))
+            ).first()
             assert actor is not None
 
             with pytest.raises(HTTPException) as exc:
@@ -603,9 +651,13 @@ async def test_non_lead_agent_moves_task_to_review_and_reassigns_to_lead() -> No
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert actor is not None
 
             updated = await tasks_api.update_task(
@@ -625,6 +677,103 @@ async def test_non_lead_agent_moves_task_to_review_and_reassigns_to_lead() -> No
             assert refreshed_task is not None
             assert refreshed_task.previous_in_progress_at == in_progress_at
             assert refreshed_task.assigned_agent_id == lead_id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_lead_done_transition_records_actual_minutes_from_in_progress_start() -> (
+    None
+):
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            board_id = uuid4()
+            gateway_id = uuid4()
+            worker_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+            started_at = utcnow() - timedelta(minutes=89, seconds=10)
+
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    require_approval_for_done=False,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=worker_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="Lead Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    is_board_lead=True,
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="review task",
+                    description="",
+                    status="review",
+                    assigned_agent_id=lead_id,
+                    previous_in_progress_at=started_at,
+                ),
+            )
+            await session.commit()
+
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
+            assert task is not None
+            lead = (
+                await session.exec(select(Agent).where(col(Agent.id) == lead_id))
+            ).first()
+            assert lead is not None
+
+            updated = await tasks_api.update_task(
+                payload=TaskUpdate(status="done"),
+                task=task,
+                session=session,
+                actor=ActorContext(actor_type="agent", agent=lead),
+            )
+
+            assert updated.status == "done"
+            assert updated.done_at is not None
+            assert updated.actual_minutes == 90
+
+            refreshed_task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
+            assert refreshed_task is not None
+            assert refreshed_task.done_at is not None
+            assert refreshed_task.actual_minutes == 90
     finally:
         await engine.dispose()
 
@@ -701,7 +850,9 @@ async def test_non_lead_agent_move_to_review_reassigns_to_lead_and_sends_review_
                 def __init__(self, _session: AsyncSession) -> None:
                     pass
 
-                async def optional_gateway_config_for_board(self, _board: Board) -> object:
+                async def optional_gateway_config_for_board(
+                    self, _board: Board
+                ) -> object:
                     return object()
 
             async def _fake_send_agent_task_message(
@@ -723,9 +874,13 @@ async def test_non_lead_agent_move_to_review_reassigns_to_lead_and_sends_review_
                 tasks_api, "_send_agent_task_message", _fake_send_agent_task_message
             )
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert actor is not None
 
             updated = await tasks_api.update_task(
@@ -818,7 +973,9 @@ async def test_lead_moves_review_task_to_inbox_and_reassigns_last_worker_with_re
                 def __init__(self, _session: AsyncSession) -> None:
                     pass
 
-                async def optional_gateway_config_for_board(self, _board: Board) -> object:
+                async def optional_gateway_config_for_board(
+                    self, _board: Board
+                ) -> object:
                     return object()
 
             async def _fake_send_agent_task_message(
@@ -844,11 +1001,17 @@ async def test_lead_moves_review_task_to_inbox_and_reassigns_last_worker_with_re
                 tasks_api, "_send_agent_task_message", _fake_send_agent_task_message
             )
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            worker = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            worker = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert worker is not None
-            lead = (await session.exec(select(Agent).where(col(Agent.id) == lead_id))).first()
+            lead = (
+                await session.exec(select(Agent).where(col(Agent.id) == lead_id))
+            ).first()
             assert lead is not None
 
             moved_to_review = await tasks_api.update_task(
@@ -870,7 +1033,9 @@ async def test_lead_moves_review_task_to_inbox_and_reassigns_last_worker_with_re
             )
             await session.commit()
 
-            review_task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            review_task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert review_task is not None
             reverted = await tasks_api.update_task(
                 payload=TaskUpdate(status="inbox"),
@@ -881,17 +1046,24 @@ async def test_lead_moves_review_task_to_inbox_and_reassigns_last_worker_with_re
 
             assert reverted.status == "inbox"
             assert reverted.assigned_agent_id == worker_id
-            worker_messages = [item for item in sent if item["session_key"] == "worker-session"]
+            worker_messages = [
+                item for item in sent if item["session_key"] == "worker-session"
+            ]
             assert worker_messages
             final_message = worker_messages[-1]["message"]
             assert "CHANGES REQUESTED" in final_message
-            assert "Please update error handling and add tests for edge cases." in final_message
+            assert (
+                "Please update error handling and add tests for edge cases."
+                in final_message
+            )
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_non_lead_agent_comment_in_review_without_status_does_not_reassign() -> None:
+async def test_non_lead_agent_comment_in_review_without_status_does_not_reassign() -> (
+    None
+):
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
@@ -951,7 +1123,9 @@ async def test_non_lead_agent_comment_in_review_without_status_does_not_reassign
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
             commentator = (
                 await session.exec(select(Agent).where(col(Agent.id) == commentator_id))
@@ -972,7 +1146,9 @@ async def test_non_lead_agent_comment_in_review_without_status_does_not_reassign
 
 
 @pytest.mark.asyncio
-async def test_non_lead_agent_moves_to_review_without_comment_when_rule_disabled() -> None:
+async def test_non_lead_agent_moves_to_review_without_comment_when_rule_disabled() -> (
+    None
+):
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
@@ -1035,9 +1211,13 @@ async def test_non_lead_agent_moves_to_review_without_comment_when_rule_disabled
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert actor is not None
 
             updated = await tasks_api.update_task(
@@ -1108,9 +1288,13 @@ async def test_non_lead_agent_moves_to_review_without_comment_or_recent_comment_
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            actor = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert actor is not None
 
             with pytest.raises(HTTPException) as exc:
@@ -1134,7 +1318,9 @@ async def test_lead_assignment_and_in_progress_wakes_assignee_once(
     async def _fake_send_agent_task_message(**_: Any) -> str | None:
         return None
 
-    monkeypatch.setattr(tasks_api, "_send_agent_task_message", _fake_send_agent_task_message)
+    monkeypatch.setattr(
+        tasks_api, "_send_agent_task_message", _fake_send_agent_task_message
+    )
 
     engine = await _make_engine()
     try:
@@ -1198,9 +1384,13 @@ async def test_lead_assignment_and_in_progress_wakes_assignee_once(
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            lead = (await session.exec(select(Agent).where(col(Agent.id) == lead_id))).first()
+            lead = (
+                await session.exec(select(Agent).where(col(Agent.id) == lead_id))
+            ).first()
             assert lead is not None
 
             updated = await tasks_api.update_task(
@@ -1241,7 +1431,9 @@ async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
     async def _fake_send_agent_task_message(**_: Any) -> str | None:
         return None
 
-    monkeypatch.setattr(tasks_api, "_send_agent_task_message", _fake_send_agent_task_message)
+    monkeypatch.setattr(
+        tasks_api, "_send_agent_task_message", _fake_send_agent_task_message
+    )
 
     engine = await _make_engine()
     try:
@@ -1293,9 +1485,13 @@ async def test_entering_in_progress_with_existing_assignee_wakes_assignee(
             )
             await session.commit()
 
-            task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
             assert task is not None
-            worker = (await session.exec(select(Agent).where(col(Agent.id) == worker_id))).first()
+            worker = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
             assert worker is not None
 
             updated = await tasks_api.update_task(
