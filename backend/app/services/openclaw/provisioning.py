@@ -1395,7 +1395,7 @@ def _should_include_bootstrap(
 
 
 def _wakeup_text(agent: Agent, *, verb: str) -> str:
-    return (
+    text = (
         f"Hello {agent.name}. Your workspace has been {verb}.\n\n"
         "Start the agent now. If BOOTSTRAP.md exists, read it first, then read "
         "AGENTS.md and HEARTBEAT.md.\n\n"
@@ -1404,6 +1404,12 @@ def _wakeup_text(agent: Agent, *, verb: str) -> str:
         "Return HEARTBEAT_OK only after the heartbeat cycle is complete or "
         "there is genuinely no work."
     )
+    profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+    role_template = profile.get("role_template")
+    if isinstance(role_template, str) and role_template in ROLE_TEMPLATE_HEARTBEAT_PROMPT:
+        text += "\n\nRole-specific heartbeat requirement:\n"
+        text += ROLE_TEMPLATE_HEARTBEAT_PROMPT[role_template]
+    return text
 
 
 class OpenClawGatewayProvisioner:

@@ -76,6 +76,19 @@ def test_wakeup_text_requires_immediate_heartbeat_execution():
     assert "Return HEARTBEAT_OK only after the heartbeat cycle is complete" in text
 
 
+def test_wakeup_text_includes_role_specific_heartbeat_requirement():
+    agent = _AgentStub(
+        name="Estimator",
+        identity_profile={"role_template": "estimator"},
+    )
+
+    text = agent_provisioning._wakeup_text(agent, verb="updated")
+
+    assert "Role-specific heartbeat requirement:" in text
+    assert "missing-estimate discovery workflow" in text
+    assert "do not return HEARTBEAT_OK" in text
+
+
 def test_triager_heartbeat_prompt_requires_active_plan_discovery():
     agent = _AgentStub(
         name="Triager",
@@ -100,6 +113,7 @@ def test_estimator_heartbeat_prompt_requires_missing_estimate_discovery():
     assert heartbeat["every"] == "5m"
     assert "missing-estimate discovery workflow" in heartbeat["prompt"]
     assert "all backlog tickets have estimate_minutes" in heartbeat["prompt"]
+    assert "do not return HEARTBEAT_OK" in heartbeat["prompt"]
 
 
 def test_explicit_agent_heartbeat_prompt_override_wins():

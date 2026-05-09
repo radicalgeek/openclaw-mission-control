@@ -42,7 +42,8 @@ ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
         "missing-estimate discovery workflow from it. Do not rely on memory or prior "
         "chat state. You may return HEARTBEAT_OK only after a tool/API call proves "
         "all backlog tickets have estimate_minutes, or after you set estimates on "
-        "the discovered backlog tickets."
+        "the discovered backlog tickets. If any discovery or update API call fails, "
+        "report the blocker and do not return HEARTBEAT_OK."
     ),
     "triager": (
         "You are the Triager. Read HEARTBEAT.md and immediately run the active-plan "
