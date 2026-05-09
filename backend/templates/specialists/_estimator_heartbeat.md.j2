@@ -16,7 +16,7 @@ Missing estimates are not a blocker and do not require a human decision. You are
 
    : > /tmp/estimator-missing-estimates.jsonl
    jq -r '.items[] | .id' /tmp/estimator-boards.json | while read -r board_id; do
-     curl -fsS "{{ base_url }}/api/v1/agent/boards/${board_id}/tasks?status=backlog" \
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/${board_id}/tasks?is_backlog=true" \
        -H "X-Agent-Token: {{ auth_token }}" \
        | jq --arg board_id "$board_id" '
            .items[]
@@ -32,6 +32,10 @@ Missing estimates are not a blocker and do not require a human decision. You are
 
    If the result is `[]`, all backlog tickets already have estimates; return
    `HEARTBEAT_OK` and stop.
+
+   Do not use `status=backlog` for this workflow. Backlog membership is the
+   `is_backlog` flag, and the required discovery query is
+   `tasks?is_backlog=true`.
 
 2. **Estimate every discovered ticket in this heartbeat.** Do not estimate only
    the top few, a sample, or a priority slice. Prioritisation only decides the
@@ -73,6 +77,7 @@ Missing estimates are not a blocker and do not require a human decision. You are
    all PATCH calls. If any backlog ticket still has `estimate_minutes == null`,
    keep estimating those remaining tickets. Return `HEARTBEAT_OK` only when a
    fresh API read proves the missing-estimate result is `[]`.
+   Verification must use `tasks?is_backlog=true`, not `status=backlog`.
 
 #### Estimation Methodology
 
@@ -95,4 +100,6 @@ Estimation inputs for each ticket:
 - **In scope**: Estimating tickets, tracking accuracy, calibrating, flagging unestimable tickets.
 - **Out of scope**: Prioritising tickets (planner's job), creating tickets (triager's job), executing work, judging business value, picking up Kanban tasks.
 - **Not a blocker**: A backlog ticket missing `estimate_minutes`; that is the work you must perform.
+- **Required backlog filter**: Use `is_backlog=true` for discovery and verification.
+  Never use `status=backlog` as a substitute.
 - **Forbidden**: Returning `HEARTBEAT_OK` after estimating only part of the backlog while any discovered backlog ticket still has `estimate_minutes == null`.
