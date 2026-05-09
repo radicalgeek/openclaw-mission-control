@@ -56,6 +56,11 @@ def _should_reset_session_for_reconcile(agent: Agent) -> bool:
     return False
 
 
+def _can_retry_after_max_wake_attempts(agent: Agent) -> bool:
+    """Allow stale standalone sessions one reset-session recovery past max attempts."""
+    return agent.agent_type == AGENT_TYPE_STANDALONE and _should_reset_session_for_reconcile(agent)
+
+
 async def process_lifecycle_queue_task(task: QueuedTask) -> None:
     """Re-run lifecycle provisioning when an agent misses post-provision check-in."""
     payload = decode_lifecycle_task(task)
@@ -108,7 +113,10 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
             )
             return
 
-        if agent.wake_attempts >= settings.agent_max_wake_attempts:
+        if (
+            agent.wake_attempts >= settings.agent_max_wake_attempts
+            and not _can_retry_after_max_wake_attempts(agent)
+        ):
             agent.status = "offline"
             agent.checkin_deadline_at = None
             agent.last_provision_error = (

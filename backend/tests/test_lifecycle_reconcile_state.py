@@ -14,6 +14,7 @@ from app.services.openclaw.constants import (
     OFFLINE_AFTER,
 )
 from app.services.openclaw.lifecycle_reconcile import (
+    _can_retry_after_max_wake_attempts,
     _has_checked_in_since_wake,
     _should_reset_session_for_reconcile,
 )
@@ -81,6 +82,26 @@ def test_preserve_session_when_board_worker_misses_wake_after_checkin() -> None:
         agent_type=AGENT_TYPE_BOARD_WORKER,
     )
     assert _should_reset_session_for_reconcile(agent) is False
+
+
+def test_allow_max_attempt_retry_for_stale_standalone_session() -> None:
+    stale_offset = -int(OFFLINE_AFTER.total_seconds()) - 60
+    agent = _agent(
+        last_seen_offset_s=stale_offset,
+        last_wake_offset_s=-30,
+        agent_type=AGENT_TYPE_STANDALONE,
+    )
+    assert _can_retry_after_max_wake_attempts(agent) is True
+
+
+def test_preserve_max_attempt_stop_for_stale_board_worker_session() -> None:
+    stale_offset = -int(OFFLINE_AFTER.total_seconds()) - 60
+    agent = _agent(
+        last_seen_offset_s=stale_offset,
+        last_wake_offset_s=-30,
+        agent_type=AGENT_TYPE_BOARD_WORKER,
+    )
+    assert _can_retry_after_max_wake_attempts(agent) is False
 
 
 def test_lifecycle_convergence_policy_constants() -> None:
