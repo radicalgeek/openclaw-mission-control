@@ -266,9 +266,10 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
       cron didn't fire, etc.) and needs to be re-registered with the gateway
       so its heartbeat schedule fires again.
 
-    For ``updating`` and ``offline`` matches we reset ``wake_attempts`` to 0
-    so the re-enqueued reconcile gets a fresh budget; an already-maxed-out
-    counter would otherwise just bounce the agent straight back to offline.
+    The sweep deliberately preserves ``wake_attempts``. Resetting the counter
+    here turns stale presence into an infinite re-provision loop: each sweep
+    gives the agent a fresh budget before the lifecycle reconciler can reach
+    ``agent_max_wake_attempts`` and stop.
 
     Each matched agent gets a reconcile task enqueued with
     ``checkin_deadline_at=now`` (deadline in the past → fires immediately).
@@ -347,25 +348,21 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
     )
     now = utcnow()
     count = 0
-    needs_commit = False
     for agent in stuck_agents:
         try:
-            # Reset wake budget for any agent we're re-waking so lifecycle
-            # reconcile doesn't immediately bounce it to offline. Includes
-            # the ``online_unseen`` case (status='online' but heartbeat is
-            # missing or stale): the gateway provision call returned ok and
-            # incremented wake_attempts, but the agent didn't (or stopped)
-            # heartbeating, so those attempts shouldn't count against budget.
-            online_but_unseen = agent.status == "online" and (
-                agent.last_seen_at is None or agent.last_seen_at < offline_cutoff
-            )
             if (
-                agent.status in ("updating", "offline") or online_but_unseen
-            ) and agent.wake_attempts > 0:
-                agent.wake_attempts = 0
-                agent.updated_at = now
-                session.add(agent)
-                needs_commit = True
+                agent.status == "offline"
+                and agent.wake_attempts >= settings.agent_max_wake_attempts
+            ):
+                logger.info(
+                    "org_agent_reconciler.stuck_skip_max_attempts "
+                    "agent_id=%s status=%s wake_attempts=%d max_attempts=%d",
+                    agent.id,
+                    agent.status,
+                    agent.wake_attempts,
+                    settings.agent_max_wake_attempts,
+                )
+                continue
             enqueue_lifecycle_reconcile(
                 QueuedAgentLifecycleReconcile(
                     agent_id=agent.id,
@@ -387,8 +384,5 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
                 "org_agent_reconciler.stuck_requeue_error agent_id=%s",
                 agent.id,
             )
-
-    if needs_commit:
-        await session.commit()
 
     return count

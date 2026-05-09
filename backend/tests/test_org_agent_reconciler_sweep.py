@@ -1,0 +1,134 @@
+# ruff: noqa: INP001
+"""Org-agent stuck sweep regression tests."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import timedelta
+from typing import Any, Literal
+from uuid import uuid4
+
+import pytest
+
+from app.core.config import settings
+from app.core.time import utcnow
+from app.models.agents import Agent
+from app.services.openclaw import org_agent_reconciler
+from app.services.openclaw.constants import OFFLINE_AFTER
+from app.services.openclaw.lifecycle_queue import QueuedAgentLifecycleReconcile
+
+
+@dataclass
+class _FakeSession:
+    exec_results: list[list[Agent]]
+    added: list[Agent] = field(default_factory=list)
+    commits: int = 0
+
+    async def exec(self, _statement: Any) -> list[Agent]:
+        if not self.exec_results:
+            return []
+        return self.exec_results.pop(0)
+
+    def add(self, agent: Agent) -> None:
+        self.added.append(agent)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+def _stale_agent(
+    *,
+    status: str,
+    wake_attempts: int,
+    last_seen_at: Literal["stale"] | None = "stale",
+) -> Agent:
+    now = utcnow()
+    if last_seen_at == "stale":
+        seen_at = now - OFFLINE_AFTER - timedelta(minutes=1)
+    else:
+        seen_at = None
+
+    return Agent(
+        id=uuid4(),
+        name=f"{status}-agent",
+        gateway_id=uuid4(),
+        status=status,
+        updated_at=now
+        - timedelta(seconds=settings.agent_stuck_provisioning_sweep_seconds + 1),
+        last_seen_at=seen_at,
+        wake_attempts=wake_attempts,
+        lifecycle_generation=12,
+    )
+
+
+@pytest.mark.asyncio
+async def test_sweep_preserves_online_unseen_wake_attempt_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(status="online", wake_attempts=3)
+    session = _FakeSession(exec_results=[[], [agent], [], []])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 1
+    assert agent.wake_attempts == 3
+    assert session.added == []
+    assert session.commits == 0
+    assert captured[0].agent_id == agent.id
+    assert captured[0].generation == agent.lifecycle_generation
+
+
+@pytest.mark.asyncio
+async def test_sweep_preserves_updating_wake_attempt_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(status="updating", wake_attempts=4)
+    session = _FakeSession(exec_results=[[], [], [agent], []])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 1
+    assert agent.wake_attempts == 4
+    assert session.added == []
+    assert session.commits == 0
+    assert len(captured) == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_offline_agent_that_exhausted_wake_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(
+        status="offline",
+        wake_attempts=settings.agent_max_wake_attempts,
+    )
+    session = _FakeSession(exec_results=[[], [], [], [agent]])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 0
+    assert captured == []
+    assert agent.wake_attempts == settings.agent_max_wake_attempts
+    assert session.added == []
+    assert session.commits == 0
