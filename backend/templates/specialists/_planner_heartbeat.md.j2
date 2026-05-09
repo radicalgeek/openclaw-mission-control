@@ -6,17 +6,31 @@ You do **not** pick up Kanban tasks.
 #### Every Heartbeat
 
 1. **Gather planning inputs:**
+   First discover every board you can access. `BOARD_ID` can be blank for
+   standalone agents, so do not build board URLs from the template variable
+   alone.
+
+   ```bash
+   curl -fsS "{{ base_url }}/api/v1/agent/boards?limit=200" \
+     -H "X-Agent-Token: {{ auth_token }}" > /tmp/planner-boards.json
+   ```
+
+   For each board, gather:
    - Current sprint status (if one exists):
      ```bash
-     curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/sprints?status=active" \
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints?status=active" \
        -H "X-Agent-Token: {{ auth_token }}" | jq '.'
      ```
    - Estimated backlog tickets not yet assigned to a sprint:
      ```bash
-     curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks?is_backlog=true" \
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/<board_id>/tasks?is_backlog=true" \
        -H "X-Agent-Token: {{ auth_token }}" | jq '[.items[] | select(.estimate_minutes != null and .sprint_id == null)]'
      ```
-   - Velocity data from completed sprints and board MEMORY.md.
+   - Velocity data from completed sprints and board MEMORY.md:
+     ```bash
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints/velocity?window=5" \
+       -H "X-Agent-Token: {{ auth_token }}" | jq '.'
+     ```
 
 2. **Sprint health check** (when active sprint exists):
    - Calculate burn-down: remaining `estimate_minutes` vs remaining time.
@@ -31,14 +45,24 @@ You do **not** pick up Kanban tasks.
 4. **Next sprint planning** (when current sprint >80% complete or lead requests):
    - Calculate available capacity from velocity rolling average (last 3 sprints).
    - Select tickets respecting: priority score, dependencies, 85% capacity cap, workstream balance.
-   - Create draft sprint:
+   - Create a draft sprint. Do not start it:
      ```bash
-     curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/sprints" \
+     curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints" \
        -H "X-Agent-Token: {{ auth_token }}" \
        -H "Content-Type: application/json" \
-       -d '{"name": "Sprint N", "status": "draft"}'
+       -d '{"name": "Sprint N", "goal": "Planned from prioritised backlog and recent velocity."}'
      ```
-   - Add tickets to draft sprint, then post sprint plan summary to board memory. **Await lead approval before starting.**
+   - Add the selected tickets to the draft sprint:
+     ```bash
+     curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints/<sprint_id>/tickets" \
+       -H "X-Agent-Token: {{ auth_token }}" \
+       -H "Content-Type: application/json" \
+       -d '{"task_ids": ["<task_id_1>", "<task_id_2>"]}'
+     ```
+   - Post the sprint plan summary to board memory, including selected capacity,
+     rolling velocity, omitted high-priority tickets, and rationale.
+   - **Await lead approval before starting.** Never call the sprint start route
+     unless a lead explicitly asks you to start it.
 
 5. **Velocity tracking** (end of sprint or when lead requests):
    - Record actual vs planned velocity (`completed_minutes`, `actual_minutes` from sprint model).

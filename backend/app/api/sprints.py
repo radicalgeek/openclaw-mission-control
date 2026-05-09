@@ -11,7 +11,9 @@ from sqlmodel import col, select
 
 from app.api.deps import (
     ACTOR_DEP,
+    ActorContext,
     get_board_for_actor_read,
+    get_board_for_actor_write,
     get_board_for_user_read,
     get_board_for_user_write,
     require_user_auth,
@@ -49,6 +51,7 @@ logger = get_logger(__name__)
 SESSION_DEP = Depends(get_session)
 BOARD_READ_DEP = Depends(get_board_for_user_read)
 BOARD_WRITE_DEP = Depends(get_board_for_user_write)
+BOARD_ACTOR_WRITE_DEP = Depends(get_board_for_actor_write)
 USER_AUTH_DEP = Depends(require_user_auth)
 BOARD_ACTOR_READ_DEP = Depends(get_board_for_actor_read)
 
@@ -215,9 +218,9 @@ async def list_sprints(
 @router.post("/sprints", response_model=SprintRead, status_code=status.HTTP_201_CREATED)
 async def create_sprint(
     payload: SprintCreate,
-    board: Board = BOARD_WRITE_DEP,
+    board: Board = BOARD_ACTOR_WRITE_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    auth: "AuthContext" = USER_AUTH_DEP,
+    actor: ActorContext = ACTOR_DEP,
 ) -> SprintRead:
     """Create a new sprint in draft status."""
     slug = generate_slug(payload.name)
@@ -229,7 +232,7 @@ async def create_sprint(
         goal=payload.goal,
         status="draft",
         position=0,
-        created_by_user_id=auth.user.id if auth.user else None,
+        created_by_user_id=actor.user.id if actor.user else None,
     )
     session.add(sprint)
     record_activity(
@@ -346,9 +349,9 @@ class _AutoFromBacklogResponse(BaseModel):
 @router.post("/sprints/auto-from-backlog", response_model=_AutoFromBacklogResponse)
 async def auto_sprint_from_backlog(
     payload: _AutoFromBacklogRequest,
-    board: Board = BOARD_WRITE_DEP,
+    board: Board = BOARD_ACTOR_WRITE_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    auth: "AuthContext" = USER_AUTH_DEP,
+    actor: ActorContext = ACTOR_DEP,
 ) -> _AutoFromBacklogResponse:
     """Create a draft sprint and attach the highest-priority backlog tasks.
 
@@ -406,7 +409,7 @@ async def auto_sprint_from_backlog(
         goal=payload.goal,
         status="draft",
         position=0,
-        created_by_user_id=auth.user.id if auth.user else None,
+        created_by_user_id=actor.user.id if actor.user else None,
     )
     session.add(sprint)
     await session.flush()
@@ -643,9 +646,9 @@ async def list_sprint_tickets(
 async def add_sprint_tickets(
     sprint_id: UUID,
     payload: SprintTicketAddRequest,
-    board: Board = BOARD_WRITE_DEP,
+    board: Board = BOARD_ACTOR_WRITE_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: ActorContext = ACTOR_DEP,
 ) -> list[SprintTicketRead]:
     """Add existing backlog tasks to a sprint."""
     sprint = await _require_sprint(session, sprint_id, board)
@@ -697,9 +700,9 @@ async def add_sprint_tickets(
 async def remove_sprint_ticket(
     sprint_id: UUID,
     task_id: UUID,
-    board: Board = BOARD_WRITE_DEP,
+    board: Board = BOARD_ACTOR_WRITE_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: ActorContext = ACTOR_DEP,
 ) -> OkResponse:
     """Remove a task from a sprint (returns it to unassigned backlog)."""
     sprint = await _require_sprint(session, sprint_id, board)
@@ -728,9 +731,9 @@ async def remove_sprint_ticket(
 async def reorder_sprint_tickets(
     sprint_id: UUID,
     payload: SprintTicketReorderRequest,
-    board: Board = BOARD_WRITE_DEP,
+    board: Board = BOARD_ACTOR_WRITE_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    _auth: "AuthContext" = USER_AUTH_DEP,
+    _actor: ActorContext = ACTOR_DEP,
 ) -> OkResponse:
     """Update ticket positions within a sprint."""
     sprint = await _require_sprint(session, sprint_id, board)
@@ -1187,9 +1190,9 @@ async def _dispatch_organise_agents(
 
 @router.post("/backlog/organise", response_model=_BacklogOrganiseResponse)
 async def organise_backlog(
-    board: Board = BOARD_WRITE_DEP,
+    board: Board = BOARD_ACTOR_WRITE_DEP,
     session: "AsyncSession" = SESSION_DEP,
-    auth: "AuthContext" = USER_AUTH_DEP,
+    actor: ActorContext = ACTOR_DEP,
     include_sprint: bool = Query(default=False),
     force: bool = Query(default=False),
     sprint_name: str | None = Query(default=None),
@@ -1244,7 +1247,7 @@ async def organise_backlog(
                 slug=generate_slug(auto_name),
                 status="draft",
                 position=0,
-                created_by_user_id=auth.user.id if auth.user else None,
+                created_by_user_id=actor.user.id if actor.user else None,
             )
             session.add(sprint)
             await session.flush()

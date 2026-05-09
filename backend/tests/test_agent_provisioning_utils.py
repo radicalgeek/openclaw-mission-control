@@ -122,6 +122,22 @@ def test_estimator_heartbeat_prompt_requires_missing_estimate_discovery():
     assert "do not return HEARTBEAT_OK" in heartbeat["prompt"]
 
 
+def test_planner_heartbeat_prompt_requires_board_discovery_and_draft_sprints():
+    agent = _AgentStub(
+        name="Planner",
+        identity_profile={"role_template": "planner"},
+    )
+
+    heartbeat = agent_provisioning._heartbeat_config(agent)
+
+    assert heartbeat["every"] == "5m"
+    assert "sprint planning workflow" in heartbeat["prompt"]
+    assert "/api/v1/agent/boards" in heartbeat["prompt"]
+    assert "estimated, unassigned backlog" in heartbeat["prompt"]
+    assert "create draft sprint" in heartbeat["prompt"]
+    assert "do not start a sprint" in heartbeat["prompt"]
+
+
 def test_explicit_agent_heartbeat_prompt_override_wins():
     agent = _AgentStub(
         name="Triager",

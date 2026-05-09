@@ -15,8 +15,11 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.deps import (
+    ActorContext,
+    get_board_for_actor_write,
     get_board_for_user_read,
     get_board_for_user_write,
+    require_user_or_agent,
     require_user_auth,
 )
 from app.api.sprints import router as sprints_router
@@ -63,7 +66,12 @@ def _build_app(session_maker: async_sessionmaker[AsyncSession], *, user: User) -
     app.dependency_overrides[get_session] = _session_override
     app.dependency_overrides[get_board_for_user_read] = _board_override
     app.dependency_overrides[get_board_for_user_write] = _board_override
+    app.dependency_overrides[get_board_for_actor_write] = _board_override
     app.dependency_overrides[require_user_auth] = lambda: AuthContext(actor_type="user", user=user)
+    app.dependency_overrides[require_user_or_agent] = lambda: ActorContext(
+        actor_type="user",
+        user=user,
+    )
     return app
 
 

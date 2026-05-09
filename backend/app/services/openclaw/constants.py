@@ -62,6 +62,16 @@ ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
         "untriaged active plans, or after you create backlog tickets and mark each "
         "discovered plan triaged."
     ),
+    "planner": (
+        "You are the Planner. Read HEARTBEAT.md and immediately run the sprint "
+        "planning workflow from it. Do not rely on BOARD_ID being set; discover "
+        "boards with /api/v1/agent/boards. Use estimated, unassigned backlog "
+        "tickets plus sprint velocity to create draft sprint plans when planning "
+        "is due. You may create draft sprints and add selected tickets, but do "
+        "not start a sprint unless a lead explicitly asks. Return HEARTBEAT_OK "
+        "only after a fresh tool/API read proves there is no planning work, or "
+        "after you create/update the draft sprint plan and record the rationale."
+    ),
 }
 
 OFFLINE_AFTER = timedelta(minutes=10)
