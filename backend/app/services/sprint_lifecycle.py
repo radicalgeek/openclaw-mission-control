@@ -7,7 +7,7 @@ import hmac
 import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from sqlmodel import col, select
 
@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 _SPRINT_ALLOWED_START_STATUSES = frozenset({"draft", "queued"})
 _AGENT_MISSING_HINT = "no longer exists in configuration"
+_SPRINT_WAKE_IDEMPOTENCY_NAMESPACE = UUID("a3bca6bd-4d2c-4da2-881a-8717d8313466")
 
 
 def _utc_iso(dt: datetime | None) -> str | None:
@@ -171,9 +172,10 @@ async def _wake_board_lead_for_started_sprint(
 
     from app.models.agents import Agent  # noqa: PLC0415
     from app.models.gateways import Gateway  # noqa: PLC0415
-    from app.services.openclaw.gateway_dispatch import GatewayDispatchService  # noqa: PLC0415
     from app.services.openclaw.gateway_resolver import gateway_client_config  # noqa: PLC0415
     from app.services.openclaw.gateway_rpc import OpenClawGatewayError  # noqa: PLC0415
+    from app.services.openclaw.gateway_rpc import ensure_session  # noqa: PLC0415
+    from app.services.openclaw.gateway_rpc import send_session_message_nonblocking  # noqa: PLC0415
     from app.services.openclaw.provisioning import OpenClawGatewayProvisioner  # noqa: PLC0415
 
     gateway = await session.get(Gateway, board.gateway_id)
@@ -225,15 +227,23 @@ async def _wake_board_lead_for_started_sprint(
         board=board,
         ticket_count=ticket_count,
     )
-    dispatcher = GatewayDispatchService(session)
-    try:
-        await dispatcher.send_agent_message(
+
+    async def _send_lead_wake() -> None:
+        await ensure_session(lead.openclaw_session_id, config=config, label=lead.name)
+        await send_session_message_nonblocking(
+            message,
             session_key=lead.openclaw_session_id,
             config=config,
-            agent_name=lead.name,
-            message=message,
-            deliver=True,
+            idempotency_key=str(
+                uuid5(
+                    _SPRINT_WAKE_IDEMPOTENCY_NAMESPACE,
+                    f"sprint-start:{sprint.id}:{lead.id}",
+                ),
+            ),
         )
+
+    try:
+        await _send_lead_wake()
     except OpenClawGatewayError as exc:
         if _AGENT_MISSING_HINT in str(exc).lower():
             try:
@@ -241,13 +251,7 @@ async def _wake_board_lead_for_started_sprint(
                     gateway,
                     list(agents),
                 )
-                await dispatcher.send_agent_message(
-                    session_key=lead.openclaw_session_id,
-                    config=config,
-                    agent_name=lead.name,
-                    message=message,
-                    deliver=True,
-                )
+                await _send_lead_wake()
                 return
             except Exception:
                 logger.exception(

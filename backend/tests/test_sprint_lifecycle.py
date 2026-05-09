@@ -185,7 +185,7 @@ async def test_start_sprint_succeeds_no_active_sprint() -> None:
 async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch: Any) -> None:
     from app.services import sprint_lifecycle
     from app.services.openclaw import provisioning
-    from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+    from app.services.openclaw import gateway_rpc
 
     board = _board()
     board.gateway_id = uuid4()
@@ -227,6 +227,7 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
     session._push_result([lead, developer])  # board agents
 
     synced: list[tuple[Gateway, list[Agent]]] = []
+    ensured: list[dict[str, Any]] = []
     sent: list[dict[str, Any]] = []
 
     class _Provisioner:
@@ -237,30 +238,36 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
         ) -> None:
             synced.append((gateway_arg, agents_arg))
 
-    async def _send_agent_message(
-        self: GatewayDispatchService,
+    async def _ensure_session(
+        session_key: str,
+        *,
+        config: Any,
+        label: str | None = None,
+    ) -> None:
+        ensured.append({"session_key": session_key, "label": label, "config": config})
+
+    async def _send_session_message_nonblocking(
+        message: str,
         *,
         session_key: str,
         config: Any,
-        agent_name: str,
-        message: str,
-        deliver: bool = False,
+        idempotency_key: str | None = None,
     ) -> None:
         sent.append(
             {
                 "session_key": session_key,
-                "agent_name": agent_name,
                 "message": message,
-                "deliver": deliver,
+                "idempotency_key": idempotency_key,
                 "config": config,
             },
         )
 
     monkeypatch.setattr(provisioning, "OpenClawGatewayProvisioner", _Provisioner)
+    monkeypatch.setattr(gateway_rpc, "ensure_session", _ensure_session)
     monkeypatch.setattr(
-        GatewayDispatchService,
-        "send_agent_message",
-        _send_agent_message,
+        gateway_rpc,
+        "send_session_message_nonblocking",
+        _send_session_message_nonblocking,
     )
 
     await sprint_lifecycle.SprintService.start_sprint(
@@ -273,17 +280,24 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
         ("Board Lead", "updating"),
         ("Developer", "offline"),
     ]
+    assert ensured == [
+        {
+            "session_key": lead.openclaw_session_id,
+            "label": "Board Lead",
+            "config": ensured[0]["config"],
+        },
+    ]
     assert sent == [
         {
             "session_key": lead.openclaw_session_id,
-            "agent_name": "Board Lead",
             "message": sent[0]["message"],
-            "deliver": True,
+            "idempotency_key": sent[0]["idempotency_key"],
             "config": sent[0]["config"],
         },
     ]
     assert "Sprint started on board Test Board" in sent[0]["message"]
     assert "assign the sprint inbox tickets" in sent[0]["message"]
+    assert sent[0]["idempotency_key"]
     assert lead.status == "updating"
     assert developer.status == "offline"
 

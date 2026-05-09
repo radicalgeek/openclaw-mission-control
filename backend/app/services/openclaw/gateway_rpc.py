@@ -112,6 +112,7 @@ GATEWAY_METHODS = [
     "sessions.reset",
     "sessions.delete",
     "sessions.compact",
+    "sessions.send",
     "last-heartbeat",
     "set-heartbeats",
     "wake",
@@ -580,6 +581,24 @@ async def send_message(
         "idempotencyKey": str(uuid4()),
     }
     return await openclaw_call("chat.send", params, config=config)
+
+
+async def send_session_message_nonblocking(
+    message: str,
+    *,
+    session_key: str,
+    config: GatewayConfig,
+    idempotency_key: str | None = None,
+) -> object:
+    """Start a session run without waiting for the agent turn to complete."""
+    params: dict[str, Any] = {
+        "key": session_key,
+        "message": message,
+        "timeoutMs": 0,
+    }
+    if idempotency_key:
+        params["idempotencyKey"] = idempotency_key
+    return await openclaw_call("sessions.send", params, config=config)
 
 
 async def get_chat_history(
