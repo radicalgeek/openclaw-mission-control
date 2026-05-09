@@ -143,19 +143,27 @@ def _build_sprint_started_lead_message(
     board: Board,
     ticket_count: int,
 ) -> str:
+    task_list_path = f"/api/v1/agent/boards/{board.id}/tasks?status=inbox&is_backlog=false"
+    roster_path = f"/api/v1/agent/agents?board_id={board.id}"
+    task_update_path = f"/api/v1/agent/boards/{board.id}/tasks/<task_id>"
     return (
         f"Sprint started on board {board.name}: {sprint.name}.\n\n"
         f"There are {ticket_count} committed sprint tickets now in inbox.\n\n"
+        f"Board ID: {board.id}\n"
+        f"Sprint ID: {sprint.id}\n\n"
         "Execute this assignment cycle now. Do not reply with a plan, recap, or "
         "standby message. Use your AxiaCraft API tools from TOOLS.md/OpenAPI in "
         "this turn to:\n"
         "1. Read HEARTBEAT.md and refresh the lead operation list if needed.\n"
-        "2. Inspect the active sprint tickets for this sprint.\n"
-        f"3. Discover assignable board agents with GET /api/v1/agent/agents?board_id={board.id}; "
-        "do not use /api/v1/agent/boards/<board_id>/agents because that route does not exist.\n"
+        f"2. Inspect the active sprint tickets with GET {task_list_path}.\n"
+        f"3. Discover assignable board agents with GET {roster_path}; do not use "
+        "/api/v1/agent/boards/<board_id>/agents because that route does not exist.\n"
         "4. Assign all unassigned sprint inbox tickets to the available "
-        "non-lead developer agents using assigned_agent_id.\n"
-        "5. Verify the sprint tickets are assigned.\n\n"
+        f"non-lead developer agents with PATCH {task_update_path} using "
+        '{"assigned_agent_id":"<developer_agent_id>"}.\n'
+        f"5. Verify assignment by re-reading GET {task_list_path}.\n\n"
+        "Use the Board ID and Sprint ID exactly as written above. Do not rewrite, "
+        "shorten, or substitute any UUID.\n\n"
         "Do not create new tickets for this sprint-start event. Wake developers "
         "only when they have assigned work. Only finish with HEARTBEAT_OK after "
         "the assignments are visible in AxiaCraft. If you cannot make tool/API "
