@@ -1241,6 +1241,7 @@ def _task_list_statement(
     *,
     board_id: UUID,
     status_filter: str | None,
+    is_backlog: bool | None,
     assigned_agent_id: UUID | None,
     unassigned: bool | None,
 ) -> SelectOfScalar[Task]:
@@ -1248,9 +1249,11 @@ def _task_list_statement(
     statuses = _status_values(status_filter)
     if statuses:
         statement = statement.where(col(Task.status).in_(statuses))
-    else:
+    elif is_backlog is None:
         # Default board view: only show on-board statuses (exclude triage/backlog/archived)
         statement = statement.where(col(Task.status).in_(sorted(BOARD_STATUSES)))
+    if is_backlog is not None:
+        statement = statement.where(col(Task.is_backlog) == is_backlog)
     if assigned_agent_id is not None:
         statement = statement.where(col(Task.assigned_agent_id) == assigned_agent_id)
     if unassigned:
@@ -1481,6 +1484,7 @@ async def stream_tasks(
 @router.get("", response_model=DefaultLimitOffsetPage[TaskRead])
 async def list_tasks(
     status_filter: str | None = STATUS_QUERY,
+    is_backlog: bool | None = None,
     assigned_agent_id: UUID | None = None,
     unassigned: bool | None = None,
     board: Board = BOARD_READ_DEP,
@@ -1491,6 +1495,7 @@ async def list_tasks(
     statement = _task_list_statement(
         board_id=board.id,
         status_filter=status_filter,
+        is_backlog=is_backlog,
         assigned_agent_id=assigned_agent_id,
         unassigned=unassigned,
     )

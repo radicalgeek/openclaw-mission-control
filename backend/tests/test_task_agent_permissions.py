@@ -102,6 +102,63 @@ async def test_non_lead_agent_can_update_status_for_assigned_task() -> None:
 
 
 @pytest.mark.asyncio
+async def test_task_list_statement_can_filter_backlog_flag() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            board_id = uuid4()
+            other_board_id = uuid4()
+            session.add(Task(board_id=board_id, title="visible backlog", status="backlog", is_backlog=True))
+            session.add(Task(board_id=board_id, title="visible inbox", status="inbox", is_backlog=False))
+            session.add(
+                Task(
+                    board_id=other_board_id,
+                    title="other backlog",
+                    status="backlog",
+                    is_backlog=True,
+                )
+            )
+            await session.commit()
+
+            statement = tasks_api._task_list_statement(
+                board_id=board_id,
+                status_filter=None,
+                is_backlog=True,
+                assigned_agent_id=None,
+                unassigned=None,
+            )
+            tasks = (await session.exec(statement)).all()
+
+            assert [task.title for task in tasks] == ["visible backlog"]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_task_list_statement_default_excludes_backlog() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            board_id = uuid4()
+            session.add(Task(board_id=board_id, title="backlog", status="backlog", is_backlog=True))
+            session.add(Task(board_id=board_id, title="inbox", status="inbox", is_backlog=False))
+            await session.commit()
+
+            statement = tasks_api._task_list_statement(
+                board_id=board_id,
+                status_filter=None,
+                is_backlog=None,
+                assigned_agent_id=None,
+                unassigned=None,
+            )
+            tasks = (await session.exec(statement)).all()
+
+            assert [task.title for task in tasks] == ["inbox"]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_non_lead_agent_can_update_status_for_unassigned_task() -> None:
     engine = await _make_engine()
     try:
