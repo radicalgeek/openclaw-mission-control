@@ -135,7 +135,11 @@ def test_planner_heartbeat_prompt_requires_board_discovery_and_draft_sprints():
     assert "/api/v1/agent/boards" in heartbeat["prompt"]
     assert "estimated, unassigned backlog" in heartbeat["prompt"]
     assert "create draft sprint" in heartbeat["prompt"]
-    assert "do not start a sprint" in heartbeat["prompt"]
+    assert "POST /sprints/<sprint_id>/tickets" in heartbeat["prompt"]
+    assert "Never PATCH /sprints/<sprint_id> to attach tickets" in heartbeat["prompt"]
+    assert "Reuse an existing empty draft sprint" in heartbeat["prompt"]
+    assert "GET /sprints/<sprint_id>/tickets proves" in heartbeat["prompt"]
+    assert "do not start a sprint" in heartbeat["prompt"].lower()
 
 
 def test_explicit_agent_heartbeat_prompt_override_wins():

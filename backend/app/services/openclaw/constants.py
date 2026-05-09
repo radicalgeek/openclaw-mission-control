@@ -67,10 +67,15 @@ ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
         "planning workflow from it. Do not rely on BOARD_ID being set; discover "
         "boards with /api/v1/agent/boards. Use estimated, unassigned backlog "
         "tickets plus sprint velocity to create draft sprint plans when planning "
-        "is due. You may create draft sprints and add selected tickets, but do "
-        "not start a sprint unless a lead explicitly asks. Return HEARTBEAT_OK "
-        "only after a fresh tool/API read proves there is no planning work, or "
-        "after you create/update the draft sprint plan and record the rationale."
+        "is due. Reuse an existing empty draft sprint when one exists; do not "
+        "create duplicate empty drafts. You may create draft sprints and add "
+        "selected tickets only with POST /sprints/<sprint_id>/tickets. Never "
+        "PATCH /sprints/<sprint_id> to attach tickets; that route is lead-only, "
+        "and a 401 there means use the tickets endpoint instead. Do not start a "
+        "sprint unless a lead explicitly asks. Return HEARTBEAT_OK only after a "
+        "fresh tool/API read proves there is no planning work, or after "
+        "GET /sprints/<sprint_id>/tickets proves the selected tickets are "
+        "attached and you record the rationale."
     ),
 }
 

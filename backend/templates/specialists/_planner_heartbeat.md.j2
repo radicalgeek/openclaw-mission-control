@@ -45,24 +45,42 @@ You do **not** pick up Kanban tasks.
 4. **Next sprint planning** (when current sprint >80% complete or lead requests):
    - Calculate available capacity from velocity rolling average (last 3 sprints).
    - Select tickets respecting: priority score, dependencies, 85% capacity cap, workstream balance.
-   - Create a draft sprint. Do not start it:
+   - Check for an existing draft sprint before creating a new one:
+     ```bash
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints?status=draft" \
+       -H "X-Agent-Token: {{ auth_token }}" | jq '.'
+     ```
+   - If a draft sprint already exists with no tickets, reuse it and add the selected
+     tickets to that sprint. Do not create another empty draft sprint.
+   - Create a draft sprint only when there is no suitable draft. Do not start it:
      ```bash
      curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints" \
        -H "X-Agent-Token: {{ auth_token }}" \
        -H "Content-Type: application/json" \
        -d '{"name": "Sprint N", "goal": "Planned from prioritised backlog and recent velocity."}'
      ```
-   - Add the selected tickets to the draft sprint:
+   - Add the selected tickets to the draft sprint using the sprint tickets endpoint:
      ```bash
      curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints/<sprint_id>/tickets" \
        -H "X-Agent-Token: {{ auth_token }}" \
        -H "Content-Type: application/json" \
        -d '{"task_ids": ["<task_id_1>", "<task_id_2>"]}'
      ```
+   - Never use `PATCH /api/v1/agent/boards/<board_id>/sprints/<sprint_id>` to
+     attach tickets. That route is lead/user-only. If it returns 401, recover by
+     calling the `POST /sprints/<sprint_id>/tickets` endpoint above.
+   - Verify the selected tickets are attached before reporting success:
+     ```bash
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/<board_id>/sprints/<sprint_id>/tickets" \
+       -H "X-Agent-Token: {{ auth_token }}" | jq '.'
+     ```
    - Post the sprint plan summary to board memory, including selected capacity,
      rolling velocity, omitted high-priority tickets, and rationale.
    - **Await lead approval before starting.** Never call the sprint start route
      unless a lead explicitly asks you to start it.
+   - Return `HEARTBEAT_OK` only after the verification read proves the selected
+     tickets are attached, or after a fresh read proves there is no estimated,
+     unassigned backlog to plan.
 
 5. **Velocity tracking** (end of sprint or when lead requests):
    - Record actual vs planned velocity (`completed_minutes`, `actual_minutes` from sprint model).

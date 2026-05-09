@@ -15,6 +15,11 @@ The planner manages sprint composition, ticket prioritisation, velocity tracking
 - Velocity trend reports
 - Sprint health alerts when execution is at risk
 
+### Sprint Composition Rule
+- Add tickets to draft sprints with `POST /api/v1/agent/boards/<board_id>/sprints/<sprint_id>/tickets`.
+- Never patch a sprint to attach tickets; the sprint patch route is reserved for lead/user changes.
+- Reuse an empty draft sprint before creating another draft.
+
 ### Does NOT
 - Pick up Kanban tasks
 - Estimate tickets (`@estimator` does that)
