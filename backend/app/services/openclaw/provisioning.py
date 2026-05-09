@@ -40,6 +40,7 @@ from app.services.openclaw.constants import (
     LEAD_TEMPLATE_MAP,
     MAIN_TEMPLATE_MAP,
     PRESERVE_AGENT_EDITABLE_FILES,
+    ROLE_TEMPLATE_HEARTBEAT_PROMPT,
     ROLE_TEMPLATE_MODEL_PRIMARY,
     STANDALONE_TEMPLATE_MAP,
 )
@@ -153,6 +154,18 @@ def _heartbeat_config(agent: Agent) -> dict[str, Any]:
     merged = DEFAULT_HEARTBEAT_CONFIG.copy()
     if isinstance(agent.heartbeat_config, dict):
         merged.update(agent.heartbeat_config)
+    profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+    role_template = profile.get("role_template")
+    if (
+        isinstance(role_template, str)
+        and role_template in ROLE_TEMPLATE_HEARTBEAT_PROMPT
+        and not (
+            isinstance(agent.heartbeat_config, dict)
+            and isinstance(agent.heartbeat_config.get("prompt"), str)
+            and agent.heartbeat_config["prompt"].strip()
+        )
+    ):
+        merged["prompt"] = ROLE_TEMPLATE_HEARTBEAT_PROMPT[role_template]
     return merged
 
 

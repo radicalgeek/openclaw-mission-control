@@ -36,6 +36,16 @@ ROLE_TEMPLATE_MODEL_PRIMARY: dict[str, str] = {
     "architecture_reviewer": "azure-foundry/gpt-5-4",
 }
 
+ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
+    "triager": (
+        "You are the Triager. Read HEARTBEAT.md and immediately run the active-plan "
+        "discovery workflow from it. Do not rely on memory or prior chat state. "
+        "You may return HEARTBEAT_OK only after a tool/API call proves there are no "
+        "untriaged active plans, or after you create backlog tickets and mark each "
+        "discovered plan triaged."
+    ),
+}
+
 OFFLINE_AFTER = timedelta(minutes=10)
 # Provisioning convergence policy — runtime values come from
 # app.core.config.settings (agent_checkin_deadline_seconds /

@@ -76,6 +76,31 @@ def test_wakeup_text_requires_immediate_heartbeat_execution():
     assert "Return HEARTBEAT_OK only after the heartbeat cycle is complete" in text
 
 
+def test_triager_heartbeat_prompt_requires_active_plan_discovery():
+    agent = _AgentStub(
+        name="Triager",
+        identity_profile={"role_template": "triager"},
+    )
+
+    heartbeat = agent_provisioning._heartbeat_config(agent)
+
+    assert heartbeat["every"] == "5m"
+    assert "immediately run the active-plan discovery workflow" in heartbeat["prompt"]
+    assert "only after a tool/API call proves" in heartbeat["prompt"]
+
+
+def test_explicit_agent_heartbeat_prompt_override_wins():
+    agent = _AgentStub(
+        name="Triager",
+        identity_profile={"role_template": "triager"},
+        heartbeat_config={"prompt": "Custom operator prompt."},
+    )
+
+    heartbeat = agent_provisioning._heartbeat_config(agent)
+
+    assert heartbeat["prompt"] == "Custom operator prompt."
+
+
 def test_agent_model_config_uses_role_template_model_policy():
     triager = _AgentStub(
         name="Triager",
