@@ -1471,27 +1471,9 @@ class OpenClawGatewayProvisioner:
                 if not _is_missing_session_error(exc):
                     raise
 
-        if wake:
-            client_config = GatewayClientConfig(
-                url=gateway.url,
-                token=gateway.token,
-                allow_insecure_tls=gateway.allow_insecure_tls,
-                disable_device_pairing=gateway.disable_device_pairing,
-            )
-            await ensure_session(session_key, config=client_config, label=agent.name)
-            verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")
-            await send_message(
-                _wakeup_text(agent, verb=verb),
-                session_key=session_key,
-                config=client_config,
-                deliver=deliver_wakeup,
-            )
-
-        # Patch heartbeat config last so a SIGUSR1 restart (if any) cannot
-        # interrupt the in-flight provisioning steps above. Per-agent heartbeat
-        # templates tell agents what work to do on each heartbeat cycle; without
-        # this patch standalone agents (triager, planner, etc.) and board agents
-        # sit idle because the gateway never learns their heartbeat instructions.
+        # Patch heartbeat config before waking the session. The wake message is
+        # deliberately small; the runtime needs its current heartbeat entry and
+        # workspace path in config before the first post-update turn starts.
         # Bulk callers (template sync) should set ``patch_heartbeat=False`` and
         # call ``sync_gateway_agent_heartbeats`` once at the end to avoid a
         # restart storm.
@@ -1509,6 +1491,22 @@ class OpenClawGatewayProvisioner:
                     agent_id,
                     exc,
                 )
+
+        if wake:
+            client_config = GatewayClientConfig(
+                url=gateway.url,
+                token=gateway.token,
+                allow_insecure_tls=gateway.allow_insecure_tls,
+                disable_device_pairing=gateway.disable_device_pairing,
+            )
+            await ensure_session(session_key, config=client_config, label=agent.name)
+            verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")
+            await send_message(
+                _wakeup_text(agent, verb=verb),
+                session_key=session_key,
+                config=client_config,
+                deliver=deliver_wakeup,
+            )
 
     async def delete_agent_lifecycle(
         self,
