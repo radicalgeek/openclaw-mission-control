@@ -7,15 +7,24 @@ from datetime import timedelta
 from uuid import uuid4
 
 from app.core.time import utcnow
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_BOARD_WORKER, AGENT_TYPE_STANDALONE, Agent
 from app.services.openclaw.constants import (
     CHECKIN_DEADLINE_AFTER_WAKE,
     MAX_WAKE_ATTEMPTS_WITHOUT_CHECKIN,
+    OFFLINE_AFTER,
 )
-from app.services.openclaw.lifecycle_reconcile import _has_checked_in_since_wake
+from app.services.openclaw.lifecycle_reconcile import (
+    _has_checked_in_since_wake,
+    _should_reset_session_for_reconcile,
+)
 
 
-def _agent(*, last_seen_offset_s: int | None, last_wake_offset_s: int | None) -> Agent:
+def _agent(
+    *,
+    last_seen_offset_s: int | None,
+    last_wake_offset_s: int | None,
+    agent_type: str = AGENT_TYPE_BOARD_WORKER,
+) -> Agent:
     now = utcnow()
     return Agent(
         name="reconcile-test",
@@ -30,6 +39,7 @@ def _agent(*, last_seen_offset_s: int | None, last_wake_offset_s: int | None) ->
             if last_wake_offset_s is not None
             else None
         ),
+        agent_type=agent_type,
     )
 
 
@@ -46,6 +56,31 @@ def test_not_checked_in_since_wake_when_last_seen_before_wake() -> None:
 def test_not_checked_in_since_wake_when_missing_last_seen() -> None:
     agent = _agent(last_seen_offset_s=None, last_wake_offset_s=0)
     assert _has_checked_in_since_wake(agent) is False
+
+
+def test_reset_session_when_agent_never_checked_in() -> None:
+    agent = _agent(last_seen_offset_s=None, last_wake_offset_s=0)
+    assert _should_reset_session_for_reconcile(agent) is True
+
+
+def test_reset_session_when_standalone_agent_misses_wake() -> None:
+    stale_offset = -int(OFFLINE_AFTER.total_seconds()) - 60
+    agent = _agent(
+        last_seen_offset_s=stale_offset,
+        last_wake_offset_s=-30,
+        agent_type=AGENT_TYPE_STANDALONE,
+    )
+    assert _should_reset_session_for_reconcile(agent) is True
+
+
+def test_preserve_session_when_board_worker_misses_wake_after_checkin() -> None:
+    stale_offset = -int(OFFLINE_AFTER.total_seconds()) - 60
+    agent = _agent(
+        last_seen_offset_s=stale_offset,
+        last_wake_offset_s=-30,
+        agent_type=AGENT_TYPE_BOARD_WORKER,
+    )
+    assert _should_reset_session_for_reconcile(agent) is False
 
 
 def test_lifecycle_convergence_policy_constants() -> None:

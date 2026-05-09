@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db.session import async_session_maker
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.services.openclaw.constants import (  # noqa: F401 (kept for import compat)
@@ -45,6 +45,15 @@ def _has_checked_in_since_wake(agent: Agent) -> bool:
     if agent.last_wake_sent_at is None:
         return True
     return agent.last_seen_at >= agent.last_wake_sent_at
+
+
+def _should_reset_session_for_reconcile(agent: Agent) -> bool:
+    """Decide whether a stuck-agent wake should discard the OpenClaw session."""
+    if agent.last_seen_at is None:
+        return True
+    if agent.agent_type == AGENT_TYPE_STANDALONE:
+        return not _has_checked_in_since_wake(agent)
+    return False
 
 
 async def process_lifecycle_queue_task(task: QueuedTask) -> None:
@@ -136,17 +145,15 @@ async def process_lifecycle_queue_task(task: QueuedTask) -> None:
                 return
 
         # Reset-session policy:
-        # - Agents that have heartbeated at least once (last_seen_at is set) —
-        #   preserve session. The reconcile fires because they missed the
-        #   *latest* check-in window, but their bootstrap completed; resetting
-        #   would wipe in-flight task work, memory writes, etc.
         # - Agents that have NEVER heartbeated — reset the session. They're
-        #   mid-bootstrap with a stale or rotated token, and the orchestrator
-        #   above just re-minted a fresh one. Without a session reset the
-        #   agent's running turn keeps using the old token in its env vars and
-        #   401s on every API call. Resetting forces openclaw to inject the
-        #   newly-rendered workspace/TOOLS.md (with the new token) on next wake.
-        reset_session = agent.last_seen_at is None
+        #   mid-bootstrap with a stale or rotated token, and resetting forces
+        #   OpenClaw to inject the newly-rendered workspace/TOOLS.md.
+        # - Standalone org agents (Triager, Planner, etc.) do not own
+        #   board-worker task state. If they miss a wake, reset the stale
+        #   conversation so new lifecycle/heartbeat instructions take effect.
+        # - Board agents that have heartbeated at least once keep their session
+        #   to avoid wiping in-flight task work, memory writes, etc.
+        reset_session = _should_reset_session_for_reconcile(agent)
         orchestrator = AgentLifecycleOrchestrator(session)
         await asyncio.wait_for(
             orchestrator.run_lifecycle(
