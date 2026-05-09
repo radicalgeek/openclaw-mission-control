@@ -538,6 +538,7 @@ const SSE_RECONNECT_BACKOFF = {
   jitter: 0.2,
   maxMs: 5 * 60_000,
 } as const;
+const AGENT_STATUS_REFRESH_MS = 15_000;
 
 const formatShortTimestamp = (value: string) => {
   const date = parseApiDatetime(value);
@@ -1379,6 +1380,49 @@ export default function BoardDetailPage() {
   useEffect(() => {
     agentsRef.current = agents;
   }, [agents]);
+
+  useEffect(() => {
+    if (!isPageActive) return;
+    if (!isSignedIn || !boardId || !board) return;
+    let isCancelled = false;
+
+    const refreshAgents = async () => {
+      try {
+        const snapshotResult =
+          await getBoardSnapshotApiV1BoardsBoardIdSnapshotGet(boardId);
+        if (snapshotResult.status !== 200 || isCancelled) return;
+        const refreshedAgents = (snapshotResult.data.agents ?? []).map(
+          normalizeAgent,
+        );
+        setAgents((prev) => {
+          if (isCancelled) return prev;
+          const previousById = new Map(prev.map((agent) => [agent.id, agent]));
+          refreshedAgents.forEach((agent) => {
+            const liveEvent = toLiveFeedFromAgentUpdate(
+              agent,
+              previousById.get(agent.id) ?? null,
+            );
+            if (liveEvent) {
+              pushLiveFeed(liveEvent);
+            }
+          });
+          return refreshedAgents;
+        });
+      } catch {
+        // Agent status also updates through the initial snapshot and SSE stream.
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshAgents();
+    }, AGENT_STATUS_REFRESH_MS);
+
+    void refreshAgents();
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [board, boardId, isPageActive, isSignedIn, pushLiveFeed]);
 
   useEffect(() => {
     selectedTaskIdRef.current = selectedTask?.id ?? null;
