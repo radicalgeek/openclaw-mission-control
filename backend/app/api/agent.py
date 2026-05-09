@@ -116,6 +116,7 @@ class AgentTaskListFilters(SQLModel):
     """Query filters for board task listing in agent routes."""
 
     status_filter: str | None = None
+    is_backlog: bool | None = None
     assigned_agent_id: UUID | None = None
     unassigned: bool | None = None
 
@@ -128,11 +129,13 @@ class AgentBacklogBatchCreate(SQLModel):
 
 def _task_list_filters(
     status_filter: str | None = TASK_STATUS_QUERY,
+    is_backlog: bool | None = None,
     assigned_agent_id: UUID | None = None,
     unassigned: bool | None = None,
 ) -> AgentTaskListFilters:
     return AgentTaskListFilters(
         status_filter=status_filter,
+        is_backlog=is_backlog,
         assigned_agent_id=assigned_agent_id,
         unassigned=unassigned,
     )
@@ -681,6 +684,7 @@ async def list_tasks(
     await _guard_board_access(session, agent_ctx, board, write=True)
     return await tasks_api.list_tasks(
         status_filter=filters.status_filter,
+        is_backlog=filters.is_backlog,
         assigned_agent_id=filters.assigned_agent_id,
         unassigned=filters.unassigned,
         board=board,

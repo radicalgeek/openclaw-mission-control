@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -54,6 +55,33 @@ def _agent_ctx(board_id: UUID) -> AgentAuthContext:
             is_board_lead=True,
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_agent_task_list_forwards_backlog_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    board_id = uuid4()
+    captured: dict[str, Any] = {}
+
+    async def fake_guard(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    async def fake_list_tasks(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return {"items": [], "total": 0}
+
+    monkeypatch.setattr(agent_api, "_guard_board_access", fake_guard)
+    monkeypatch.setattr(agent_api.tasks_api, "list_tasks", fake_list_tasks)
+
+    result = await agent_api.list_tasks(
+        filters=agent_api.AgentTaskListFilters(is_backlog=True),
+        board=_board(board_id),
+        session=object(),  # type: ignore[arg-type]
+        agent_ctx=_agent_ctx(board_id),
+    )
+
+    assert result == {"items": [], "total": 0}
+    assert captured["is_backlog"] is True
+    assert captured["status_filter"] is None
 
 
 @pytest.mark.asyncio
