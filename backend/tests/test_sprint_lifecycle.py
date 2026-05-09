@@ -296,7 +296,9 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
         },
     ]
     assert "Sprint started on board Test Board" in sent[0]["message"]
-    assert "assign the sprint inbox tickets" in sent[0]["message"]
+    assert "Assign all unassigned sprint inbox tickets" in sent[0]["message"]
+    assert "Do not reply with a plan" in sent[0]["message"]
+    assert "Only finish with HEARTBEAT_OK after the assignments are visible" in sent[0]["message"]
     assert sent[0]["idempotency_key"]
     assert lead.status == "updating"
     assert developer.status == "offline"

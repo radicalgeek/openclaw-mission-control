@@ -145,11 +145,19 @@ def _build_sprint_started_lead_message(
 ) -> str:
     return (
         f"Sprint started on board {board.name}: {sprint.name}.\n\n"
-        f"There are {ticket_count} committed sprint tickets now in inbox. "
-        "Read HEARTBEAT.md, inspect the active sprint/backlog state, and assign "
-        "the sprint inbox tickets to the available developer agents. Do not create "
-        "new tickets for this sprint-start event. Wake developers only when they "
-        "have assigned work."
+        f"There are {ticket_count} committed sprint tickets now in inbox.\n\n"
+        "Execute this assignment cycle now. Do not reply with a plan, recap, or "
+        "standby message. Use your AxiaCraft API tools from TOOLS.md/OpenAPI in "
+        "this turn to:\n"
+        "1. Read HEARTBEAT.md and refresh the lead operation list if needed.\n"
+        "2. Inspect the active sprint tickets for this sprint.\n"
+        "3. Assign all unassigned sprint inbox tickets to the available "
+        "non-lead developer agents.\n"
+        "4. Verify the sprint tickets are assigned.\n\n"
+        "Do not create new tickets for this sprint-start event. Wake developers "
+        "only when they have assigned work. Only finish with HEARTBEAT_OK after "
+        "the assignments are visible in AxiaCraft. If you cannot make tool/API "
+        "calls, reply exactly: BLOCKED: no tool access."
     )
 
 
