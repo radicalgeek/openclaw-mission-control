@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
@@ -30,9 +32,10 @@ def enqueue_org_agent_reconcile(*, delay_seconds: float = 0) -> bool:
     of each task run so the next ``enqueue_org_agent_reconcile`` (called at
     the end of the same cycle) can take the slot.
     """
+    task_id = str(uuid4())
     task = QueuedTask(
         task_type=TASK_TYPE,
-        payload={},
+        payload={"task_id": task_id},
         created_at=utcnow(),
         attempts=0,
     )
@@ -43,7 +46,7 @@ def enqueue_org_agent_reconcile(*, delay_seconds: float = 0) -> bool:
     ttl_seconds = max(60, int(delay_seconds + 60))
     try:
         client = _redis_client(redis_url=settings.rq_redis_url)
-        acquired = client.set(_INFLIGHT_KEY, "1", nx=True, ex=ttl_seconds)
+        acquired = client.set(_INFLIGHT_KEY, task_id, nx=True, ex=ttl_seconds)
         if not acquired:
             logger.debug(
                 "org_agent_reconcile.enqueue_skipped reason=already_pending",
@@ -63,15 +66,21 @@ def enqueue_org_agent_reconcile(*, delay_seconds: float = 0) -> bool:
     )
 
 
-def clear_org_agent_reconcile_lock() -> None:
-    """Release the in-flight lock so the next enqueue can take the slot.
+def clear_org_agent_reconcile_lock(task_id: str | None) -> None:
+    """Release the in-flight lock if this task owns it.
 
-    Called by the worker handler at the start of each task run so the
-    self-renewing enqueue at the end of the cycle can proceed.
+    Legacy already-queued tasks may not have a task id. Those tasks must not
+    clear a newer scheduled task's lock, or they can create a chain of duplicate
+    org-reconcile runs that starves agent lifecycle work.
     """
+    if not task_id:
+        return
     try:
         client = _redis_client(redis_url=settings.rq_redis_url)
-        client.delete(_INFLIGHT_KEY)
+        raw_value = client.get(_INFLIGHT_KEY)
+        value = raw_value.decode("utf-8") if isinstance(raw_value, bytes) else raw_value
+        if value == task_id:
+            client.delete(_INFLIGHT_KEY)
     except Exception:
         logger.warning("org_agent_reconcile.lock_clear_failed", exc_info=True)
 

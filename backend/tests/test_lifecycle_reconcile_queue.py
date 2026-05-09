@@ -18,6 +18,20 @@ from app.services.openclaw.lifecycle_queue import (
 from app.services.queue import QueuedTask
 
 
+class _FakeRedis:
+    def __init__(self, *, acquired: bool = True) -> None:
+        self.acquired = acquired
+        self.set_calls: list[tuple[str, str, bool | None, int | None]] = []
+        self.deleted: list[str] = []
+
+    def set(self, key: str, value: str, *, nx: bool | None = None, ex: int | None = None) -> bool:
+        self.set_calls.append((key, value, nx, ex))
+        return self.acquired
+
+    def delete(self, key: str) -> None:
+        self.deleted.append(key)
+
+
 def test_enqueue_lifecycle_reconcile_uses_delayed_enqueue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -40,6 +54,10 @@ def test_enqueue_lifecycle_reconcile_uses_delayed_enqueue(
         "app.services.openclaw.lifecycle_queue.enqueue_task_with_delay",
         _fake_enqueue_with_delay,
     )
+    monkeypatch.setattr(
+        "app.services.openclaw.lifecycle_queue._redis_client",
+        lambda redis_url=None: _FakeRedis(),
+    )
 
     payload = QueuedAgentLifecycleReconcile(
         agent_id=uuid4(),
@@ -55,6 +73,59 @@ def test_enqueue_lifecycle_reconcile_uses_delayed_enqueue(
     assert isinstance(task, QueuedTask)
     assert task.task_type == "agent_lifecycle_reconcile"
     assert float(captured["delay_seconds"]) > 0
+
+
+def test_enqueue_lifecycle_reconcile_skips_duplicate_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[QueuedTask] = []
+
+    monkeypatch.setattr(
+        "app.services.openclaw.lifecycle_queue._redis_client",
+        lambda redis_url=None: _FakeRedis(acquired=False),
+    )
+    monkeypatch.setattr(
+        "app.services.openclaw.lifecycle_queue.enqueue_task_with_delay",
+        lambda task, queue_name, *, delay_seconds, redis_url=None: calls.append(task) or True,
+    )
+
+    payload = QueuedAgentLifecycleReconcile(
+        agent_id=uuid4(),
+        gateway_id=uuid4(),
+        board_id=None,
+        generation=7,
+        checkin_deadline_at=utcnow(),
+    )
+
+    assert enqueue_lifecycle_reconcile(payload) is False
+    assert calls == []
+
+
+def test_enqueue_lifecycle_reconcile_releases_dedup_when_enqueue_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = _FakeRedis()
+    agent_id = uuid4()
+
+    monkeypatch.setattr(
+        "app.services.openclaw.lifecycle_queue._redis_client",
+        lambda redis_url=None: fake_redis,
+    )
+    monkeypatch.setattr(
+        "app.services.openclaw.lifecycle_queue.enqueue_task_with_delay",
+        lambda task, queue_name, *, delay_seconds, redis_url=None: False,
+    )
+
+    payload = QueuedAgentLifecycleReconcile(
+        agent_id=agent_id,
+        gateway_id=uuid4(),
+        board_id=None,
+        generation=9,
+        checkin_deadline_at=utcnow(),
+    )
+
+    assert enqueue_lifecycle_reconcile(payload) is False
+    assert fake_redis.deleted == [f"axiacraft:agent_lifecycle_reconcile:{agent_id}:9"]
 
 
 def test_defer_lifecycle_reconcile_keeps_attempt_count(

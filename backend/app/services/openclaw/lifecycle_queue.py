@@ -10,11 +10,12 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
-from app.services.queue import QueuedTask, enqueue_task_with_delay
+from app.services.queue import QueuedTask, _redis_client, enqueue_task_with_delay
 from app.services.queue import requeue_if_failed as generic_requeue_if_failed
 
 logger = get_logger(__name__)
 TASK_TYPE = "agent_lifecycle_reconcile"
+_DEDUP_TTL_SECONDS = 30 * 60
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,33 @@ def _task_from_payload(payload: QueuedAgentLifecycleReconcile) -> QueuedTask:
     )
 
 
+def _dedup_key(payload: QueuedAgentLifecycleReconcile) -> str:
+    return f"axiacraft:{TASK_TYPE}:{payload.agent_id}:{payload.generation}"
+
+
+def _acquire_dedup_slot(payload: QueuedAgentLifecycleReconcile) -> bool:
+    try:
+        client = _redis_client(redis_url=settings.rq_redis_url)
+        acquired = client.set(_dedup_key(payload), "1", nx=True, ex=_DEDUP_TTL_SECONDS)
+        if not acquired:
+            logger.debug(
+                "lifecycle.queue.enqueue_skipped reason=already_pending",
+                extra={"agent_id": str(payload.agent_id), "generation": payload.generation},
+            )
+            return False
+    except Exception:
+        logger.warning("lifecycle.queue.dedup_failed", exc_info=True)
+    return True
+
+
+def _release_dedup_slot(payload: QueuedAgentLifecycleReconcile) -> None:
+    try:
+        client = _redis_client(redis_url=settings.rq_redis_url)
+        client.delete(_dedup_key(payload))
+    except Exception:
+        logger.warning("lifecycle.queue.dedup_release_failed", exc_info=True)
+
+
 def decode_lifecycle_task(task: QueuedTask) -> QueuedAgentLifecycleReconcile:
     if task.task_type not in {TASK_TYPE, "legacy"}:
         raise ValueError(f"Unexpected task_type={task.task_type!r}; expected {TASK_TYPE!r}")
@@ -67,6 +95,8 @@ def enqueue_lifecycle_reconcile(payload: QueuedAgentLifecycleReconcile) -> bool:
     """Enqueue a delayed reconcile check keyed to the expected check-in deadline."""
     now = utcnow()
     delay_seconds = max(0.0, (payload.checkin_deadline_at - now).total_seconds())
+    if not _acquire_dedup_slot(payload):
+        return False
     queued = _task_from_payload(payload)
     ok = enqueue_task_with_delay(
         queued,
@@ -74,6 +104,8 @@ def enqueue_lifecycle_reconcile(payload: QueuedAgentLifecycleReconcile) -> bool:
         delay_seconds=delay_seconds,
         redis_url=settings.rq_redis_url,
     )
+    if not ok:
+        _release_dedup_slot(payload)
     if ok:
         logger.info(
             "lifecycle.queue.enqueued",

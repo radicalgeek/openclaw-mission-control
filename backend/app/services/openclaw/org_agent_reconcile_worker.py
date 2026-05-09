@@ -21,9 +21,11 @@ logger = get_logger(__name__)
 async def process_org_agent_reconcile_task(task: QueuedTask) -> None:
     """Process an org-agent reconcile task: reconcile all orgs, then re-enqueue."""
     logger.info("org_agent_reconcile.start")
-    # Release the dedup lock so the self-renewing enqueue at the end of the
-    # cycle can claim the slot for the next run.
-    clear_org_agent_reconcile_lock()
+    # Release this task's dedup lock so the self-renewing enqueue at the end
+    # of the cycle can claim the slot for the next run. Ownership matters:
+    # old duplicate tasks must not clear the newer scheduled run's lock.
+    raw_task_id = task.payload.get("task_id")
+    clear_org_agent_reconcile_lock(raw_task_id if isinstance(raw_task_id, str) else None)
 
     async with async_session_maker() as session:
         try:
