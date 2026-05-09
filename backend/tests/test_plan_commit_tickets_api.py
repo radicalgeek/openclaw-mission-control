@@ -17,7 +17,7 @@ from app.api.deps import (
     get_board_for_user_write,
     require_user_auth,
 )
-from app.api.plans import router as plans_router
+from app.api import plans as plans_api
 from app.core.auth import AuthContext
 from app.db.session import get_session
 from app.models.boards import Board
@@ -26,6 +26,9 @@ from app.models.organizations import Organization
 from app.models.plans import Plan
 from app.models.tasks import Task
 from app.models.users import User
+from app.schemas.plans import DecomposedTicket, PlanAgentUpdateRequest
+
+plans_router = plans_api.router
 
 
 async def _make_engine() -> AsyncEngine:
@@ -285,5 +288,88 @@ async def test_commit_tickets_advances_plan_status_to_active() -> None:
             refreshed = await session.get(Plan, plan.id)
         assert refreshed is not None
         assert refreshed.status == "active"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_update_with_tickets_commits_backlog_when_none_exist() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, plan = await _seed(session, decomposed_tickets=None)
+
+            await plans_api.agent_update_plan(
+                plan.id,
+                payload=PlanAgentUpdateRequest(
+                    reply="Decomposed into 1 ticket",
+                    tickets=[
+                        DecomposedTicket(
+                            title="[API] Add auth guard",
+                            description="## Context\nGuard the production API.",
+                            priority="high",
+                            priority_score=72,
+                            estimate_minutes=90,
+                        ),
+                    ],
+                ),
+                board=board,
+                session=session,
+            )
+
+            refreshed = await session.get(Plan, plan.id)
+            tasks = (await session.exec(select(Task).where(Task.plan_id == plan.id))).all()
+
+        assert refreshed is not None
+        assert refreshed.decomposed_tickets is not None
+        assert len(refreshed.decomposed_tickets) == 1
+        assert len(tasks) == 1
+        assert tasks[0].title == "[API] Add auth guard"
+        assert tasks[0].status == "backlog"
+        assert tasks[0].is_backlog is True
+        assert tasks[0].auto_reason == "committed_from_agent_update"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_update_with_tickets_does_not_duplicate_existing_plan_tasks() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, plan = await _seed(session, decomposed_tickets=None)
+            session.add(
+                Task(
+                    board_id=board.id,
+                    title="Existing ticket",
+                    status="backlog",
+                    is_backlog=True,
+                    plan_id=plan.id,
+                ),
+            )
+            await session.commit()
+
+            await plans_api.agent_update_plan(
+                plan.id,
+                payload=PlanAgentUpdateRequest(
+                    reply="Decomposed into 1 ticket",
+                    tickets=[
+                        DecomposedTicket(
+                            title="[UI] Add dashboard",
+                            description="## Context\nShow status.",
+                            priority="medium",
+                        ),
+                    ],
+                ),
+                board=board,
+                session=session,
+            )
+
+            tasks = (await session.exec(select(Task).where(Task.plan_id == plan.id))).all()
+
+        assert len(tasks) == 1
+        assert tasks[0].title == "Existing ticket"
     finally:
         await engine.dispose()

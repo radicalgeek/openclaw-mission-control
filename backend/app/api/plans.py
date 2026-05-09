@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -25,6 +25,7 @@ from app.models.tasks import Task
 from app.schemas.common import OkResponse
 from app.schemas.plans import (
     VALID_DECOMPOSITION_TARGETS,
+    DecomposedTicket,
     PlanAgentUpdateRequest,
     PlanChatRequest,
     PlanChatResponse,
@@ -100,6 +101,80 @@ def _plan_to_read(plan: Plan, task_status: str | None) -> PlanRead:
         created_at=plan.created_at,
         updated_at=plan.updated_at,
     )
+
+
+def _decomposed_ticket_fields(raw: DecomposedTicket | dict[str, object]) -> dict[str, object]:
+    """Normalize stored/generated ticket payloads into task-create fields."""
+    if isinstance(raw, dict):
+        title = str(raw.get("title", "")).strip()
+        description = str(raw.get("description") or "")
+        priority = str(raw.get("priority") or "medium")
+        score_raw = raw.get("priority_score")
+        estimate_raw = raw.get("estimate_minutes")
+    else:
+        title = str(raw.title).strip()
+        description = raw.description or ""
+        priority = raw.priority or "medium"
+        score_raw = raw.priority_score
+        estimate_raw = raw.estimate_minutes
+
+    from app.schemas.tasks import priority_to_score  # noqa: PLC0415
+
+    priority_score = (
+        int(score_raw)
+        if isinstance(score_raw, (int, float)) and int(score_raw) > 0
+        else priority_to_score(priority)
+    )
+    estimate_minutes: int | None = (
+        int(estimate_raw) if isinstance(estimate_raw, (int, float)) else None
+    )
+    return {
+        "title": title,
+        "description": description,
+        "priority": priority,
+        "priority_score": priority_score,
+        "estimate_minutes": estimate_minutes,
+    }
+
+
+async def _create_plan_backlog_tasks(
+    session: AsyncSession,
+    *,
+    board: Board,
+    plan: Plan,
+    tickets: list[DecomposedTicket] | list[dict[str, object]],
+    created_by_user_id: UUID | None,
+    auto_reason: str,
+) -> list[UUID]:
+    """Create backlog tasks from decomposed tickets.
+
+    Returns an empty list when the ticket payload has no usable titles. The
+    caller decides whether that is an error or a no-op.
+    """
+    created_ids: list[UUID] = []
+    for raw in tickets:
+        fields = _decomposed_ticket_fields(raw)
+        title = str(fields["title"])
+        if not title:
+            continue
+        task = Task(
+            board_id=board.id,
+            title=title,
+            description=str(fields["description"]),
+            status="backlog",
+            priority=str(fields["priority"]),
+            priority_score=cast(int, fields["priority_score"]),
+            estimate_minutes=cast("int | None", fields["estimate_minutes"]),
+            is_backlog=True,
+            plan_id=plan.id,
+            created_by_user_id=created_by_user_id,
+            auto_created=True,
+            auto_reason=auto_reason,
+        )
+        session.add(task)
+        await session.flush()
+        created_ids.append(task.id)
+    return created_ids
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +549,28 @@ async def agent_update_plan(
             }
             for t in payload.tickets
         ]
+        existing_for_plan = await session.exec(
+            select(Task).where(col(Task.plan_id) == plan.id),
+        )
+        if existing_for_plan.first() is None:
+            created_ids = await _create_plan_backlog_tasks(
+                session,
+                board=board,
+                plan=plan,
+                tickets=payload.tickets,
+                created_by_user_id=None,
+                auto_reason="committed_from_agent_update",
+            )
+            if created_ids:
+                record_activity(
+                    session,
+                    event_type="plan_tickets_committed",
+                    message=(
+                        f"Committed {len(created_ids)} backlog tickets from "
+                        f"agent decomposition: {plan.title}"
+                    ),
+                    board_id=board.id,
+                )
 
     plan.messages = messages
     plan.updated_at = utcnow()
@@ -638,8 +735,6 @@ async def commit_plan_tickets(
     first.
     """
     _planning_enabled_check()
-    from app.schemas.tasks import priority_to_score  # noqa: PLC0415
-
     plan = await _require_plan(session, plan_id, board)
 
     tickets = plan.decomposed_tickets or []
@@ -659,48 +754,14 @@ async def commit_plan_tickets(
         )
 
     actor_user_id = auth.user.id if auth.user else None
-    created_ids: list[UUID] = []
-    for raw in tickets:
-        # raw is either a DecomposedTicket (validated) or a plain dict from JSON.
-        if isinstance(raw, dict):
-            title = str(raw.get("title", "")).strip()
-            description = str(raw.get("description") or "")
-            priority = str(raw.get("priority") or "medium")
-            score_raw = raw.get("priority_score")
-            estimate_raw = raw.get("estimate_minutes")
-        else:
-            title = str(getattr(raw, "title", "")).strip()
-            description = str(getattr(raw, "description", "") or "")
-            priority = str(getattr(raw, "priority", "medium"))
-            score_raw = getattr(raw, "priority_score", None)
-            estimate_raw = getattr(raw, "estimate_minutes", None)
-        if not title:
-            continue
-        priority_score = (
-            int(score_raw)
-            if isinstance(score_raw, (int, float)) and int(score_raw) > 0
-            else priority_to_score(priority)
-        )
-        estimate_minutes: int | None = (
-            int(estimate_raw) if isinstance(estimate_raw, (int, float)) else None
-        )
-        task = Task(
-            board_id=board.id,
-            title=title,
-            description=description,
-            status="backlog",
-            priority=priority,
-            priority_score=priority_score,
-            estimate_minutes=estimate_minutes,
-            is_backlog=True,
-            plan_id=plan.id,
-            created_by_user_id=actor_user_id,
-            auto_created=True,
-            auto_reason="committed_from_plan",
-        )
-        session.add(task)
-        await session.flush()
-        created_ids.append(task.id)
+    created_ids = await _create_plan_backlog_tasks(
+        session,
+        board=board,
+        plan=plan,
+        tickets=tickets,
+        created_by_user_id=actor_user_id,
+        auto_reason="committed_from_plan",
+    )
 
     if not created_ids:
         raise HTTPException(

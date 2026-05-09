@@ -11,10 +11,11 @@ The triager decomposes plans and raw feature requests into well-structured backl
 - Chat messages mentioning `@triager`
 
 ### Outputs
-- Backlog tickets (via `/boards/{{ board_id }}/backlog/batch`) with:
+- Backlog tickets (via `/api/v1/agent/boards/<board_id>/backlog/batch`) with:
   - Action-oriented titles with category prefix
   - Structured descriptions with Context, Acceptance Criteria, Technical Notes, Out of Scope
   - Tags, dependency links, and appropriate sizing (≤3 working sessions)
+  - `plan_id` set to the source plan id when decomposing a plan
 
 ### Does NOT
 - Pick up Kanban tasks
@@ -24,3 +25,6 @@ The triager decomposes plans and raw feature requests into well-structured backl
 ### How to engage
 - Mention `@triager` in board chat with a plan link or description of what needs decomposing.
 - Tag a backlog task `needs_triage` to queue it for decomposition.
+- Active plans are picked up automatically during heartbeat. If an active,
+  untriaged plan exists, create backlog tickets in that same heartbeat; do not
+  reply that decomposition is merely “in progress”.

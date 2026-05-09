@@ -120,6 +120,12 @@ class AgentTaskListFilters(SQLModel):
     unassigned: bool | None = None
 
 
+class AgentBacklogBatchCreate(SQLModel):
+    """Agent-scoped batch backlog creation payload."""
+
+    tickets: list[TaskCreate]
+
+
 def _task_list_filters(
     status_filter: str | None = TASK_STATUS_QUERY,
     assigned_agent_id: UUID | None = None,
@@ -1069,6 +1075,109 @@ async def create_backlog_task(
         task=task,
         board_id=board.id,
     )
+
+
+@router.post(
+    "/boards/{board_id}/backlog/batch",
+    response_model=list[TaskRead],
+    status_code=status.HTTP_201_CREATED,
+    tags=AGENT_BOARD_TAGS,
+    summary="Create multiple tickets directly in the sprints-feature backlog",
+    description=(
+        "Agent-scoped batch equivalent of the backlog creation endpoint.\n\n"
+        "Use this when a triager decomposes a plan into several tickets in one "
+        "heartbeat. Every created task lands in the sprints-feature Backlog "
+        '(`status: "backlog"`, `is_backlog: true`) and may carry `plan_id`.'
+    ),
+    operation_id="agent_batch_create_backlog_tasks",
+    openapi_extra={
+        "x-llm-intent": "batch_create_backlog_tickets",
+        "x-when-to-use": [
+            "Decomposing an active plan into multiple backlog tickets",
+            "Creating several sprints-feature backlog tickets from one agent turn",
+        ],
+        "x-when-not-to-use": [
+            "Creating a single ticket (use POST /agent/boards/{board_id}/backlog)",
+            "Creating on-board Kanban tasks",
+        ],
+        "x-required-actor": "lead_or_standalone_agent",
+        "x-side-effects": [
+            "Creates new tasks with status='backlog' and is_backlog=true",
+        ],
+    },
+)
+async def batch_create_backlog_tasks(
+    payload: AgentBacklogBatchCreate,
+    board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> list[TaskRead]:
+    """Create multiple sprints-feature backlog tickets as an agent."""
+    await _guard_board_access(session, agent_ctx, board)
+    _require_task_creation_permission(agent_ctx, board)
+
+    created: list[Task] = []
+    for item in payload.tickets:
+        task = Task(
+            board_id=board.id,
+            title=item.title,
+            description=item.description,
+            status="backlog",
+            priority=item.priority,
+            priority_score=item.priority_score,
+            estimate_minutes=item.estimate_minutes,
+            plan_id=item.plan_id,
+            is_backlog=True,
+            auto_created=True,
+            auto_reason=f"triager:{agent_ctx.agent.id}",
+        )
+        session.add(task)
+        await session.flush()
+        created.append(task)
+
+    record_activity(
+        session,
+        event_type="backlog.batch_created",
+        message=f"{len(created)} backlog tickets created by {agent_ctx.agent.name}",
+        agent_id=agent_ctx.agent.id,
+        board_id=board.id,
+    )
+    await session.commit()
+    for task in created:
+        await session.refresh(task)
+
+    return [
+        TaskRead(
+            id=task.id,
+            board_id=task.board_id,
+            title=task.title,
+            description=task.description,
+            status=task.status,
+            priority=task.priority,
+            priority_score=task.priority_score,
+            due_at=task.due_at,
+            assigned_agent_id=task.assigned_agent_id,
+            depends_on_task_ids=[],
+            tag_ids=[],
+            estimate_minutes=task.estimate_minutes,
+            actual_minutes=task.actual_minutes,
+            plan_id=task.plan_id,
+            created_by_user_id=task.created_by_user_id,
+            in_progress_at=task.in_progress_at,
+            done_at=task.done_at,
+            created_at=task.created_at,
+            updated_at=task.updated_at,
+            blocked_by_task_ids=[],
+            is_blocked=False,
+            tags=[],
+            custom_field_values=None,
+            thread_id=task.thread_id,
+            channel_info=None,
+            is_backlog=task.is_backlog,
+            sprint_id=task.sprint_id,
+        )
+        for task in created
+    ]
 
 
 @router.patch(

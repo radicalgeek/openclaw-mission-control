@@ -121,8 +121,9 @@ def build_decompose_prompt(plan_id: str, board_id: str) -> str:
     in a single shot.
     """
     return (
-        f"Decompose plan {plan_id} into backlog tickets and POST each one to the\n"
-        f"sprints-feature backlog. Per-call instructions:\n\n"
+        f"Decompose plan {plan_id} into backlog tickets and POST them to the\n"
+        f"sprints-feature backlog in this turn. Do not reply that decomposition is\n"
+        f"in progress. Per-call instructions:\n\n"
         f"1) Fetch the plan content (do not assume — read it fresh):\n"
         f"     GET /api/v1/agent/boards/{board_id}/plans/{plan_id}\n"
         f"   Use the `content` field as your decomposition source.\n\n"
@@ -130,11 +131,15 @@ def build_decompose_prompt(plan_id: str, board_id: str) -> str:
         f"   in your heartbeat template (action-oriented title with category prefix,\n"
         f"   structured description with Context / Acceptance Criteria / Technical\n"
         f"   Notes / Out of Scope, sized for 1–3 sessions, etc.).\n\n"
-        f"3) For each ticket, POST one at a time:\n"
-        f"     POST /api/v1/agent/boards/{board_id}/backlog\n"
-        f'     {{"title": "...", "description": "...", "priority": "low|medium|high|critical",\n'
-        f'       "priority_score": <1-100>, "estimate_minutes": <int or null>}}\n\n'
-        f"4) When all tickets are POSTed, return HEARTBEAT_OK."
+        f"3) POST all tickets in one batch:\n"
+        f"     POST /api/v1/agent/boards/{board_id}/backlog/batch\n"
+        f'     {{"tickets": [{{"title": "...", "description": "...",\n'
+        f'       "priority": "low|medium|high|critical", "priority_score": <1-100>,\n'
+        f'       "estimate_minutes": <int or null>, "plan_id": "{plan_id}"}}]}}\n\n'
+        f"4) Mark the plan triaged with the same ticket list:\n"
+        f"     POST /api/v1/boards/{board_id}/plans/{plan_id}/agent-update\n"
+        f'     {{"reply": "Decomposed into N tickets", "tickets": [ ... ]}}\n\n'
+        f"5) Only after the batch POST and agent-update succeed, return HEARTBEAT_OK."
     )
 
 

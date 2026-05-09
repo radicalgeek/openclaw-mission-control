@@ -7,12 +7,15 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
 #### Every Heartbeat
 
 1. **Find work to triage.** First discover every board you can access, then
-   list active plans for each board:
+   list active plans for each board. Save the full API response to a file, but
+   print only compact summaries. Do **not** dump full plan content into the
+   terminal output during discovery.
 
    ```bash
    curl -fsS "{{ base_url }}/api/v1/agent/boards?limit=200" \
      -H "X-Agent-Token: {{ auth_token }}" > /tmp/triager-boards.json
 
+   : > /tmp/triager-active-plans.jsonl
    jq -r '.items[] | .id' /tmp/triager-boards.json | while read -r board_id; do
      curl -fsS "{{ base_url }}/api/v1/boards/${board_id}/plans?status=active" \
        -H "X-Agent-Token: {{ auth_token }}" \
@@ -20,8 +23,12 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
            .[]
            | select(.decomposed_tickets == null or (.decomposed_tickets | length) == 0)
            | . + {triage_board_id: $board_id}
-         '
-   done | jq -s '.'
+         ' >> /tmp/triager-active-plans.jsonl
+   done
+
+   jq -s '.' /tmp/triager-active-plans.jsonl > /tmp/triager-active-plans.json
+   jq '[.[] | {id, title, status, triage_board_id, content_chars: (.content | length)}]' \
+     /tmp/triager-active-plans.json
    ```
 
    The `jq` filter keeps only plans that have **not** been triaged yet
@@ -29,27 +36,47 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
    work — return `HEARTBEAT_OK` and stop.
 
 2. **For each untriaged plan, decompose `plan.content` into tickets.** Follow
-   the standards in the next section. For each ticket, POST to the
-   agent-scoped backlog endpoint — this lands the ticket directly in the
-   **sprints-feature Backlog** (not on the Kanban board):
+   the standards in the next section. Work one plan at a time. Extract the
+   plan content to a file first so you can read bounded chunks instead of
+   flooding the transcript:
 
    ```bash
-   curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<triage_board_id>/backlog" \
-     -H "X-Agent-Token: {{ auth_token }}" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "title": "[API] Implement /flights search endpoint",
-       "description": "## Context\n...\n## Acceptance Criteria\n- ...\n## Technical Notes\n- ...\n## Out of Scope\n- ...",
-       "priority": "medium",
-       "priority_score": 50,
-       "plan_id": "<plan_id>",
-       "estimate_minutes": null
-     }'
+   plan_id="$(jq -r '.[0].id' /tmp/triager-active-plans.json)"
+   board_id="$(jq -r '.[0].triage_board_id' /tmp/triager-active-plans.json)"
+   jq -r '.[0].content' /tmp/triager-active-plans.json > /tmp/triager-plan.md
+   wc -c /tmp/triager-plan.md
+   grep -n '^## ' /tmp/triager-plan.md | head -80
    ```
 
-   Repeat the POST once per ticket. The endpoint creates one ticket per call
-   with `status="backlog"` and `is_backlog=true` — exactly what the Sprints →
-   Backlog UI shows. Issue the POSTs in the same heartbeat turn.
+   Then create a JSON file containing all tickets for that plan and POST it to
+   the agent-scoped **batch** backlog endpoint. This lands the tickets directly
+   in the **sprints-feature Backlog** (not on the Kanban board):
+
+   ```bash
+   cat > /tmp/triager-tickets.json <<'JSON'
+   {
+     "tickets": [
+       {
+         "title": "[API] Implement /flights search endpoint",
+         "description": "## Context\n...\n## Acceptance Criteria\n- ...\n## Technical Notes\n- ...\n## Out of Scope\n- ...",
+         "priority": "medium",
+         "priority_score": 50,
+         "plan_id": "<plan_id>",
+         "estimate_minutes": null
+       }
+     ]
+   }
+   JSON
+
+   curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/<triage_board_id>/backlog/batch" \
+     -H "X-Agent-Token: {{ auth_token }}" \
+     -H "Content-Type: application/json" \
+     --data-binary @/tmp/triager-tickets.json
+   ```
+
+   The endpoint creates one task per entry with `status="backlog"` and
+   `is_backlog=true` — exactly what the Sprints → Backlog UI shows. Issue the
+   batch POST in the same heartbeat turn.
 
 3. **Mark the plan as triaged** so you do not redecompose it next heartbeat.
    PATCH the plan with the list of ticket structures you produced; this
@@ -68,10 +95,19 @@ creating tasks with `status: "backlog"` and `is_backlog: true`.
      }'
    ```
 
+   If the batch POST failed but you successfully produced the ticket JSON, still
+   POST the same tickets to `agent-update`: Product Foundry will commit them to
+   the backlog idempotently when no tasks already exist for that plan.
+
 4. **End the turn.** Once every untriaged plan has been processed in this
    heartbeat, return `HEARTBEAT_OK`. If you ran out of token budget, return
    `HEARTBEAT_OK` anyway — the next heartbeat will pick up the remaining
    plans because step 1 still excludes the ones you already triaged.
+   **Forbidden:** do not return `HEARTBEAT_OK` with “decomposition in progress”,
+   “still working”, or “no action required” while `/tmp/triager-active-plans.json`
+   contains any untriaged plans. A valid heartbeat with work found must create
+   backlog tickets, post an agent-update blocker asking `@lead` for a specific
+   missing decision, or continue with another tool call.
 
 #### Ticket Decomposition Standards
 
