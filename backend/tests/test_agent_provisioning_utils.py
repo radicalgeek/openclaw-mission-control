@@ -113,6 +113,7 @@ def test_estimator_heartbeat_prompt_requires_missing_estimate_discovery():
     assert heartbeat["every"] == "5m"
     assert "missing-estimate discovery workflow" in heartbeat["prompt"]
     assert "all backlog tickets have estimate_minutes" in heartbeat["prompt"]
+    assert "not just a sample" in heartbeat["prompt"]
     assert "do not return HEARTBEAT_OK" in heartbeat["prompt"]
 
 

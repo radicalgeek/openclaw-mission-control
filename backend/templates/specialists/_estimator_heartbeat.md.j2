@@ -33,7 +33,12 @@ Missing estimates are not a blocker and do not require a human decision. You are
    If the result is `[]`, all backlog tickets already have estimates; return
    `HEARTBEAT_OK` and stop.
 
-2. **Prioritise estimation of tickets that are:**
+2. **Estimate every discovered ticket in this heartbeat.** Do not estimate only
+   the top few, a sample, or a priority slice. Prioritisation only decides the
+   order when there are many tickets; it does not reduce the set you must
+   process.
+
+   Process tickets first when they are:
    - Tagged high or critical priority.
    - Requested by the planner or lead.
    - Closest to sprint boundary (likely to be pulled next).
@@ -43,12 +48,14 @@ Missing estimates are not a blocker and do not require a human decision. You are
    - Identify comparable historic tickets from MEMORY.md calibration data.
    - Apply estimation methodology (see below).
    - If information is sparse, still set a conservative estimate from the available title/description; only mark `needs_refinement` after setting an estimate.
-   - Set `estimate_minutes` via PATCH:
+   - Set `estimate_minutes` via PATCH. Use `-o /dev/null` so large task
+     responses do not leave long-running background process sessions:
      ```bash
      curl -fsS -X PATCH "{{ base_url }}/api/v1/agent/boards/<estimator_board_id>/tasks/{task_id}" \
        -H "X-Agent-Token: {{ auth_token }}" \
        -H "Content-Type: application/json" \
-       -d '{"estimate_minutes": 120, "comment": "Estimate: 120 minutes. Rationale: moderate multi-step implementation with validation and deployment checks."}'
+       -d '{"estimate_minutes": 120, "comment": "Estimate: 120 minutes. Rationale: moderate multi-step implementation with validation and deployment checks."}' \
+       -o /dev/null
      ```
    - Add a comment with estimation rationale and comparable tickets used.
    - If confidence is below 60%, tag ticket `needs_refinement` with specific questions.
@@ -61,6 +68,11 @@ Missing estimates are not a blocker and do not require a human decision. You are
    - Post calibration summary to MEMORY.md if significant drift detected.
 
 5. **Update MEMORY.md** with estimation log and calibration data.
+
+6. **Verify completion before returning OK.** Re-run the discovery command after
+   all PATCH calls. If any backlog ticket still has `estimate_minutes == null`,
+   keep estimating those remaining tickets. Return `HEARTBEAT_OK` only when a
+   fresh API read proves the missing-estimate result is `[]`.
 
 #### Estimation Methodology
 
@@ -83,3 +95,4 @@ Estimation inputs for each ticket:
 - **In scope**: Estimating tickets, tracking accuracy, calibrating, flagging unestimable tickets.
 - **Out of scope**: Prioritising tickets (planner's job), creating tickets (triager's job), executing work, judging business value, picking up Kanban tasks.
 - **Not a blocker**: A backlog ticket missing `estimate_minutes`; that is the work you must perform.
+- **Forbidden**: Returning `HEARTBEAT_OK` after estimating only part of the backlog while any discovered backlog ticket still has `estimate_minutes == null`.
