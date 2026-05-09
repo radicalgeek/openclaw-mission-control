@@ -1,4 +1,4 @@
-"""Lightweight recovery wakes for board agents with active work."""
+"""Lightweight recovery wakes for board agents with assigned board work."""
 
 from __future__ import annotations
 
@@ -144,7 +144,7 @@ def _agent_needs_work_wake(agent: Agent) -> bool:
 
 
 async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int:
-    """Wake stale board agents that already own in-progress tasks.
+    """Wake stale board agents that already own executable board tasks.
 
     This is intentionally not lifecycle reconciliation. Active task recovery
     should preserve the existing OpenClaw session and workspace, only making
@@ -156,11 +156,16 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
             .join(Task, col(Task.assigned_agent_id) == col(Agent.id))
             .join(Board, col(Board.id) == col(Task.board_id))
             .join(Gateway, col(Gateway.id) == col(Agent.gateway_id))
-            .where(col(Task.status) == "in_progress")
+            .where(col(Task.status).in_(["in_progress", "inbox"]))
             .where(col(Agent.board_id) == col(Board.id))
             .where(col(Agent.openclaw_session_id).is_not(None))
             .where(col(Gateway.url).is_not(None))
-            .order_by(col(Agent.id).asc(), col(Task.in_progress_at).asc())
+            .order_by(
+                col(Agent.id).asc(),
+                col(Task.in_progress_at).is_(None).asc(),
+                col(Task.in_progress_at).asc(),
+                col(Task.updated_at).asc(),
+            )
         )
     ).all()
     if not rows:
@@ -175,12 +180,17 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
         seen_agent_ids.add(agent.id)
         if not _agent_needs_work_wake(agent):
             continue
+        reason = (
+            "active_work_recovery"
+            if task.status == "in_progress"
+            else "assigned_inbox_work_recovery"
+        )
         if await wake_agent_for_task(
             session=session,
             board=board,
             task=task,
             agent=agent,
-            reason="active_work_recovery",
+            reason=reason,
         ):
             woken += 1
             logger.info(

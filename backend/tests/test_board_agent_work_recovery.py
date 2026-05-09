@@ -212,6 +212,82 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
 
 @pytest.mark.asyncio
+async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            task_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    context={"source_repo_url": "https://example.test/repo.git"},
+                ),
+            )
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:worker:main",
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="Pick up assigned work",
+                    status="inbox",
+                    assigned_agent_id=agent_id,
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert wake_calls
+            assert "Status: inbox" in wake_calls[0]["message"]
+            assert "Wake reason: assigned_inbox_work_recovery" in wake_calls[0]["message"]
+
+            events = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.task_id) == task_id)
+                    .where(col(ActivityEvent.event_type) == "task.assignee_woken"),
+                )
+            ).all()
+            assert len(events) == 1
+            assert "(assigned_inbox_work_recovery)" in (events[0].message or "")
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_active_work_recovery_wakes_online_agent_with_stale_heartbeat(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
