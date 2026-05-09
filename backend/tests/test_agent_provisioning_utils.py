@@ -122,6 +122,14 @@ def test_estimator_heartbeat_prompt_requires_missing_estimate_discovery():
     assert "do not return HEARTBEAT_OK" in heartbeat["prompt"]
 
 
+def test_tools_exec_host_patch_forces_gateway_host():
+    assert agent_provisioning._tools_exec_host_patch({}) == {"exec": {"host": "gateway"}}
+    assert agent_provisioning._tools_exec_host_patch({"tools": {"exec": {"host": "auto"}}}) == {
+        "exec": {"host": "gateway"},
+    }
+    assert agent_provisioning._tools_exec_host_patch({"tools": {"exec": {"host": "gateway"}}}) is None
+
+
 def test_planner_heartbeat_prompt_requires_board_discovery_and_draft_sprints():
     agent = _AgentStub(
         name="Planner",

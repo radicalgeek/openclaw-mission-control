@@ -205,8 +205,8 @@ def _tools_exec_host_patch(config_data: dict[str, Any]) -> dict[str, Any] | None
     exec_cfg = tools.get("exec")
     if not isinstance(exec_cfg, dict):
         return {"exec": {"host": "gateway"}}
-    if exec_cfg.get("host"):
-        return None  # Already configured — don't override user choice.
+    if exec_cfg.get("host") == "gateway":
+        return None  # Already configured correctly for container-hosted agents.
     return {"exec": {"host": "gateway"}}
 
 
