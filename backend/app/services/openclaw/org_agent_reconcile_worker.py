@@ -13,6 +13,7 @@ from app.services.openclaw.org_agent_reconciler import (
     reconcile_all_orgs,
     sweep_stuck_provisioning_agents,
 )
+from app.services.board_agent_work_recovery import wake_stale_board_agents_with_active_work
 from app.services.queue import QueuedTask
 
 logger = get_logger(__name__)
@@ -39,6 +40,13 @@ async def process_org_agent_reconcile_task(task: QueuedTask) -> None:
                 logger.info("org_agent_reconcile.stuck_sweep_done count=%d", swept)
         except Exception:
             logger.exception("org_agent_reconcile.stuck_sweep_error")
+
+        try:
+            woken = await wake_stale_board_agents_with_active_work(session)
+            if woken:
+                logger.info("org_agent_reconcile.active_work_wake_done count=%d", woken)
+        except Exception:
+            logger.exception("org_agent_reconcile.active_work_wake_error")
 
     logger.info("org_agent_reconcile.complete")
 
