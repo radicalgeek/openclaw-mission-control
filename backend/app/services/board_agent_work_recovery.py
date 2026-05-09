@@ -19,6 +19,7 @@ from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.provisioning import (
     OpenClawGatewayProvisioner,
+    _agent_session_model,
     _board_code_repo_url,
     _board_code_workspace_root,
     _board_code_worktree_path,
@@ -100,6 +101,7 @@ async def wake_agent_for_task(
             config=config,
             agent_name=agent.name,
             message=message,
+            model=_agent_session_model(agent),
         )
         if error is not None:
             raise error

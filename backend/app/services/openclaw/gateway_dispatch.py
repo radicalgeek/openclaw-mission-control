@@ -71,9 +71,10 @@ class GatewayDispatchService(OpenClawDBService):
         config: GatewayClientConfig,
         agent_name: str,
         message: str,
+        model: str | None = None,
     ) -> None:
         """Start an agent turn without blocking the API request on completion."""
-        await ensure_session(session_key, config=config, label=agent_name)
+        await ensure_session(session_key, config=config, label=agent_name, model=model)
         await send_session_message_nonblocking(
             message,
             session_key=session_key,
@@ -108,6 +109,7 @@ class GatewayDispatchService(OpenClawDBService):
         config: GatewayClientConfig,
         agent_name: str,
         message: str,
+        model: str | None = None,
     ) -> OpenClawGatewayError | None:
         try:
             await self.wake_agent_session(
@@ -115,6 +117,7 @@ class GatewayDispatchService(OpenClawDBService):
                 config=config,
                 agent_name=agent_name,
                 message=message,
+                model=model,
             )
         except OpenClawGatewayError as exc:
             return exc

@@ -197,6 +197,18 @@ def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
     return {"primary": primary}
 
 
+def _agent_session_model(agent: Agent) -> str | None:
+    """Return an OpenClaw sessions.patch model ref for the agent."""
+    model_config = _agent_model_config(agent)
+    if isinstance(model_config, str):
+        return model_config
+    if isinstance(model_config, dict):
+        primary = model_config.get("primary")
+        if isinstance(primary, str) and primary.strip():
+            return primary.strip()
+    return None
+
+
 def _tools_exec_host_patch(config_data: dict[str, Any]) -> dict[str, Any] | None:
     """Ensure ``tools.exec.host`` is set to ``"gateway"`` so agents can run commands.
 
@@ -1605,7 +1617,12 @@ class OpenClawGatewayProvisioner:
                 allow_insecure_tls=gateway.allow_insecure_tls,
                 disable_device_pairing=gateway.disable_device_pairing,
             )
-            await ensure_session(session_key, config=client_config, label=agent.name)
+            await ensure_session(
+                session_key,
+                config=client_config,
+                label=agent.name,
+                model=_agent_session_model(agent),
+            )
             verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")
             await send_message(
                 _wakeup_text(agent, verb=verb),

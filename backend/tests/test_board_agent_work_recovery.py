@@ -124,6 +124,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             assert woken == 1
             assert wake_calls
             assert wake_calls[0]["session_key"] == "agent:worker:main"
+            assert wake_calls[0]["model"] == "azure-foundry/gpt-4.1"
             assert "TASK WAKE" in wake_calls[0]["message"]
             assert "Repo URL: https://example.test/repo.git" in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH:" in wake_calls[0]["message"]

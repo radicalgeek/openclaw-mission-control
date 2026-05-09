@@ -70,6 +70,7 @@ from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConf
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 from app.services.openclaw.provisioning import (
     OpenClawGatewayProvisioner,
+    _agent_session_model,
     _board_code_repo_url,
     _board_code_workspace_root,
     _board_code_worktree_path,
@@ -774,6 +775,7 @@ async def _wake_agent_online_for_task(
             config=config,
             agent_name=agent.name,
             message=message,
+            model=_agent_session_model(agent),
         )
         if error is not None:
             raise error
