@@ -65,6 +65,7 @@ def _patch_wake_services(
                         "agent_id": registration.agent_id,
                         "name": registration.name,
                         "workspace_path": registration.workspace_path,
+                        "model": registration.model,
                     }
                 )
 
@@ -135,7 +136,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             assert woken == 1
             assert wake_calls
             assert wake_calls[0]["session_key"] == "agent:worker:main"
-            assert wake_calls[0]["model"] == "azure-foundry/gpt-4.1"
+            assert wake_calls[0]["model"] == "azure-foundry/kimi-k2-6"
             assert wake_calls[0]["reset_stuck_session"] is True
             assert "TASK WAKE" in wake_calls[0]["message"]
             assert "Repo URL: https://example.test/repo.git" in wake_calls[0]["message"]
@@ -238,7 +239,7 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
 
 @pytest.mark.asyncio
-async def test_active_work_recovery_registers_missing_runtime_agent_then_retries(
+async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     wake_calls: list[dict[str, Any]] = []
@@ -312,6 +313,13 @@ async def test_active_work_recovery_registers_missing_runtime_agent_then_retries
                     "agent_id": "worker",
                     "name": "worker",
                     "workspace_path": "/tmp/openclaw/workspace-worker",
+                    "model": {"primary": "azure-foundry/kimi-k2-6"},
+                },
+                {
+                    "agent_id": "worker",
+                    "name": "worker",
+                    "workspace_path": "/tmp/openclaw/workspace-worker",
+                    "model": {"primary": "azure-foundry/kimi-k2-6"},
                 }
             ]
     finally:

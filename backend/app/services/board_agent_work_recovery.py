@@ -222,6 +222,7 @@ async def wake_agent_for_task(
             gateway_workspace_root=gateway.workspace_root,
             reason=reason,
         )
+        await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
         error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -368,6 +369,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
+        await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -492,6 +494,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
+        await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
