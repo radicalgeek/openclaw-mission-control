@@ -18,6 +18,7 @@ from app.models.organizations import Organization
 from app.models.tasks import Task
 from app.services import board_agent_work_recovery as recovery
 from app.services.openclaw.constants import OFFLINE_AFTER
+from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 
 
 async def _make_engine() -> AsyncEngine:
@@ -34,6 +35,9 @@ async def _make_session(engine: AsyncEngine) -> AsyncSession:
 def _patch_wake_services(
     monkeypatch: pytest.MonkeyPatch,
     wake_calls: list[dict[str, Any]],
+    *,
+    wake_errors: list[OpenClawGatewayError | None] | None = None,
+    registrations: list[dict[str, Any]] | None = None,
 ) -> None:
     class _FakeDispatch:
         def __init__(self, session: AsyncSession) -> None:
@@ -46,9 +50,26 @@ def _patch_wake_services(
 
         async def try_wake_agent_session(self, **kwargs: Any) -> None:
             wake_calls.append(kwargs)
+            if wake_errors:
+                return wake_errors.pop(0)
             return None
 
+    class _FakeControlPlane:
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        async def upsert_agent(self, registration: object) -> None:
+            if registrations is not None:
+                registrations.append(
+                    {
+                        "agent_id": registration.agent_id,
+                        "name": registration.name,
+                        "workspace_path": registration.workspace_path,
+                    }
+                )
+
     monkeypatch.setattr(recovery, "GatewayDispatchService", _FakeDispatch)
+    monkeypatch.setattr(recovery, "OpenClawGatewayControlPlane", _FakeControlPlane)
 
 
 @pytest.mark.asyncio
@@ -199,6 +220,87 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
             assert woken == 0
             assert wake_calls == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_registers_missing_runtime_agent_then_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    registrations: list[dict[str, Any]] = []
+    _patch_wake_services(
+        monkeypatch,
+        wake_calls,
+        wake_errors=[
+            OpenClawGatewayError('Agent "mc-worker" no longer exists in configuration'),
+            None,
+        ],
+        registrations=registrations,
+    )
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            task_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    context={"source_repo_url": "https://example.test/repo.git"},
+                ),
+            )
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:worker:main",
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="Do the work",
+                    status="in_progress",
+                    assigned_agent_id=agent_id,
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert len(wake_calls) == 2
+            assert registrations == [
+                {
+                    "agent_id": "worker",
+                    "name": "worker",
+                    "workspace_path": "/tmp/openclaw/workspace-worker",
+                }
+            ]
     finally:
         await engine.dispose()
 

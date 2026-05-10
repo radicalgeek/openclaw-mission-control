@@ -17,11 +17,18 @@ from app.models.tasks import Task
 from app.services.activity_log import record_activity
 from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 from app.services.openclaw.provisioning import (
+    GatewayAgentRegistration,
+    OpenClawGatewayControlPlane,
+    _agent_key,
+    _agent_model_config,
     _agent_session_model,
     _board_code_repo_url,
     _board_code_workspace_root,
     _board_code_worktree_path,
+    _heartbeat_config,
+    _workspace_path,
 )
 
 logger = get_logger(__name__)
@@ -73,6 +80,30 @@ def build_task_wake_message(
     )
 
 
+def _is_missing_runtime_agent_error(error: OpenClawGatewayError) -> bool:
+    message = str(error).lower()
+    return (
+        "no longer exists in configuration" in message
+        or "agent " in message
+        and " not found" in message
+    )
+
+
+async def _register_runtime_agent(*, gateway: Gateway, config: object, agent: Agent) -> None:
+    if not gateway.workspace_root:
+        msg = "gateway workspace_root is required"
+        raise OpenClawGatewayError(msg)
+    await OpenClawGatewayControlPlane(config).upsert_agent(
+        GatewayAgentRegistration(
+            agent_id=_agent_key(agent),
+            name=agent.name,
+            workspace_path=_workspace_path(agent, gateway.workspace_root),
+            heartbeat=_heartbeat_config(agent),
+            model=_agent_model_config(agent),
+        )
+    )
+
+
 async def wake_agent_for_task(
     *,
     session: AsyncSession,
@@ -102,6 +133,16 @@ async def wake_agent_for_task(
             model=_agent_session_model(agent),
             reset_stuck_session=True,
         )
+        if error is not None and _is_missing_runtime_agent_error(error):
+            await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
+            error = await dispatch.try_wake_agent_session(
+                session_key=agent.openclaw_session_id,
+                config=config,
+                agent_name=agent.name,
+                message=message,
+                model=_agent_session_model(agent),
+                reset_stuck_session=True,
+            )
         if error is not None:
             raise error
         agent.last_wake_sent_at = utcnow()
