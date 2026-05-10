@@ -34,6 +34,7 @@ async def test_reset_stuck_session_resets_processing_session(monkeypatch) -> Non
     assert reset is True
     assert calls == [
         ("sessions.list", {}),
+        ("sessions.abort", {"key": "agent:dev:main"}),
         ("sessions.reset", {"key": "agent:dev:main"}),
     ]
 
@@ -70,6 +71,7 @@ async def test_reset_stuck_session_accepts_gateway_session_key_field(monkeypatch
     assert reset is True
     assert calls == [
         ("sessions.list", {}),
+        ("sessions.abort", {"key": "agent:dev:main"}),
         ("sessions.reset", {"key": "agent:dev:main"}),
     ]
 
@@ -173,6 +175,7 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
 
     assert calls == [
         ("sessions.list", {}),
+        ("sessions.abort", {"key": "agent:dev:main"}),
         ("sessions.reset", {"key": "agent:dev:main"}),
         (
             "sessions.patch",
@@ -191,4 +194,57 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
                 "timeoutMs": 0,
             },
         ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_wake_agent_session_stops_when_reset_is_unavailable(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    async def _openclaw_call(
+        method: str,
+        params: dict[str, object] | None = None,
+        *,
+        config: GatewayConfig,
+    ) -> object:
+        calls.append((method, params or {}))
+        if method == "sessions.list":
+            return {"sessions": [{"key": "agent:dev:main", "state": "processing"}]}
+        if method == "sessions.reset":
+            raise gateway_dispatch.OpenClawGatewayError(
+                "Session agent:dev:main is still active; try again in a moment."
+            )
+        return {}
+
+    async def _ensure_session(*args: object, **kwargs: object) -> object:
+        calls.append(("sessions.patch", {}))
+        return {}
+
+    async def _send_session_message_nonblocking(*args: object, **kwargs: object) -> object:
+        calls.append(("sessions.send", {}))
+        return {}
+
+    monkeypatch.setattr(gateway_dispatch, "openclaw_call", _openclaw_call)
+    monkeypatch.setattr(gateway_dispatch, "ensure_session", _ensure_session)
+    monkeypatch.setattr(
+        gateway_dispatch,
+        "send_session_message_nonblocking",
+        _send_session_message_nonblocking,
+    )
+
+    service = gateway_dispatch.GatewayDispatchService(session=object())
+    error = await service.try_wake_agent_session(
+        session_key="agent:dev:main",
+        config=GatewayConfig(url="ws://gateway.example/ws"),
+        agent_name="Developer Agent",
+        message="wake up",
+        reset_stuck_session=True,
+    )
+
+    assert error is not None
+    assert "still active" in str(error)
+    assert calls == [
+        ("sessions.list", {}),
+        ("sessions.abort", {"key": "agent:dev:main"}),
+        ("sessions.reset", {"key": "agent:dev:main"}),
     ]

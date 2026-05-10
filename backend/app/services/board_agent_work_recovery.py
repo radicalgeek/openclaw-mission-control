@@ -189,17 +189,6 @@ async def _register_runtime_agent(*, gateway: Gateway, config: object, agent: Ag
     )
 
 
-async def _patch_runtime_agent_config(*, gateway: Gateway, config: object, agent: Agent) -> None:
-    if not gateway.workspace_root:
-        msg = "gateway workspace_root is required"
-        raise OpenClawGatewayError(msg)
-    agent_id = _agent_key(agent)
-    workspace_path = _workspace_path(agent, gateway.workspace_root)
-    await OpenClawGatewayControlPlane(config).patch_agent_heartbeats(
-        [(agent_id, workspace_path, _heartbeat_config(agent), _agent_model_config(agent))],
-    )
-
-
 async def wake_agent_for_task(
     *,
     session: AsyncSession,
@@ -221,7 +210,6 @@ async def wake_agent_for_task(
             gateway_workspace_root=gateway.workspace_root,
             reason=reason,
         )
-        await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
         error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -345,7 +333,6 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
-        await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -472,7 +459,6 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
-        await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -541,8 +527,9 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
     """Wake stale board agents that already own executable board tasks.
 
     This is intentionally not lifecycle reconciliation. Active task recovery
-    should preserve the existing OpenClaw session and workspace, only making
-    sure the runtime knows the agent heartbeat entry and receives a work wake.
+    should preserve the existing OpenClaw session and workspace. It wakes only
+    concrete work; runtime registration is repaired only if OpenClaw reports the
+    agent is missing.
     """
     rows = (
         await session.exec(
@@ -576,17 +563,6 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
             continue
         seen_agent_ids.add(agent.id)
         if not _agent_needs_work_wake(agent):
-            try:
-                gateway, config = await GatewayDispatchService(
-                    session,
-                ).require_gateway_config_for_board(board)
-                await _patch_runtime_agent_config(gateway=gateway, config=config, agent=agent)
-            except Exception:
-                logger.exception(
-                    "board_agent_work_recovery.runtime_patch_failed agent_id=%s board_id=%s",
-                    agent.id,
-                    board.id,
-                )
             continue
         reason = (
             "active_work_recovery"

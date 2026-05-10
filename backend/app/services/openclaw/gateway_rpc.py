@@ -109,6 +109,7 @@ GATEWAY_METHODS = [
     "sessions.list",
     "sessions.preview",
     "sessions.patch",
+    "sessions.abort",
     "sessions.reset",
     "sessions.delete",
     "sessions.compact",

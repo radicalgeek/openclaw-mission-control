@@ -243,10 +243,7 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
             assert woken == 0
             assert wake_calls == []
-            assert len(heartbeat_patches) == 1
-            assert heartbeat_patches[0][0][0] == "worker"
-            assert heartbeat_patches[0][0][1] == "/tmp/openclaw/workspace-worker"
-            assert heartbeat_patches[0][0][3] == {"primary": "azure-foundry/kimi-k2-6"}
+            assert heartbeat_patches == []
     finally:
         await engine.dispose()
 
@@ -331,12 +328,6 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
                     "name": "worker",
                     "workspace_path": "/tmp/openclaw/workspace-worker",
                     "model": {"primary": "azure-foundry/kimi-k2-6"},
-                },
-                {
-                    "agent_id": "worker",
-                    "name": "worker",
-                    "workspace_path": "/tmp/openclaw/workspace-worker",
-                    "model": {"primary": "azure-foundry/kimi-k2-6"},
                 }
             ]
             assert heartbeat_patches == [
@@ -345,14 +336,6 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
                         "worker",
                         "/tmp/openclaw/workspace-worker",
                         heartbeat_patches[0][0][2],
-                        {"primary": "azure-foundry/kimi-k2-6"},
-                    )
-                ],
-                [
-                    (
-                        "worker",
-                        "/tmp/openclaw/workspace-worker",
-                        heartbeat_patches[1][0][2],
                         {"primary": "azure-foundry/kimi-k2-6"},
                     )
                 ],

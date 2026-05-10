@@ -53,9 +53,17 @@ async def reset_stuck_session_if_needed(
     session_key: str,
     config: GatewayClientConfig,
 ) -> bool:
-    """Reset failed/processing sessions before sending a recovery wake."""
+    """Reset failed/processing sessions before sending a recovery wake.
+
+    Returns True when a reset was required and completed, and False when the
+    session was not in a resettable state. Gateway reset failures are raised so
+    callers do not queue more work into a session OpenClaw says is still active.
+    """
     try:
         sessions = await openclaw_call("sessions.list", {}, config=config)
+    except OpenClawGatewayError:
+        await reset_session_for_wake(session_key=session_key, config=config)
+        return True
     except Exception:
         return False
 
@@ -66,24 +74,31 @@ async def reset_stuck_session_if_needed(
         state = str(raw_state or "").lower()
         if state not in _RESETTABLE_SESSION_STATES:
             return False
-        try:
-            await openclaw_call("sessions.reset", {"key": session_key}, config=config)
-        except Exception:
-            return False
+        await reset_session_for_wake(session_key=session_key, config=config)
         return True
     return False
 
 
-async def reset_session_best_effort(
+async def reset_session_for_wake(
     *,
     session_key: str,
     config: GatewayClientConfig,
 ) -> bool:
-    """Reset a session without failing the caller when the gateway refuses it."""
+    """Abort then reset a session before a recovery wake.
+
+    The abort is best-effort because OpenClaw may report no active run. The reset
+    is mandatory: if it fails, waking would only deepen the stuck queue.
+    """
+    try:
+        await openclaw_call("sessions.abort", {"key": session_key}, config=config)
+    except Exception:
+        pass
     try:
         await openclaw_call("sessions.reset", {"key": session_key}, config=config)
-    except Exception:
-        return False
+    except OpenClawGatewayError:
+        raise
+    except Exception as exc:
+        raise OpenClawGatewayError(str(exc)) from exc
     return True
 
 
@@ -142,7 +157,7 @@ class GatewayDispatchService(OpenClawDBService):
                 config=config,
             )
             if not reset:
-                await reset_session_best_effort(
+                await reset_session_for_wake(
                     session_key=session_key,
                     config=config,
                 )
