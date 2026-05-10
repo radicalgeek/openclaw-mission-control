@@ -141,6 +141,42 @@ def _merge_wake_message(
     )
 
 
+def _lead_wake_message(
+    *,
+    board: Board,
+    agent: Agent,
+    gateway_workspace_root: str,
+    inbox_count: int,
+    active_count: int,
+    review_count: int,
+) -> str:
+    details = [
+        "BOARD LEAD WATCH WAKE",
+        f"Board: {board.name}",
+        f"Board ID: {board.id}",
+        f"Inbox tasks: {inbox_count}",
+        f"Active assigned tasks: {active_count}",
+        f"Tasks in review: {review_count}",
+    ]
+    repo_url = _board_code_repo_url(board)
+    if repo_url:
+        details.append(f"Repo URL: {repo_url}")
+    if gateway_workspace_root:
+        details.extend(
+            [
+                f"CODE_WORKSPACE_ROOT: {_board_code_workspace_root(board, gateway_workspace_root)}",
+                f"CODE_WORKTREE_PATH: {_board_code_worktree_path(agent, board, gateway_workspace_root)}",
+            ]
+        )
+    return (
+        "\n".join(details)
+        + "\n\nTake action now: inspect the board, assign ready inbox work, check in-progress "
+        "developer tasks for progress comments or blockers, and move review-ready work through "
+        "the process. Wake the assigned developer or merge agent only when there is specific "
+        "work for them. If work is blocked, post a task comment naming the blocker."
+    )
+
+
 def _is_missing_runtime_agent_error(error: OpenClawGatewayError) -> bool:
     message = str(error).lower()
     return (
@@ -392,6 +428,132 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
     return woken
 
 
+async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
+    """Wake stale board leads when their board has work that needs orchestration."""
+    task_rows = (
+        await session.exec(
+            select(
+                col(Board.id),
+                col(Board.name),
+                col(Gateway.workspace_root),
+                col(Task.status),
+            )
+            .join(Task, col(Task.board_id) == col(Board.id))
+            .join(Gateway, col(Gateway.id) == col(Board.gateway_id))
+            .where(col(Task.status).in_(["inbox", "in_progress", "review"]))
+            .where(col(Gateway.url).is_not(None))
+        )
+    ).all()
+    if not task_rows:
+        return 0
+
+    boards: dict[object, dict[str, object]] = {}
+    for board_id, board_name, workspace_root, task_status in task_rows:
+        item = boards.setdefault(
+            board_id,
+            {
+                "name": board_name,
+                "workspace_root": workspace_root,
+                "inbox_count": 0,
+                "active_count": 0,
+                "review_count": 0,
+            },
+        )
+        if task_status == "inbox":
+            item["inbox_count"] = int(item["inbox_count"]) + 1
+        elif task_status == "review":
+            item["review_count"] = int(item["review_count"]) + 1
+        else:
+            item["active_count"] = int(item["active_count"]) + 1
+
+    rows = (
+        await session.exec(
+            select(Agent, Board)
+            .join(Board, col(Board.id) == col(Agent.board_id))
+            .where(col(Agent.board_id).in_(list(boards)))
+            .where(col(Agent.openclaw_session_id).is_not(None))
+            .where(col(Agent.is_board_lead).is_(True))
+        )
+    ).all()
+
+    woken = 0
+    for agent, board in rows:
+        if not _agent_needs_work_wake(agent):
+            continue
+        board_stats = boards[board.id]
+        gateway, config = await GatewayDispatchService(
+            session,
+        ).require_gateway_config_for_board(board)
+        message = _lead_wake_message(
+            board=board,
+            agent=agent,
+            gateway_workspace_root=gateway.workspace_root,
+            inbox_count=int(board_stats["inbox_count"]),
+            active_count=int(board_stats["active_count"]),
+            review_count=int(board_stats["review_count"]),
+        )
+        error = await GatewayDispatchService(session).try_wake_agent_session(
+            session_key=agent.openclaw_session_id,
+            config=config,
+            agent_name=agent.name,
+            message=message,
+            model=_agent_session_model(agent),
+            reset_stuck_session=True,
+        )
+        if error is not None and _is_missing_runtime_agent_error(error):
+            await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
+            error = await GatewayDispatchService(session).try_wake_agent_session(
+                session_key=agent.openclaw_session_id,
+                config=config,
+                agent_name=agent.name,
+                message=message,
+                model=_agent_session_model(agent),
+                reset_stuck_session=True,
+            )
+        if error is not None:
+            record_activity(
+                session,
+                event_type="board.lead_wake_failed",
+                message=f"Board lead wake failed: {agent.name}. Error: {error!s}",
+                agent_id=agent.id,
+                board_id=board.id,
+            )
+            await session.commit()
+            continue
+
+        agent.last_wake_sent_at = utcnow()
+        agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
+            seconds=settings.agent_checkin_deadline_seconds,
+        )
+        if agent.status == "offline":
+            agent.status = "updating"
+        agent.wake_attempts += 1
+        agent.updated_at = utcnow()
+        record_activity(
+            session,
+            event_type="board.lead_woken",
+            message=(
+                f"Board lead wake sent: {agent.name}. "
+                f"Inbox tasks: {board_stats['inbox_count']}; "
+                f"active tasks: {board_stats['active_count']}; "
+                f"review tasks: {board_stats['review_count']}."
+            ),
+            agent_id=agent.id,
+            board_id=board.id,
+        )
+        await session.commit()
+        woken += 1
+        logger.info(
+            "board_agent_work_recovery.lead_woke agent_id=%s board_id=%s inbox_count=%s active_count=%s review_count=%s",
+            agent.id,
+            board.id,
+            board_stats["inbox_count"],
+            board_stats["active_count"],
+            board_stats["review_count"],
+        )
+    return woken
+
+
 async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int:
     """Wake stale board agents that already own executable board tasks.
 
@@ -419,7 +581,10 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
     ).all()
     woken = 0
     if not rows:
-        return await wake_merge_agents_for_active_board_work(session)
+        return (
+            await wake_board_leads_for_active_board_work(session)
+            + await wake_merge_agents_for_active_board_work(session)
+        )
 
     seen_agent_ids: set[object] = set()
     for agent, task, board, gateway in rows:
@@ -448,4 +613,8 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
                 task.id,
                 board.id,
             )
-    return woken + await wake_merge_agents_for_active_board_work(session)
+    return (
+        woken
+        + await wake_board_leads_for_active_board_work(session)
+        + await wake_merge_agents_for_active_board_work(session)
+    )

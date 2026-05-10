@@ -220,6 +220,11 @@ def test_agent_model_config_uses_role_template_model_policy():
         name="Planner",
         identity_profile={"role_template": "planner"},
     )
+    developer = _AgentStub(
+        name="Developer",
+        board_id=uuid4(),
+        identity_profile={"role_template": "developer"},
+    )
 
     assert agent_provisioning._agent_model_config(triager) == {
         "primary": "azure-foundry/gpt-5-4"
@@ -228,6 +233,9 @@ def test_agent_model_config_uses_role_template_model_policy():
         "primary": "azure-foundry/gpt-5-4"
     }
     assert agent_provisioning._agent_model_config(planner) is None
+    assert agent_provisioning._agent_model_config(developer) == {
+        "primary": "azure-foundry/kimi-k2-6"
+    }
 
 
 def test_agent_model_config_pins_board_agents_to_gpt_4_1():

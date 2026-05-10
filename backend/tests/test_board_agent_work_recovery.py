@@ -562,3 +562,96 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert "Active tasks: 1" in (events[0].message or "")
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            lead_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    context={"source_repo_url": "https://example.test/repo.git"},
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="Lead Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:lead:main",
+                    is_board_lead=True,
+                    wake_attempts=99,
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Ready work",
+                    status="inbox",
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Active work",
+                    status="in_progress",
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert len(wake_calls) == 1
+            assert wake_calls[0]["session_key"] == "agent:lead:main"
+            assert wake_calls[0]["reset_stuck_session"] is True
+            assert "BOARD LEAD WATCH WAKE" in wake_calls[0]["message"]
+            assert "Inbox tasks: 1" in wake_calls[0]["message"]
+            assert "Active assigned tasks: 1" in wake_calls[0]["message"]
+            assert "CODE_WORKTREE_PATH:" in wake_calls[0]["message"]
+
+            reloaded_lead = (
+                await session.exec(select(Agent).where(col(Agent.id) == lead_id))
+            ).one()
+            assert reloaded_lead.status == "updating"
+            assert reloaded_lead.wake_attempts == 100
+
+            events = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.board_id) == board_id)
+                    .where(col(ActivityEvent.event_type) == "board.lead_woken"),
+                )
+            ).all()
+            assert len(events) == 1
+            assert "Inbox tasks: 1" in (events[0].message or "")
+    finally:
+        await engine.dispose()

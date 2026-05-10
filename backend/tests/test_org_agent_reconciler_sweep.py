@@ -41,6 +41,7 @@ def _stale_agent(
     status: str,
     wake_attempts: int,
     last_seen_at: Literal["stale"] | None = "stale",
+    board_id: bool = False,
 ) -> Agent:
     now = utcnow()
     if last_seen_at == "stale":
@@ -51,6 +52,7 @@ def _stale_agent(
     return Agent(
         id=uuid4(),
         name=f"{status}-agent",
+        board_id=uuid4() if board_id else None,
         gateway_id=uuid4(),
         status=status,
         updated_at=now
@@ -66,7 +68,7 @@ async def test_sweep_preserves_online_unseen_wake_attempt_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[QueuedAgentLifecycleReconcile] = []
-    agent = _stale_agent(status="online", wake_attempts=3)
+    agent = _stale_agent(status="online", wake_attempts=3, board_id=True)
     session = _FakeSession(exec_results=[[], [agent], [], []])
 
     monkeypatch.setattr(
@@ -90,7 +92,7 @@ async def test_sweep_preserves_updating_wake_attempt_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[QueuedAgentLifecycleReconcile] = []
-    agent = _stale_agent(status="updating", wake_attempts=4)
+    agent = _stale_agent(status="updating", wake_attempts=4, board_id=True)
     session = _FakeSession(exec_results=[[], [], [agent], []])
 
     monkeypatch.setattr(
@@ -116,6 +118,7 @@ async def test_sweep_skips_offline_agent_that_exhausted_wake_budget(
     agent = _stale_agent(
         status="offline",
         wake_attempts=settings.agent_max_wake_attempts,
+        board_id=True,
     )
     session = _FakeSession(exec_results=[[], [], [], [agent]])
 
@@ -130,5 +133,81 @@ async def test_sweep_skips_offline_agent_that_exhausted_wake_budget(
     assert count == 0
     assert captured == []
     assert agent.wake_attempts == settings.agent_max_wake_attempts
+    assert session.added == []
+    assert session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_online_unseen_agent_that_exhausted_wake_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(
+        status="online",
+        wake_attempts=settings.agent_max_wake_attempts,
+        board_id=True,
+    )
+    session = _FakeSession(exec_results=[[], [agent], [], []])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 0
+    assert captured == []
+    assert agent.wake_attempts == settings.agent_max_wake_attempts
+    assert session.added == []
+    assert session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_updating_agent_that_exhausted_wake_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(
+        status="updating",
+        wake_attempts=settings.agent_max_wake_attempts,
+        board_id=True,
+    )
+    session = _FakeSession(exec_results=[[], [], [agent], []])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 0
+    assert captured == []
+    assert agent.wake_attempts == settings.agent_max_wake_attempts
+    assert session.added == []
+    assert session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_already_provisioned_non_board_agent_without_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(status="online", wake_attempts=0, board_id=False)
+    session = _FakeSession(exec_results=[[], [agent], [], []])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 0
+    assert captured == []
     assert session.added == []
     assert session.commits == 0
