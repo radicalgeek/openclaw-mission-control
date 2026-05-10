@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from fastapi import HTTPException
 from app.api import deps
 from app.core import agent_auth
 from app.core.auth import AuthContext
+from app.core.time import utcnow
 
 
 class _RecordingLimiter:
@@ -192,6 +194,27 @@ async def test_agent_presence_marks_updating_agent_online_on_activity() -> None:
     assert agent.status == "online"
     assert agent.last_seen_at is not None
     assert agent.updated_at == agent.last_seen_at
+    assert session.added == [agent]
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_presence_clears_recent_updating_status() -> None:
+    agent = SimpleNamespace(
+        last_seen_at=utcnow() - timedelta(seconds=1),
+        updated_at=None,
+        status="updating",
+    )
+    request = SimpleNamespace(method="GET")
+    session = _RecordingSession()
+
+    await agent_auth._touch_agent_presence(
+        request=request,  # type: ignore[arg-type]
+        session=session,  # type: ignore[arg-type]
+        agent=agent,  # type: ignore[arg-type]
+    )
+
+    assert agent.status == "online"
     assert session.added == [agent]
     assert session.commits == 1
 
