@@ -421,24 +421,125 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
 
             assert woken == 1
             assert len(wake_calls) == 2
-            assert registrations == [
-                {
-                    "agent_id": "worker",
-                    "name": "worker",
-                    "workspace_path": "/tmp/openclaw/workspace-worker",
-                    "model": None,
-                }
-            ]
-            assert heartbeat_patches == [
-                [
+            expected_registration = {
+                "agent_id": "worker",
+                "name": "worker",
+                "workspace_path": "/tmp/openclaw/workspace-worker",
+                "model": None,
+            }
+            assert registrations == [expected_registration, expected_registration]
+            assert len(heartbeat_patches) == 2
+            for patch in heartbeat_patches:
+                assert patch == [
                     (
                         "worker",
                         "/tmp/openclaw/workspace-worker",
-                        heartbeat_patches[0][0][2],
+                        patch[0][2],
                         None,
                     )
-                ],
+                ]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_refreshes_runtime_model_policy_before_wake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recovery.settings,
+        "agent_model_routing",
+        json.dumps(
+            {
+                "roles": {
+                    "developer": {
+                        "primary": "azure-foundry/kimi-k2-6",
+                        "fallbacks": ["azure-foundry/deepseek-v3"],
+                    },
+                },
+            }
+        ),
+    )
+    wake_calls: list[dict[str, Any]] = []
+    registrations: list[dict[str, Any]] = []
+    heartbeat_patches: list[
+        list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]
+    ] = []
+    _patch_wake_services(
+        monkeypatch,
+        wake_calls,
+        registrations=registrations,
+        heartbeat_patches=heartbeat_patches,
+    )
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            task_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="Developer Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:developer-agent:main",
+                    identity_profile={"role_template": "developer"},
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="Do the work",
+                    status="in_progress",
+                    assigned_agent_id=agent_id,
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            expected_model = {
+                "primary": "azure-foundry/kimi-k2-6",
+                "fallbacks": ["azure-foundry/deepseek-v3"],
+            }
+            assert woken == 1
+            assert registrations == [
+                {
+                    "agent_id": "developer-agent",
+                    "name": "Developer Agent",
+                    "workspace_path": "/tmp/openclaw/workspace-developer-agent",
+                    "model": expected_model,
+                }
             ]
+            assert heartbeat_patches[0][0][3] == expected_model
+            assert wake_calls[0]["model"] is None
+            assert wake_calls[0]["clear_model_override"] is True
     finally:
         await engine.dispose()
 

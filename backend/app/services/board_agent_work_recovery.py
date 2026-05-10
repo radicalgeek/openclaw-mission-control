@@ -288,7 +288,11 @@ def _is_missing_runtime_agent_error(error: OpenClawGatewayError) -> bool:
     )
 
 
-async def _register_runtime_agent(*, gateway: Gateway, config: object, agent: Agent) -> None:
+async def _refresh_runtime_agent_registration(
+    *, gateway: Gateway, config: object, agent: Agent
+) -> None:
+    """Refresh lightweight gateway runtime state without touching agent files."""
+
     if not gateway.workspace_root:
         msg = "gateway workspace_root is required"
         raise OpenClawGatewayError(msg)
@@ -332,6 +336,7 @@ async def wake_agent_for_task(
             gateway_workspace_root=gateway.workspace_root,
             reason=reason,
         )
+        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
         error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -342,7 +347,7 @@ async def wake_agent_for_task(
             reset_stuck_session=True,
         )
         if error is not None and _is_missing_runtime_agent_error(error):
-            await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
+            await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
             error = await dispatch.try_wake_agent_session(
                 session_key=agent.openclaw_session_id,
                 config=config,
@@ -455,6 +460,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
+        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -465,7 +471,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             reset_stuck_session=True,
         )
         if error is not None and _is_missing_runtime_agent_error(error):
-            await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
+            await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
             error = await GatewayDispatchService(session).try_wake_agent_session(
                 session_key=agent.openclaw_session_id,
                 config=config,
@@ -581,6 +587,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
+        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -591,7 +598,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             reset_stuck_session=True,
         )
         if error is not None and _is_missing_runtime_agent_error(error):
-            await _register_runtime_agent(gateway=gateway, config=config, agent=agent)
+            await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
             error = await GatewayDispatchService(session).try_wake_agent_session(
                 session_key=agent.openclaw_session_id,
                 config=config,
@@ -650,8 +657,8 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
 
     This is intentionally not lifecycle reconciliation. Active task recovery
     should preserve the existing OpenClaw session and workspace. It wakes only
-    concrete work; runtime registration is repaired only if OpenClaw reports the
-    agent is missing.
+    concrete work, but first refreshes lightweight gateway runtime registration
+    so current infra-owned model policy and heartbeat metadata are applied.
     """
     rows = (
         await session.exec(
