@@ -152,6 +152,20 @@ def _comment_validation_error() -> HTTPException:
     )
 
 
+def _completion_comment_required_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail={
+            "message": (
+                "Completion evidence is required before a task can be marked done. "
+                "Add a task comment describing what changed, files touched, tests run, "
+                "and any follow-up work."
+            ),
+            "code": "completion_comment_required",
+        },
+    )
+
+
 def _task_update_forbidden_error(*, code: str, message: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -378,6 +392,49 @@ async def has_valid_recent_comment(
     if event is None or event.message is None:
         return False
     return bool(event.message.strip())
+
+
+async def _has_completion_comment_for_done(
+    session: AsyncSession,
+    *,
+    update: _TaskUpdateInput,
+) -> bool:
+    if (update.comment or "").strip():
+        return True
+
+    since = update.previous_in_progress_at or update.task.previous_in_progress_at
+    statement = (
+        select(ActivityEvent)
+        .where(col(ActivityEvent.task_id) == update.task.id)
+        .where(col(ActivityEvent.event_type) == "task.comment")
+        .where(col(ActivityEvent.agent_id).is_not(None))
+        .order_by(desc(col(ActivityEvent.created_at)))
+    )
+    if since is not None:
+        statement = statement.where(col(ActivityEvent.created_at) >= since)
+    event = (await session.exec(statement)).first()
+    if event is None or event.message is None:
+        return False
+    return bool(event.message.strip())
+
+
+async def _require_completion_comment_for_done(
+    session: AsyncSession,
+    *,
+    update: _TaskUpdateInput,
+) -> None:
+    if update.actor.actor_type != "agent":
+        return
+    if not update.status_requested:
+        return
+    target_status = _required_status_value(
+        update.updates.get("status", update.task.status),
+    )
+    if update.previous_status == "done" or target_status != "done":
+        return
+    if await _has_completion_comment_for_done(session, update=update):
+        return
+    raise _completion_comment_required_error()
 
 
 def _parse_since(value: str | None) -> datetime | None:
@@ -2561,6 +2618,7 @@ async def _apply_lead_task_update(
         previous_status=update.previous_status,
         target_status=update.task.status,
     )
+    await _require_completion_comment_for_done(session, update=update)
 
     if normalized_tag_ids is not None:
         await replace_tags(
@@ -3043,6 +3101,7 @@ async def _finalize_updated_task(
         previous_status=update.previous_status,
         target_status=update.task.status,
     )
+    await _require_completion_comment_for_done(session, update=update)
     # Generic status-transition guard (runs after board-specific checks so that
     # board rules like require_review_before_done produce their own errors first)
     if "status" in update.updates:

@@ -158,6 +158,18 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             assert len(events) == 1
             assert events[0].message is not None
             assert "(active_work_recovery)" in events[0].message
+            comments = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.task_id) == task_id)
+                    .where(col(ActivityEvent.event_type) == "task.comment"),
+                )
+            ).all()
+            assert len(comments) == 1
+            assert comments[0].agent_id is None
+            assert comments[0].message is not None
+            assert "System wake sent to worker" in comments[0].message
+            assert "Expected code worktree:" in comments[0].message
     finally:
         await engine.dispose()
 
@@ -377,6 +389,15 @@ async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
             ).all()
             assert len(events) == 1
             assert "(assigned_inbox_work_recovery)" in (events[0].message or "")
+            comments = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.task_id) == task_id)
+                    .where(col(ActivityEvent.event_type) == "task.comment"),
+                )
+            ).all()
+            assert len(comments) == 1
+            assert "The agent must verify code access" in (comments[0].message or "")
     finally:
         await engine.dispose()
 
@@ -439,5 +460,96 @@ async def test_active_work_recovery_wakes_online_agent_with_stale_heartbeat(
 
             assert woken == 1
             assert wake_calls
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            worker_id = uuid4()
+            merger_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    context={"source_repo_url": "https://example.test/repo.git"},
+                ),
+            )
+            session.add(
+                Agent(
+                    id=worker_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    openclaw_session_id="agent:worker:main",
+                    last_seen_at=utcnow(),
+                ),
+            )
+            session.add(
+                Agent(
+                    id=merger_id,
+                    name="Merge Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:merge:main",
+                    identity_profile={"role_template": "merger"},
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Developer work",
+                    status="in_progress",
+                    assigned_agent_id=worker_id,
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert len(wake_calls) == 1
+            assert wake_calls[0]["session_key"] == "agent:merge:main"
+            assert "MERGE WATCH WAKE" in wake_calls[0]["message"]
+            assert "CODE_WORKTREE_PATH: /tmp/openclaw/shared-src/boards/board/worktrees/merge" in (
+                wake_calls[0]["message"]
+            )
+
+            events = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.board_id) == board_id)
+                    .where(col(ActivityEvent.event_type) == "board.merge_agent_woken"),
+                )
+            ).all()
+            assert len(events) == 1
+            assert "Active tasks: 1" in (events[0].message or "")
     finally:
         await engine.dispose()

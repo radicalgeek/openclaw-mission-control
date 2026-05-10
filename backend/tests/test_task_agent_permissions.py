@@ -783,6 +783,16 @@ async def test_lead_done_transition_records_actual_minutes_from_in_progress_star
                     previous_in_progress_at=started_at,
                 ),
             )
+            session.add(
+                ActivityEvent(
+                    event_type="task.comment",
+                    message="Implemented the logging changes and verified alert rules.",
+                    task_id=task_id,
+                    board_id=board_id,
+                    agent_id=worker_id,
+                    created_at=started_at + timedelta(minutes=10),
+                ),
+            )
             await session.commit()
 
             task = (
@@ -811,6 +821,95 @@ async def test_lead_done_transition_records_actual_minutes_from_in_progress_star
             assert refreshed_task is not None
             assert refreshed_task.done_at is not None
             assert refreshed_task.actual_minutes == 90
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_lead_done_transition_requires_completion_comment() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            board_id = uuid4()
+            gateway_id = uuid4()
+            worker_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+            started_at = utcnow() - timedelta(minutes=24)
+
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    require_approval_for_done=False,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=worker_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="Lead Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    is_board_lead=True,
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="silent review task",
+                    description="",
+                    status="review",
+                    assigned_agent_id=lead_id,
+                    previous_in_progress_at=started_at,
+                ),
+            )
+            await session.commit()
+
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
+            assert task is not None
+            lead = (
+                await session.exec(select(Agent).where(col(Agent.id) == lead_id))
+            ).first()
+            assert lead is not None
+
+            with pytest.raises(HTTPException) as exc:
+                await tasks_api.update_task(
+                    payload=TaskUpdate(status="done"),
+                    task=task,
+                    session=session,
+                    actor=ActorContext(actor_type="agent", agent=lead),
+                )
+
+            assert exc.value.status_code == 422
+            assert isinstance(exc.value.detail, dict)
+            assert exc.value.detail["code"] == "completion_comment_required"
     finally:
         await engine.dispose()
 
