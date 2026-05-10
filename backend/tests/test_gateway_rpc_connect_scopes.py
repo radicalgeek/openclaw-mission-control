@@ -15,6 +15,7 @@ from app.services.openclaw.gateway_rpc import (
     OpenClawGatewayError,
     _build_connect_params,
     _build_control_ui_origin,
+    ensure_session,
     openclaw_call,
 )
 
@@ -67,6 +68,41 @@ def test_build_connect_params_defaults_to_device_pairing(
     assert captured["scopes"] == list(GATEWAY_OPERATOR_SCOPES)
     assert captured["auth_token"] is None
     assert captured["connect_nonce"] is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_can_clear_model_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict[str, object | None]]] = []
+
+    async def _openclaw_call(
+        method: str,
+        params: dict[str, object | None] | None = None,
+        *,
+        config: GatewayConfig,
+    ) -> object:
+        _ = config
+        calls.append((method, params or {}))
+        return {}
+
+    monkeypatch.setattr(gateway_rpc, "openclaw_call", _openclaw_call)
+
+    await ensure_session(
+        "agent:dev:main",
+        config=GatewayConfig(url="ws://gateway.example/ws"),
+        label="Developer Agent",
+        clear_model_override=True,
+    )
+
+    assert calls == [
+        (
+            "sessions.patch",
+            {
+                "key": "agent:dev:main",
+                "label": "Developer Agent",
+                "model": None,
+            },
+        )
+    ]
 
 
 def test_build_connect_params_uses_control_ui_when_pairing_disabled() -> None:

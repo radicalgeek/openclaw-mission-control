@@ -24,6 +24,7 @@ from app.services.openclaw.provisioning import (
     _agent_key,
     _agent_model_config,
     _agent_session_model,
+    _agent_session_should_clear_model,
     _board_code_repo_url,
     _board_code_workspace_root,
     _board_code_worktree_path,
@@ -227,6 +228,7 @@ async def wake_agent_for_task(
             agent_name=agent.name,
             message=message,
             model=_agent_session_model(agent),
+            clear_model_override=_agent_session_should_clear_model(agent),
             reset_stuck_session=True,
         )
         if error is not None and _is_missing_runtime_agent_error(error):
@@ -237,6 +239,7 @@ async def wake_agent_for_task(
                 agent_name=agent.name,
                 message=message,
                 model=_agent_session_model(agent),
+                clear_model_override=_agent_session_should_clear_model(agent),
                 reset_stuck_session=True,
             )
         if error is not None:
@@ -349,6 +352,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             agent_name=agent.name,
             message=message,
             model=_agent_session_model(agent),
+            clear_model_override=_agent_session_should_clear_model(agent),
             reset_stuck_session=True,
         )
         if error is not None and _is_missing_runtime_agent_error(error):
@@ -359,6 +363,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
                 agent_name=agent.name,
                 message=message,
                 model=_agent_session_model(agent),
+                clear_model_override=_agent_session_should_clear_model(agent),
                 reset_stuck_session=True,
             )
         if error is not None:
@@ -474,6 +479,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             agent_name=agent.name,
             message=message,
             model=_agent_session_model(agent),
+            clear_model_override=_agent_session_should_clear_model(agent),
             reset_stuck_session=True,
         )
         if error is not None and _is_missing_runtime_agent_error(error):
@@ -484,6 +490,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
                 agent_name=agent.name,
                 message=message,
                 model=_agent_session_model(agent),
+                clear_model_override=_agent_session_should_clear_model(agent),
                 reset_stuck_session=True,
             )
         if error is not None:

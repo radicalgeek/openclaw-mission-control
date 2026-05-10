@@ -294,6 +294,11 @@ def _agent_session_model(agent: Agent) -> str | None:
     return None
 
 
+def _agent_session_should_clear_model(agent: Agent) -> bool:
+    """Return whether sessions.patch should clear a stale session model override."""
+    return isinstance(_agent_model_config(agent), dict)
+
+
 def _tools_exec_host_patch(config_data: dict[str, Any]) -> dict[str, Any] | None:
     """Ensure ``tools.exec.host`` is set to ``"gateway"`` so agents can run commands.
 
@@ -1707,6 +1712,7 @@ class OpenClawGatewayProvisioner:
                 config=client_config,
                 label=agent.name,
                 model=_agent_session_model(agent),
+                clear_model_override=_agent_session_should_clear_model(agent),
             )
             verb = wakeup_verb or ("provisioned" if action == "provision" else "updated")
             await send_message(

@@ -355,6 +355,7 @@ def test_agent_session_model_does_not_flatten_model_policy_with_fallbacks(monkey
         "fallbacks": ["azure-foundry/deepseek-v3"],
     }
     assert agent_provisioning._agent_session_model(developer) is None
+    assert agent_provisioning._agent_session_should_clear_model(developer) is True
 
 
 def test_updated_agent_list_sets_and_clears_model_override():

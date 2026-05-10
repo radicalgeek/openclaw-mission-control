@@ -246,8 +246,17 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
         config: Any,
         label: str | None = None,
         model: str | None = None,
+        clear_model_override: bool = False,
     ) -> None:
-        ensured.append({"session_key": session_key, "label": label, "config": config, "model": model})
+        ensured.append(
+            {
+                "session_key": session_key,
+                "label": label,
+                "config": config,
+                "model": model,
+                "clear_model_override": clear_model_override,
+            }
+        )
 
     async def _send_session_message_nonblocking(
         message: str,
@@ -295,7 +304,8 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
             "session_key": lead.openclaw_session_id,
             "label": "Board Lead",
             "config": ensured[0]["config"],
-            "model": "azure-foundry/gpt-4.1",
+            "model": None,
+            "clear_model_override": True,
         },
     ]
     assert [call["method"] for call in gateway_calls] == ["sessions.list", "sessions.reset"]

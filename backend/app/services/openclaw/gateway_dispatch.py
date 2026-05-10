@@ -132,6 +132,7 @@ class GatewayDispatchService(OpenClawDBService):
         agent_name: str,
         message: str,
         model: str | None = None,
+        clear_model_override: bool = False,
         reset_stuck_session: bool = False,
     ) -> None:
         """Start an agent turn without blocking the API request on completion."""
@@ -145,7 +146,13 @@ class GatewayDispatchService(OpenClawDBService):
                     session_key=session_key,
                     config=config,
                 )
-        await ensure_session(session_key, config=config, label=agent_name, model=model)
+        await ensure_session(
+            session_key,
+            config=config,
+            label=agent_name,
+            model=model,
+            clear_model_override=clear_model_override,
+        )
         await send_session_message_nonblocking(
             message,
             session_key=session_key,
@@ -181,6 +188,7 @@ class GatewayDispatchService(OpenClawDBService):
         agent_name: str,
         message: str,
         model: str | None = None,
+        clear_model_override: bool = False,
         reset_stuck_session: bool = False,
     ) -> OpenClawGatewayError | None:
         try:
@@ -190,6 +198,7 @@ class GatewayDispatchService(OpenClawDBService):
                 agent_name=agent_name,
                 message=message,
                 model=model,
+                clear_model_override=clear_model_override,
                 reset_stuck_session=reset_stuck_session,
             )
         except OpenClawGatewayError as exc:

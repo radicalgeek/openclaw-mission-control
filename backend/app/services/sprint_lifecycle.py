@@ -197,6 +197,9 @@ async def _wake_board_lead_for_started_sprint(
     from app.services.openclaw.gateway_rpc import send_session_message_nonblocking  # noqa: PLC0415
     from app.services.openclaw.provisioning import OpenClawGatewayProvisioner  # noqa: PLC0415
     from app.services.openclaw.provisioning import _agent_session_model  # noqa: PLC0415
+    from app.services.openclaw.provisioning import (  # noqa: PLC0415
+        _agent_session_should_clear_model,
+    )
 
     gateway = await session.get(Gateway, board.gateway_id)
     if gateway is None or gateway.organization_id != board.organization_id:
@@ -259,6 +262,7 @@ async def _wake_board_lead_for_started_sprint(
             config=config,
             label=lead.name,
             model=_agent_session_model(lead),
+            clear_model_override=_agent_session_should_clear_model(lead),
         )
         await send_session_message_nonblocking(
             message,

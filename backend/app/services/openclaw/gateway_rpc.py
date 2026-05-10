@@ -624,11 +624,14 @@ async def ensure_session(
     config: GatewayConfig,
     label: str | None = None,
     model: str | None = None,
+    clear_model_override: bool = False,
 ) -> object:
     """Ensure a session exists and optionally update its label/model."""
     params: dict[str, Any] = {"key": session_key}
     if label:
         params["label"] = label
-    if model:
+    if clear_model_override:
+        params["model"] = None
+    elif model:
         params["model"] = model
     return await openclaw_call("sessions.patch", params, config=config)

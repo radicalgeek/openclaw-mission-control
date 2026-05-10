@@ -72,6 +72,7 @@ from app.services.task_comment_visibility import visible_task_comment_clause
 from app.services.openclaw.provisioning import (
     OpenClawGatewayProvisioner,
     _agent_session_model,
+    _agent_session_should_clear_model,
     _board_code_repo_url,
     _board_code_workspace_root,
     _board_code_worktree_path,
@@ -853,6 +854,7 @@ async def _wake_agent_online_for_task(
             agent_name=agent.name,
             message=message,
             model=_agent_session_model(agent),
+            clear_model_override=_agent_session_should_clear_model(agent),
             reset_stuck_session=True,
         )
         if error is not None:

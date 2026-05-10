@@ -121,6 +121,7 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
         config: GatewayConfig,
         label: str,
         model: str | None = None,
+        clear_model_override: bool = False,
     ) -> object:
         calls.append(
             (
@@ -129,6 +130,7 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
                     "key": session_key,
                     "label": label,
                     "model": model,
+                    "clear_model_override": clear_model_override,
                 },
             )
         )
@@ -178,6 +180,7 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
                 "key": "agent:dev:main",
                 "label": "Developer Agent",
                 "model": "azure-foundry/gpt-4.1",
+                "clear_model_override": False,
             },
         ),
         (

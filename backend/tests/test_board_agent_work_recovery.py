@@ -146,6 +146,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             assert wake_calls
             assert wake_calls[0]["session_key"] == "agent:worker:main"
             assert wake_calls[0]["model"] is None
+            assert wake_calls[0]["clear_model_override"] is True
             assert wake_calls[0]["reset_stuck_session"] is True
             assert "TASK WAKE" in wake_calls[0]["message"]
             assert "Repo URL: https://example.test/repo.git" in wake_calls[0]["message"]
