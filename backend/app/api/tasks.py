@@ -776,6 +776,7 @@ async def _wake_agent_online_for_task(
             agent_name=agent.name,
             message=message,
             model=_agent_session_model(agent),
+            reset_stuck_session=True,
         )
         if error is not None:
             raise error

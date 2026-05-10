@@ -22,9 +22,48 @@ from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConf
 from app.services.openclaw.gateway_rpc import (
     OpenClawGatewayError,
     ensure_session,
+    openclaw_call,
     send_message,
     send_session_message_nonblocking,
 )
+
+_RESETTABLE_SESSION_STATES = frozenset({"failed", "processing"})
+
+
+def _session_items(payload: object) -> list[dict[str, object]]:
+    if isinstance(payload, dict):
+        maybe_items = payload.get("sessions") or payload.get("items") or []
+        if isinstance(maybe_items, list):
+            return [item for item in maybe_items if isinstance(item, dict)]
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
+
+
+async def reset_stuck_session_if_needed(
+    *,
+    session_key: str,
+    config: GatewayClientConfig,
+) -> bool:
+    """Reset failed/processing sessions before sending a recovery wake."""
+    try:
+        sessions = await openclaw_call("sessions.list", {}, config=config)
+    except Exception:
+        return False
+
+    for item in _session_items(sessions):
+        if item.get("key") != session_key:
+            continue
+        raw_state = item.get("state") or item.get("status")
+        state = str(raw_state or "").lower()
+        if state not in _RESETTABLE_SESSION_STATES:
+            return False
+        try:
+            await openclaw_call("sessions.reset", {"key": session_key}, config=config)
+        except Exception:
+            return False
+        return True
+    return False
 
 
 class GatewayDispatchService(OpenClawDBService):
@@ -72,8 +111,11 @@ class GatewayDispatchService(OpenClawDBService):
         agent_name: str,
         message: str,
         model: str | None = None,
+        reset_stuck_session: bool = False,
     ) -> None:
         """Start an agent turn without blocking the API request on completion."""
+        if reset_stuck_session:
+            await reset_stuck_session_if_needed(session_key=session_key, config=config)
         await ensure_session(session_key, config=config, label=agent_name, model=model)
         await send_session_message_nonblocking(
             message,
@@ -110,6 +152,7 @@ class GatewayDispatchService(OpenClawDBService):
         agent_name: str,
         message: str,
         model: str | None = None,
+        reset_stuck_session: bool = False,
     ) -> OpenClawGatewayError | None:
         try:
             await self.wake_agent_session(
@@ -118,6 +161,7 @@ class GatewayDispatchService(OpenClawDBService):
                 agent_name=agent_name,
                 message=message,
                 model=model,
+                reset_stuck_session=reset_stuck_session,
             )
         except OpenClawGatewayError as exc:
             return exc
