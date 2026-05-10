@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.session import async_session_maker
+from app.services.board_agent_work_recovery import wake_stale_board_agents_with_active_work
 from app.services.openclaw.lifecycle_queue import TASK_TYPE as LIFECYCLE_RECONCILE_TASK_TYPE
 from app.services.openclaw.lifecycle_queue import (
     requeue_lifecycle_queue_task,
@@ -33,6 +36,8 @@ from app.services.webhooks.queue import TASK_TYPE as WEBHOOK_TASK_TYPE
 
 logger = get_logger(__name__)
 _WORKER_BLOCK_TIMEOUT_SECONDS = 5.0
+_ACTIVE_WORK_RECOVERY_INTERVAL_SECONDS = 60.0
+_last_active_work_recovery_monotonic = 0.0
 
 
 @dataclass(frozen=True)
@@ -82,10 +87,29 @@ def _compute_jitter(base_delay: float) -> float:
     return random.uniform(0, min(settings.rq_dispatch_retry_max_seconds / 10, base_delay * 0.1))
 
 
+async def _pulse_active_work_recovery() -> None:
+    """Wake board agents with assigned work independently of lifecycle backlogs."""
+    global _last_active_work_recovery_monotonic
+
+    now = time.monotonic()
+    if now - _last_active_work_recovery_monotonic < _ACTIVE_WORK_RECOVERY_INTERVAL_SECONDS:
+        return
+    _last_active_work_recovery_monotonic = now
+
+    try:
+        async with async_session_maker() as session:
+            woken = await wake_stale_board_agents_with_active_work(session)
+            if woken:
+                logger.info("queue.worker.active_work_recovery_done", extra={"count": woken})
+    except Exception:
+        logger.exception("queue.worker.active_work_recovery_failed")
+
+
 async def flush_queue(*, block: bool = False, block_timeout: float = 0) -> int:
     """Consume one queue batch and dispatch by task type."""
     processed = 0
     while True:
+        await _pulse_active_work_recovery()
         try:
             task = dequeue_task(
                 settings.rq_queue_name,
