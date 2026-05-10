@@ -30,6 +30,14 @@ from app.services.openclaw.gateway_rpc import (
 _RESETTABLE_SESSION_STATES = frozenset({"failed", "processing"})
 
 
+def _session_item_key(item: dict[str, object]) -> str:
+    for field in ("key", "sessionKey", "session_key"):
+        value = item.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _session_items(payload: object) -> list[dict[str, object]]:
     if isinstance(payload, dict):
         maybe_items = payload.get("sessions") or payload.get("items") or []
@@ -52,7 +60,7 @@ async def reset_stuck_session_if_needed(
         return False
 
     for item in _session_items(sessions):
-        if item.get("key") != session_key:
+        if _session_item_key(item) != session_key:
             continue
         raw_state = item.get("state") or item.get("status")
         state = str(raw_state or "").lower()

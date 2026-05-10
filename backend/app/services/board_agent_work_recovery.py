@@ -18,7 +18,6 @@ from app.services.activity_log import record_activity
 from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.provisioning import (
-    OpenClawGatewayProvisioner,
     _agent_session_model,
     _board_code_repo_url,
     _board_code_workspace_root,
@@ -88,7 +87,6 @@ async def wake_agent_for_task(
     dispatch = GatewayDispatchService(session)
     try:
         gateway, config = await dispatch.require_gateway_config_for_board(board)
-        await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(gateway, [agent])
         message = build_task_wake_message(
             board=board,
             task=task,

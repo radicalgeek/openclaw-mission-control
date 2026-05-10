@@ -48,17 +48,7 @@ def _patch_wake_services(
             wake_calls.append(kwargs)
             return None
 
-    class _FakeProvisioner:
-        async def sync_gateway_agent_heartbeats(
-            self,
-            gateway: Gateway,
-            agents: list[Agent],
-        ) -> None:
-            assert gateway.workspace_root
-            assert agents
-
     monkeypatch.setattr(recovery, "GatewayDispatchService", _FakeDispatch)
-    monkeypatch.setattr(recovery, "OpenClawGatewayProvisioner", _FakeProvisioner)
 
 
 @pytest.mark.asyncio
