@@ -125,7 +125,7 @@ async def _touch_agent_presence(
 
     agent.last_seen_at = now
     agent.updated_at = now
-    if agent.status not in {"updating", "deleting"}:
+    if agent.status != "deleting":
         agent.status = "online"
     session.add(agent)
 
