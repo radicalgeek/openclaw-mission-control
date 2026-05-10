@@ -171,6 +171,82 @@ def _heartbeat_config(agent: Agent) -> dict[str, Any]:
     return merged
 
 
+def _model_override_from_config(value: object) -> dict[str, object] | str | None:
+    """Normalize a configured model override into OpenClaw's accepted shape."""
+
+    if value is None:
+        return None
+    if isinstance(value, str):
+        primary = value.strip()
+        return {"primary": primary} if primary else None
+    if not isinstance(value, dict):
+        return None
+
+    primary_value = value.get("primary") or value.get("model") or value.get("model_primary")
+    if not isinstance(primary_value, str) or not primary_value.strip():
+        return None
+
+    result: dict[str, object] = {"primary": primary_value.strip()}
+    raw_fallbacks = value.get("fallbacks") or value.get("model_fallbacks")
+    if isinstance(raw_fallbacks, list):
+        fallbacks = [str(item).strip() for item in raw_fallbacks if str(item).strip()]
+        if fallbacks:
+            result["fallbacks"] = fallbacks
+    return result
+
+
+def _builtin_agent_model_routing() -> tuple[
+    dict[str, dict[str, object] | str],
+    dict[str, object] | str | None,
+]:
+    return (
+        {role: {"primary": primary} for role, primary in ROLE_TEMPLATE_MODEL_PRIMARY.items()},
+        {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY},
+    )
+
+
+def _configured_agent_model_routing() -> tuple[
+    dict[str, dict[str, object] | str],
+    dict[str, object] | str | None,
+]:
+    """Return model routing from runtime config, with source defaults as fallback."""
+
+    role_models, default_board_model = _builtin_agent_model_routing()
+    raw_config = (settings.agent_model_routing or "").strip()
+    if not raw_config:
+        return role_models, default_board_model
+
+    try:
+        config = json.loads(raw_config)
+    except json.JSONDecodeError:
+        logger.warning("agent_model_routing.invalid_json")
+        return role_models, default_board_model
+
+    if not isinstance(config, dict):
+        logger.warning("agent_model_routing.invalid_shape")
+        return role_models, default_board_model
+
+    configured_default = _model_override_from_config(
+        config.get("default_board_agent")
+        or config.get("default_board_agent_model")
+        or config.get("default_board_agent_model_primary")
+    )
+    if configured_default is not None:
+        default_board_model = configured_default
+
+    configured_roles = config.get("roles") or config.get("role_template_models")
+    if isinstance(configured_roles, dict):
+        role_models = {
+            role: model
+            for role, raw_model in configured_roles.items()
+            if isinstance(role, str)
+            for model in [_model_override_from_config(raw_model)]
+            if model is not None
+        }
+
+    return role_models, default_board_model
+
+
 def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
     """Return an OpenClaw agents.list[].model override for an agent."""
 
@@ -185,22 +261,23 @@ def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
         return {"primary": primary}
 
     role_template = profile.get("role_template")
+    role_models, default_board_model = _configured_agent_model_routing()
     if not isinstance(role_template, str):
         if (
             getattr(agent, "board_id", None) is not None
             and getattr(agent, "agent_type", None) == AGENT_TYPE_BOARD_WORKER
             and not getattr(agent, "is_board_lead", False)
         ):
-            return {"primary": ROLE_TEMPLATE_MODEL_PRIMARY["developer"]}
+            return role_models.get("developer", default_board_model)
         if getattr(agent, "board_id", None) is not None:
-            return {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY}
+            return default_board_model
         return None
-    primary = ROLE_TEMPLATE_MODEL_PRIMARY.get(role_template)
-    if not primary:
+    model = role_models.get(role_template)
+    if not model:
         if getattr(agent, "board_id", None) is not None:
-            return {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY}
+            return default_board_model
         return None
-    return {"primary": primary}
+    return model
 
 
 def _agent_session_model(agent: Agent) -> str | None:

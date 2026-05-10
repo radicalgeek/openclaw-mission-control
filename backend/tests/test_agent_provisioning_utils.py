@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -281,6 +282,51 @@ def test_agent_model_config_explicit_identity_profile_override_wins():
         "primary": "azure-foundry/deepseek-v3",
         "fallbacks": ["azure-foundry/gpt-4.1"],
     }
+
+
+def test_agent_model_config_uses_runtime_model_routing(monkeypatch):
+    monkeypatch.setattr(
+        agent_provisioning.settings,
+        "agent_model_routing",
+        json.dumps(
+            {
+                "default_board_agent": {"primary": "azure-foundry/gpt-4-1-mini"},
+                "roles": {
+                    "developer": {
+                        "primary": "azure-foundry/deepseek-v3",
+                        "fallbacks": ["azure-foundry/gpt-4-1-mini"],
+                    },
+                    "triager": {"primary": "azure-foundry/gpt-4.1"},
+                },
+            }
+        ),
+    )
+    developer = _AgentStub(
+        name="Developer",
+        board_id=uuid4(),
+        identity_profile={"role_template": "developer"},
+    )
+    triager = _AgentStub(
+        name="Triager",
+        identity_profile={"role_template": "triager"},
+    )
+    lead = _AgentStub(name="Board Lead", board_id=uuid4())
+    planner = _AgentStub(
+        name="Planner",
+        identity_profile={"role_template": "planner"},
+    )
+
+    assert agent_provisioning._agent_model_config(developer) == {
+        "primary": "azure-foundry/deepseek-v3",
+        "fallbacks": ["azure-foundry/gpt-4-1-mini"],
+    }
+    assert agent_provisioning._agent_model_config(triager) == {
+        "primary": "azure-foundry/gpt-4.1"
+    }
+    assert agent_provisioning._agent_model_config(lead) == {
+        "primary": "azure-foundry/gpt-4-1-mini"
+    }
+    assert agent_provisioning._agent_model_config(planner) is None
 
 
 def test_updated_agent_list_sets_and_clears_model_override():

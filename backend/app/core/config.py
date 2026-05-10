@@ -182,6 +182,10 @@ class Settings(BaseSettings):
             "ORG_ARCHITECTURE_REVIEWER_AGENT_ID", "org_architecture_reviewer_agent_id"
         ),
     )
+    agent_model_routing: str = Field(
+        default="",
+        validation_alias=AliasChoices("AXIACRAFT_AGENT_MODEL_ROUTING", "agent_model_routing"),
+    )
 
     # Logging
     log_level: str = "INFO"
