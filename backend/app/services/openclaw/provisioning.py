@@ -281,14 +281,16 @@ def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
 
 
 def _agent_session_model(agent: Agent) -> str | None:
-    """Return an OpenClaw sessions.patch model ref for the agent."""
+    """Return an OpenClaw sessions.patch model ref for legacy string-only overrides.
+
+    OpenClaw sessions.patch only accepts a single model string. AxiaCraft's
+    configured role routing can include fallbacks, so object-shaped model
+    policies must stay on agents.list where OpenClaw can resolve both the
+    primary and fallback chain for the agent session.
+    """
     model_config = _agent_model_config(agent)
     if isinstance(model_config, str):
         return model_config
-    if isinstance(model_config, dict):
-        primary = model_config.get("primary")
-        if isinstance(primary, str) and primary.strip():
-            return primary.strip()
     return None
 
 

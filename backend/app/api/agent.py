@@ -1184,6 +1184,47 @@ async def batch_create_backlog_tasks(
     ]
 
 
+@router.get(
+    "/boards/{board_id}/tasks/{task_id}",
+    response_model=TaskRead,
+    tags=AGENT_BOARD_TAGS,
+    openapi_extra=_agent_board_openapi_hints(
+        intent="agent_task_lookup",
+        when_to_use=[
+            "Agent needs full details for one known task before working or reviewing.",
+            "Worker needs task description, acceptance criteria, dependencies, or fields.",
+        ],
+        when_not_to_use=[
+            "Listing candidate work across a board; use the task list endpoint.",
+            "Changing task status, assignment, or comments; use PATCH or comments.",
+        ],
+        routing_examples=[
+            {
+                "input": {
+                    "intent": "worker reads one assigned task before implementation",
+                    "required_privilege": "any_agent",
+                },
+                "decision": "agent_task_lookup",
+            }
+        ],
+    ),
+)
+async def get_task(
+    task: Task = TASK_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> TaskRead:
+    """Fetch one task after board-level authorization checks."""
+    await _guard_task_access(session, agent_ctx, task, write=False)
+    if task.board_id is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+    return await tasks_api._task_read_response(
+        session,
+        task=task,
+        board_id=task.board_id,
+    )
+
+
 @router.patch(
     "/boards/{board_id}/tasks/{task_id}",
     response_model=TaskRead,

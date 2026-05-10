@@ -329,6 +329,34 @@ def test_agent_model_config_uses_runtime_model_routing(monkeypatch):
     assert agent_provisioning._agent_model_config(planner) is None
 
 
+def test_agent_session_model_does_not_flatten_model_policy_with_fallbacks(monkeypatch):
+    monkeypatch.setattr(
+        agent_provisioning.settings,
+        "agent_model_routing",
+        json.dumps(
+            {
+                "roles": {
+                    "developer": {
+                        "primary": "azure-foundry/kimi-k2-6",
+                        "fallbacks": ["azure-foundry/deepseek-v3"],
+                    },
+                },
+            }
+        ),
+    )
+    developer = _AgentStub(
+        name="Developer",
+        board_id=uuid4(),
+        identity_profile={"role_template": "developer"},
+    )
+
+    assert agent_provisioning._agent_model_config(developer) == {
+        "primary": "azure-foundry/kimi-k2-6",
+        "fallbacks": ["azure-foundry/deepseek-v3"],
+    }
+    assert agent_provisioning._agent_session_model(developer) is None
+
+
 def test_updated_agent_list_sets_and_clears_model_override():
     raw = [
         {

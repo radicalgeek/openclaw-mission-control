@@ -122,6 +122,7 @@ def test_openapi_agent_tool_endpoints_include_llm_hints() -> None:
         ("/api/v1/agent/boards/{board_id}/tasks", "post"),
         ("/api/v1/agent/boards/{board_id}/tasks", "get"),
         ("/api/v1/agent/boards/{board_id}/tags", "get"),
+        ("/api/v1/agent/boards/{board_id}/tasks/{task_id}", "get"),
         ("/api/v1/agent/boards/{board_id}/tasks/{task_id}", "patch"),
         ("/api/v1/agent/boards/{board_id}/tasks/{task_id}/comments", "get"),
         ("/api/v1/agent/boards/{board_id}/tasks/{task_id}/comments", "post"),

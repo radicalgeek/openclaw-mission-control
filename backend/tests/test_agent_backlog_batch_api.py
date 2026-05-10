@@ -85,6 +85,42 @@ async def test_agent_task_list_forwards_backlog_filter(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_agent_task_detail_returns_single_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    board_id = uuid4()
+    task = Task(
+        id=uuid4(),
+        board_id=board_id,
+        title="Implement work",
+        description="Do the thing",
+        status="in_progress",
+    )
+    captured: dict[str, Any] = {}
+
+    async def fake_guard(*_args: object, **kwargs: object) -> None:
+        captured["write"] = kwargs["write"]
+
+    async def fake_task_read_response(*args: object, **kwargs: object) -> object:
+        captured["session"] = args[0]
+        captured.update(kwargs)
+        return {"id": str(task.id), "title": task.title}
+
+    monkeypatch.setattr(agent_api, "_guard_task_access", fake_guard)
+    monkeypatch.setattr(agent_api.tasks_api, "_task_read_response", fake_task_read_response)
+
+    result = await agent_api.get_task(
+        task=task,
+        session=object(),  # type: ignore[arg-type]
+        agent_ctx=_agent_ctx(board_id),
+    )
+
+    assert result == {"id": str(task.id), "title": task.title}
+    assert captured["write"] is False
+    assert captured["session"] is not None
+    assert captured["task"] is task
+    assert captured["board_id"] == board_id
+
+
+@pytest.mark.asyncio
 async def test_agent_batch_create_backlog_tasks_links_plan_id() -> None:
     board_id = uuid4()
     plan_id = uuid4()
