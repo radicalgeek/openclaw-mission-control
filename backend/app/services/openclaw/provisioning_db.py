@@ -1092,6 +1092,8 @@ class AgentLifecycleService(OpenClawDBService):
         # Terminal / in-flight DB states — preserve as-is.
         if agent.status in {"deleting", "updating", "offline", "provision_failed"}:
             return agent
+        if agent.checkin_deadline_at is not None and agent.checkin_deadline_at > now:
+            return agent
         if agent.last_seen_at is None:
             # If we recorded a provision error but the agent never heartbeated,
             # surface it as provision_failed rather than leaving it as provisioning.

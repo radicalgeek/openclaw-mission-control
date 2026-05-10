@@ -27,7 +27,7 @@ from app.services.openclaw.gateway_rpc import (
     send_session_message_nonblocking,
 )
 
-_RESETTABLE_SESSION_STATES = frozenset({"failed", "processing"})
+_RESETTABLE_SESSION_STATES = frozenset({"failed"})
 
 
 def _session_item_key(item: dict[str, object]) -> str:
@@ -53,17 +53,17 @@ async def reset_stuck_session_if_needed(
     session_key: str,
     config: GatewayClientConfig,
 ) -> bool:
-    """Reset failed/processing sessions before sending a recovery wake.
+    """Reset failed sessions before sending a recovery wake.
 
     Returns True when a reset was required and completed, and False when the
-    session was not in a resettable state. Gateway reset failures are raised so
-    callers do not queue more work into a session OpenClaw says is still active.
+    session was not in a resettable state. Gateway reset failures are raised.
+    Sessions in ``processing`` are deliberately left alone: board work can take
+    minutes, and recovery wakes must not interrupt active coding turns.
     """
     try:
         sessions = await openclaw_call("sessions.list", {}, config=config)
     except OpenClawGatewayError:
-        await reset_session_for_wake(session_key=session_key, config=config)
-        return True
+        return False
     except Exception:
         return False
 
@@ -152,15 +152,10 @@ class GatewayDispatchService(OpenClawDBService):
     ) -> None:
         """Start an agent turn without blocking the API request on completion."""
         if reset_stuck_session:
-            reset = await reset_stuck_session_if_needed(
+            await reset_stuck_session_if_needed(
                 session_key=session_key,
                 config=config,
             )
-            if not reset:
-                await reset_session_for_wake(
-                    session_key=session_key,
-                    config=config,
-                )
         await ensure_session(
             session_key,
             config=config,

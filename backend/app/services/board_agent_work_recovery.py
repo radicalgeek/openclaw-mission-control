@@ -193,6 +193,51 @@ async def _refresh_runtime_agent_registration(
     )
 
 
+async def _wake_session_with_lazy_registration(
+    *,
+    dispatch: GatewayDispatchService,
+    gateway: Gateway,
+    config: object,
+    agent: Agent,
+    message: str,
+) -> OpenClawGatewayError | None:
+    """Wake an existing session, refreshing runtime registration only if missing."""
+
+    error = await dispatch.try_wake_agent_session(
+        session_key=agent.openclaw_session_id or "",
+        config=config,
+        agent_name=agent.name,
+        message=message,
+        model=_agent_session_model(agent),
+        clear_model_override=_agent_session_should_clear_model(agent),
+        reset_stuck_session=True,
+    )
+    if error is not None and _is_missing_runtime_agent_error(error):
+        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+        error = await dispatch.try_wake_agent_session(
+            session_key=agent.openclaw_session_id or "",
+            config=config,
+            agent_name=agent.name,
+            message=message,
+            model=_agent_session_model(agent),
+            clear_model_override=_agent_session_should_clear_model(agent),
+            reset_stuck_session=True,
+        )
+    return error
+
+
+def _mark_work_wake_sent(agent: Agent) -> None:
+    now = utcnow()
+    agent.last_wake_sent_at = now
+    agent.checkin_deadline_at = now + timedelta(
+        seconds=settings.agent_checkin_deadline_seconds,
+    )
+    if agent.status != "deleting":
+        agent.status = "online"
+    agent.wake_attempts += 1
+    agent.updated_at = now
+
+
 async def wake_agent_for_task(
     *,
     session: AsyncSession,
@@ -214,37 +259,16 @@ async def wake_agent_for_task(
             gateway_workspace_root=gateway.workspace_root,
             reason=reason,
         )
-        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
-        error = await dispatch.try_wake_agent_session(
-            session_key=agent.openclaw_session_id,
+        error = await _wake_session_with_lazy_registration(
+            dispatch=dispatch,
+            gateway=gateway,
             config=config,
-            agent_name=agent.name,
+            agent=agent,
             message=message,
-            model=_agent_session_model(agent),
-            clear_model_override=_agent_session_should_clear_model(agent),
-            reset_stuck_session=True,
         )
-        if error is not None and _is_missing_runtime_agent_error(error):
-            await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
-            error = await dispatch.try_wake_agent_session(
-                session_key=agent.openclaw_session_id,
-                config=config,
-                agent_name=agent.name,
-                message=message,
-                model=_agent_session_model(agent),
-                clear_model_override=_agent_session_should_clear_model(agent),
-                reset_stuck_session=True,
-            )
         if error is not None:
             raise error
-        agent.last_wake_sent_at = utcnow()
-        agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
-            seconds=settings.agent_checkin_deadline_seconds,
-        )
-        if agent.status != "deleting":
-            agent.status = "updating"
-        agent.wake_attempts += 1
-        agent.updated_at = utcnow()
+        _mark_work_wake_sent(agent)
         record_activity(
             session,
             event_type="task.assignee_woken",
@@ -328,9 +352,8 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
         if not _is_merge_agent(agent) or not _agent_needs_work_wake(agent):
             continue
         board_stats = boards[board.id]
-        gateway, config = await GatewayDispatchService(
-            session,
-        ).require_gateway_config_for_board(board)
+        dispatch = GatewayDispatchService(session)
+        gateway, config = await dispatch.require_gateway_config_for_board(board)
         message = _merge_wake_message(
             board=board,
             agent=agent,
@@ -338,27 +361,13 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
-        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
-        error = await GatewayDispatchService(session).try_wake_agent_session(
-            session_key=agent.openclaw_session_id,
+        error = await _wake_session_with_lazy_registration(
+            dispatch=dispatch,
+            gateway=gateway,
             config=config,
-            agent_name=agent.name,
+            agent=agent,
             message=message,
-            model=_agent_session_model(agent),
-            clear_model_override=_agent_session_should_clear_model(agent),
-            reset_stuck_session=True,
         )
-        if error is not None and _is_missing_runtime_agent_error(error):
-            await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
-            error = await GatewayDispatchService(session).try_wake_agent_session(
-                session_key=agent.openclaw_session_id,
-                config=config,
-                agent_name=agent.name,
-                message=message,
-                model=_agent_session_model(agent),
-                clear_model_override=_agent_session_should_clear_model(agent),
-                reset_stuck_session=True,
-            )
         if error is not None:
             record_activity(
                 session,
@@ -370,14 +379,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             await session.commit()
             continue
 
-        agent.last_wake_sent_at = utcnow()
-        agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
-            seconds=settings.agent_checkin_deadline_seconds,
-        )
-        if agent.status != "deleting":
-            agent.status = "updating"
-        agent.wake_attempts += 1
-        agent.updated_at = utcnow()
+        _mark_work_wake_sent(agent)
         record_activity(
             session,
             event_type="board.merge_agent_woken",
@@ -454,9 +456,8 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
         if not _agent_needs_work_wake(agent):
             continue
         board_stats = boards[board.id]
-        gateway, config = await GatewayDispatchService(
-            session,
-        ).require_gateway_config_for_board(board)
+        dispatch = GatewayDispatchService(session)
+        gateway, config = await dispatch.require_gateway_config_for_board(board)
         message = _lead_wake_message(
             board=board,
             agent=agent,
@@ -465,27 +466,13 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
         )
-        await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
-        error = await GatewayDispatchService(session).try_wake_agent_session(
-            session_key=agent.openclaw_session_id,
+        error = await _wake_session_with_lazy_registration(
+            dispatch=dispatch,
+            gateway=gateway,
             config=config,
-            agent_name=agent.name,
+            agent=agent,
             message=message,
-            model=_agent_session_model(agent),
-            clear_model_override=_agent_session_should_clear_model(agent),
-            reset_stuck_session=True,
         )
-        if error is not None and _is_missing_runtime_agent_error(error):
-            await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
-            error = await GatewayDispatchService(session).try_wake_agent_session(
-                session_key=agent.openclaw_session_id,
-                config=config,
-                agent_name=agent.name,
-                message=message,
-                model=_agent_session_model(agent),
-                clear_model_override=_agent_session_should_clear_model(agent),
-                reset_stuck_session=True,
-            )
         if error is not None:
             record_activity(
                 session,
@@ -497,14 +484,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             await session.commit()
             continue
 
-        agent.last_wake_sent_at = utcnow()
-        agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
-            seconds=settings.agent_checkin_deadline_seconds,
-        )
-        if agent.status != "deleting":
-            agent.status = "updating"
-        agent.wake_attempts += 1
-        agent.updated_at = utcnow()
+        _mark_work_wake_sent(agent)
         record_activity(
             session,
             event_type="board.lead_woken",
@@ -535,8 +515,8 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
 
     This is intentionally not lifecycle reconciliation. Active task recovery
     should preserve the existing OpenClaw session and workspace. It wakes only
-    concrete work, but first refreshes lightweight gateway runtime registration
-    so current infra-owned model policy and heartbeat metadata are applied.
+    concrete work. Gateway runtime registration is refreshed only if OpenClaw
+    reports the existing agent is missing.
     """
     rows = (
         await session.exec(

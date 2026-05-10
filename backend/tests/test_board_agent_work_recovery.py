@@ -158,7 +158,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             ).one()
             assert reloaded_agent.last_wake_sent_at is not None
             assert reloaded_agent.checkin_deadline_at is not None
-            assert reloaded_agent.status == "updating"
+            assert reloaded_agent.status == "online"
             assert reloaded_agent.wake_attempts == 100
 
             events = (
@@ -329,23 +329,22 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
                 "workspace_path": "/tmp/openclaw/workspace-worker",
                 "model": {"primary": "azure-foundry/kimi-k2-6"},
             }
-            assert registrations == [expected_registration, expected_registration]
-            assert len(heartbeat_patches) == 2
-            for patch in heartbeat_patches:
-                assert patch == [
-                    (
-                        "worker",
-                        "/tmp/openclaw/workspace-worker",
-                        patch[0][2],
-                        {"primary": "azure-foundry/kimi-k2-6"},
-                    )
-                ]
+            assert registrations == [expected_registration]
+            assert len(heartbeat_patches) == 1
+            assert heartbeat_patches[0] == [
+                (
+                    "worker",
+                    "/tmp/openclaw/workspace-worker",
+                    heartbeat_patches[0][0][2],
+                    {"primary": "azure-foundry/kimi-k2-6"},
+                )
+            ]
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_active_work_recovery_refreshes_runtime_model_policy_before_wake(
+async def test_active_work_recovery_does_not_refresh_runtime_model_policy_before_wake(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -426,20 +425,9 @@ async def test_active_work_recovery_refreshes_runtime_model_policy_before_wake(
 
             woken = await recovery.wake_stale_board_agents_with_active_work(session)
 
-            expected_model = {
-                "primary": "azure-foundry/kimi-k2-6",
-                "fallbacks": ["azure-foundry/deepseek-v3"],
-            }
             assert woken == 1
-            assert registrations == [
-                {
-                    "agent_id": "developer-agent",
-                    "name": "Developer Agent",
-                    "workspace_path": "/tmp/openclaw/workspace-developer-agent",
-                    "model": expected_model,
-                }
-            ]
-            assert heartbeat_patches[0][0][3] == expected_model
+            assert registrations == []
+            assert heartbeat_patches == []
             assert wake_calls[0]["model"] is None
             assert wake_calls[0]["clear_model_override"] is True
     finally:
@@ -511,7 +499,7 @@ async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
             reloaded_agent = (
                 await session.exec(select(Agent).where(col(Agent.id) == agent_id))
             ).one()
-            assert reloaded_agent.status == "updating"
+            assert reloaded_agent.status == "online"
 
             events = (
                 await session.exec(
@@ -595,7 +583,7 @@ async def test_active_work_recovery_wakes_online_agent_with_stale_heartbeat(
             reloaded_agent = (
                 await session.exec(select(Agent).where(col(Agent.id) == agent_id))
             ).one()
-            assert reloaded_agent.status == "updating"
+            assert reloaded_agent.status == "online"
     finally:
         await engine.dispose()
 
@@ -680,7 +668,7 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             reloaded_merger = (
                 await session.exec(select(Agent).where(col(Agent.id) == merger_id))
             ).one()
-            assert reloaded_merger.status == "updating"
+            assert reloaded_merger.status == "online"
 
             events = (
                 await session.exec(
@@ -772,7 +760,7 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             reloaded_lead = (
                 await session.exec(select(Agent).where(col(Agent.id) == lead_id))
             ).one()
-            assert reloaded_lead.status == "updating"
+            assert reloaded_lead.status == "online"
             assert reloaded_lead.wake_attempts == 100
 
             events = (

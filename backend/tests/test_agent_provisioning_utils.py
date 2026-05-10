@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import timedelta
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -11,6 +12,8 @@ import pytest
 
 import app.services.openclaw.internal.agent_key as agent_key_mod
 import app.services.openclaw.provisioning as agent_provisioning
+from app.core.time import utcnow
+from app.models.agents import Agent
 from app.services.openclaw.provisioning_db import AgentLifecycleService
 from app.services.openclaw.shared import GatewayAgentIdentity
 from app.services.souls_directory import SoulRef
@@ -396,6 +399,20 @@ def test_agent_lifecycle_workspace_path_preserves_tilde_in_workspace_root():
         AgentLifecycleService.workspace_path("Alice", "~/.openclaw")
         == "~/.openclaw/workspace-alice"
     )
+
+
+def test_agent_computed_status_keeps_pending_work_wake_online():
+    agent = Agent(
+        id=uuid4(),
+        name="Developer Agent",
+        status="online",
+        last_seen_at=utcnow() - timedelta(hours=2),
+        checkin_deadline_at=utcnow() + timedelta(minutes=5),
+    )
+
+    computed = AgentLifecycleService.with_computed_status(agent)
+
+    assert computed.status == "online"
 
 
 def test_templates_root_points_to_repo_templates_dir():

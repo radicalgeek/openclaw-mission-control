@@ -350,6 +350,19 @@ async def sweep_stuck_provisioning_agents(session: Any) -> int:
     count = 0
     for agent in stuck_agents:
         try:
+            if (
+                agent.status != "provisioning"
+                and agent.board_id is not None
+                and agent.openclaw_session_id
+            ):
+                logger.info(
+                    "org_agent_reconciler.stuck_skip_board_session_agent "
+                    "agent_id=%s status=%s wake_attempts=%d",
+                    agent.id,
+                    agent.status,
+                    agent.wake_attempts,
+                )
+                continue
             if agent.status != "provisioning" and agent.board_id is None:
                 logger.info(
                     "org_agent_reconciler.stuck_skip_no_board_work "

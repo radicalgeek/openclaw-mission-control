@@ -42,6 +42,7 @@ def _stale_agent(
     wake_attempts: int,
     last_seen_at: Literal["stale"] | None = "stale",
     board_id: bool = False,
+    openclaw_session: bool = False,
 ) -> Agent:
     now = utcnow()
     if last_seen_at == "stale":
@@ -49,12 +50,14 @@ def _stale_agent(
     else:
         seen_at = None
 
+    agent_id = uuid4()
     return Agent(
         id=uuid4(),
         name=f"{status}-agent",
         board_id=uuid4() if board_id else None,
         gateway_id=uuid4(),
         status=status,
+        openclaw_session_id=f"agent:{agent_id}:main" if openclaw_session else None,
         updated_at=now
         - timedelta(seconds=settings.agent_stuck_provisioning_sweep_seconds + 1),
         last_seen_at=seen_at,
@@ -85,6 +88,33 @@ async def test_sweep_preserves_online_unseen_wake_attempt_budget(
     assert session.commits == 0
     assert captured[0].agent_id == agent.id
     assert captured[0].generation == agent.lifecycle_generation
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_board_agent_with_session_for_work_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[QueuedAgentLifecycleReconcile] = []
+    agent = _stale_agent(
+        status="online",
+        wake_attempts=3,
+        board_id=True,
+        openclaw_session=True,
+    )
+    session = _FakeSession(exec_results=[[], [agent], [], []])
+
+    monkeypatch.setattr(
+        org_agent_reconciler,
+        "enqueue_lifecycle_reconcile",
+        lambda payload: captured.append(payload) or True,
+    )
+
+    count = await org_agent_reconciler.sweep_stuck_provisioning_agents(session)
+
+    assert count == 0
+    assert captured == []
+    assert session.added == []
+    assert session.commits == 0
 
 
 @pytest.mark.asyncio

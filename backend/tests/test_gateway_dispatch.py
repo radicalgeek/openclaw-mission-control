@@ -10,7 +10,7 @@ from app.services.openclaw.gateway_rpc import GatewayConfig
 
 
 @pytest.mark.asyncio
-async def test_reset_stuck_session_resets_processing_session(monkeypatch) -> None:
+async def test_reset_stuck_session_leaves_processing_session(monkeypatch) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
     async def _openclaw_call(
@@ -31,12 +31,8 @@ async def test_reset_stuck_session_resets_processing_session(monkeypatch) -> Non
         config=GatewayConfig(url="ws://gateway.example/ws"),
     )
 
-    assert reset is True
-    assert calls == [
-        ("sessions.list", {}),
-        ("sessions.abort", {"key": "agent:dev:main"}),
-        ("sessions.reset", {"key": "agent:dev:main"}),
-    ]
+    assert reset is False
+    assert calls == [("sessions.list", {})]
 
 
 @pytest.mark.asyncio
@@ -55,7 +51,7 @@ async def test_reset_stuck_session_accepts_gateway_session_key_field(monkeypatch
                 "sessions": [
                     {
                         "sessionKey": "agent:dev:main",
-                        "state": "processing",
+                        "state": "failed",
                     }
                 ]
             }
@@ -101,7 +97,7 @@ async def test_reset_stuck_session_leaves_idle_session(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> None:
+async def test_wake_agent_session_does_not_reset_idle_session_when_requested(monkeypatch) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
     async def _openclaw_call(
@@ -175,8 +171,6 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
 
     assert calls == [
         ("sessions.list", {}),
-        ("sessions.abort", {"key": "agent:dev:main"}),
-        ("sessions.reset", {"key": "agent:dev:main"}),
         (
             "sessions.patch",
             {
@@ -198,7 +192,7 @@ async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_wake_agent_session_stops_when_reset_is_unavailable(monkeypatch) -> None:
+async def test_wake_agent_session_stops_when_failed_session_reset_is_unavailable(monkeypatch) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
     async def _openclaw_call(
@@ -209,7 +203,7 @@ async def test_wake_agent_session_stops_when_reset_is_unavailable(monkeypatch) -
     ) -> object:
         calls.append((method, params or {}))
         if method == "sessions.list":
-            return {"sessions": [{"key": "agent:dev:main", "state": "processing"}]}
+            return {"sessions": [{"key": "agent:dev:main", "state": "failed"}]}
         if method == "sessions.reset":
             raise gateway_dispatch.OpenClawGatewayError(
                 "Session agent:dev:main is still active; try again in a moment."
