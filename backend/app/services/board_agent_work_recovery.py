@@ -210,6 +210,8 @@ async def wake_agent_for_task(
         agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
             seconds=settings.agent_checkin_deadline_seconds,
         )
+        if agent.status == "offline":
+            agent.status = "updating"
         agent.wake_attempts += 1
         agent.updated_at = utcnow()
         record_activity(
@@ -363,6 +365,8 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
         agent.checkin_deadline_at = agent.last_wake_sent_at + timedelta(
             seconds=settings.agent_checkin_deadline_seconds,
         )
+        if agent.status == "offline":
+            agent.status = "updating"
         agent.wake_attempts += 1
         agent.updated_at = utcnow()
         record_activity(

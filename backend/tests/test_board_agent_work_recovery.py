@@ -146,6 +146,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             ).one()
             assert reloaded_agent.last_wake_sent_at is not None
             assert reloaded_agent.checkin_deadline_at is not None
+            assert reloaded_agent.status == "updating"
             assert reloaded_agent.wake_attempts == 100
 
             events = (
@@ -379,6 +380,10 @@ async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
             assert wake_calls
             assert "Status: inbox" in wake_calls[0]["message"]
             assert "Wake reason: assigned_inbox_work_recovery" in wake_calls[0]["message"]
+            reloaded_agent = (
+                await session.exec(select(Agent).where(col(Agent.id) == agent_id))
+            ).one()
+            assert reloaded_agent.status == "updating"
 
             events = (
                 await session.exec(
@@ -541,6 +546,10 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert "CODE_WORKTREE_PATH: /tmp/openclaw/shared-src/boards/board/worktrees/merge" in (
                 wake_calls[0]["message"]
             )
+            reloaded_merger = (
+                await session.exec(select(Agent).where(col(Agent.id) == merger_id))
+            ).one()
+            assert reloaded_merger.status == "updating"
 
             events = (
                 await session.exec(
