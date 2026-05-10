@@ -74,6 +74,19 @@ async def reset_stuck_session_if_needed(
     return False
 
 
+async def reset_session_best_effort(
+    *,
+    session_key: str,
+    config: GatewayClientConfig,
+) -> bool:
+    """Reset a session without failing the caller when the gateway refuses it."""
+    try:
+        await openclaw_call("sessions.reset", {"key": session_key}, config=config)
+    except Exception:
+        return False
+    return True
+
+
 class GatewayDispatchService(OpenClawDBService):
     """Resolve gateway config for boards and dispatch messages to agent sessions."""
 
@@ -123,7 +136,15 @@ class GatewayDispatchService(OpenClawDBService):
     ) -> None:
         """Start an agent turn without blocking the API request on completion."""
         if reset_stuck_session:
-            await reset_stuck_session_if_needed(session_key=session_key, config=config)
+            reset = await reset_stuck_session_if_needed(
+                session_key=session_key,
+                config=config,
+            )
+            if not reset:
+                await reset_session_best_effort(
+                    session_key=session_key,
+                    config=config,
+                )
         await ensure_session(session_key, config=config, label=agent_name, model=model)
         await send_session_message_nonblocking(
             message,

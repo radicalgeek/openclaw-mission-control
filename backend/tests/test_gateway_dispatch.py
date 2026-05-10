@@ -96,3 +96,96 @@ async def test_reset_stuck_session_leaves_idle_session(monkeypatch) -> None:
 
     assert reset is False
     assert calls == [("sessions.list", {})]
+
+
+@pytest.mark.asyncio
+async def test_wake_agent_session_force_resets_when_requested(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    async def _openclaw_call(
+        method: str,
+        params: dict[str, object] | None = None,
+        *,
+        config: GatewayConfig,
+    ) -> object:
+        calls.append((method, params or {}))
+        if method == "sessions.list":
+            return {"sessions": [{"key": "agent:dev:main", "state": "idle"}]}
+        return {}
+
+    monkeypatch.setattr(gateway_dispatch, "openclaw_call", _openclaw_call)
+
+    async def _ensure_session(
+        session_key: str,
+        *,
+        config: GatewayConfig,
+        label: str,
+        model: str | None = None,
+    ) -> object:
+        calls.append(
+            (
+                "sessions.patch",
+                {
+                    "key": session_key,
+                    "label": label,
+                    "model": model,
+                },
+            )
+        )
+        return {}
+
+    async def _send_session_message_nonblocking(
+        message: str,
+        *,
+        session_key: str,
+        config: GatewayConfig,
+    ) -> object:
+        calls.append(
+            (
+                "sessions.send",
+                {
+                    "key": session_key,
+                    "message": message,
+                    "timeoutMs": 0,
+                },
+            )
+        )
+        return {}
+
+    monkeypatch.setattr(gateway_dispatch, "ensure_session", _ensure_session)
+    monkeypatch.setattr(
+        gateway_dispatch,
+        "send_session_message_nonblocking",
+        _send_session_message_nonblocking,
+    )
+
+    service = gateway_dispatch.GatewayDispatchService(session=object())
+    await service.wake_agent_session(
+        session_key="agent:dev:main",
+        config=GatewayConfig(url="ws://gateway.example/ws"),
+        agent_name="Developer Agent",
+        message="wake up",
+        model="azure-foundry/gpt-4.1",
+        reset_stuck_session=True,
+    )
+
+    assert calls == [
+        ("sessions.list", {}),
+        ("sessions.reset", {"key": "agent:dev:main"}),
+        (
+            "sessions.patch",
+            {
+                "key": "agent:dev:main",
+                "label": "Developer Agent",
+                "model": "azure-foundry/gpt-4.1",
+            },
+        ),
+        (
+            "sessions.send",
+            {
+                "key": "agent:dev:main",
+                "message": "wake up",
+                "timeoutMs": 0,
+            },
+        ),
+    ]
