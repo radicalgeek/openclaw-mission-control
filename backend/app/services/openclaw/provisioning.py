@@ -199,17 +199,10 @@ def _builtin_agent_model_routing() -> tuple[
     dict[str, dict[str, object] | str],
     dict[str, object] | str | None,
 ]:
-    role_models = {
-        role: {"primary": primary}
-        for role, primary in ROLE_TEMPLATE_MODEL_PRIMARY.items()
-        if primary
-    }
-    default_board_model = (
-        {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY}
-        if DEFAULT_BOARD_AGENT_MODEL_PRIMARY
-        else None
+    return (
+        {role: {"primary": primary} for role, primary in ROLE_TEMPLATE_MODEL_PRIMARY.items()},
+        {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY},
     )
-    return role_models, default_board_model
 
 
 def _configured_agent_model_routing() -> tuple[

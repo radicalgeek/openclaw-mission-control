@@ -208,7 +208,7 @@ def test_explicit_agent_heartbeat_prompt_override_wins():
     assert heartbeat["prompt"] == "Custom operator prompt."
 
 
-def test_agent_model_config_without_runtime_routing_leaves_roles_on_gateway_default():
+def test_agent_model_config_uses_role_template_model_policy():
     triager = _AgentStub(
         name="Triager",
         identity_profile={"role_template": "triager"},
@@ -227,13 +227,19 @@ def test_agent_model_config_without_runtime_routing_leaves_roles_on_gateway_defa
         identity_profile={"role_template": "developer"},
     )
 
-    assert agent_provisioning._agent_model_config(triager) is None
-    assert agent_provisioning._agent_model_config(reviewer) is None
+    assert agent_provisioning._agent_model_config(triager) == {
+        "primary": "azure-foundry/gpt-5-4"
+    }
+    assert agent_provisioning._agent_model_config(reviewer) == {
+        "primary": "azure-foundry/gpt-5-4"
+    }
     assert agent_provisioning._agent_model_config(planner) is None
-    assert agent_provisioning._agent_model_config(developer) is None
+    assert agent_provisioning._agent_model_config(developer) == {
+        "primary": "azure-foundry/kimi-k2-6"
+    }
 
 
-def test_agent_model_config_without_runtime_routing_leaves_board_agents_on_gateway_default():
+def test_agent_model_config_pins_board_agents_to_gpt_4_1():
     lead = _AgentStub(name="Board Lead", board_id=uuid4())
     merger = _AgentStub(
         name="Merge Agent",
@@ -241,11 +247,15 @@ def test_agent_model_config_without_runtime_routing_leaves_board_agents_on_gatew
         identity_profile={"role_template": "merger"},
     )
 
-    assert agent_provisioning._agent_model_config(lead) is None
-    assert agent_provisioning._agent_model_config(merger) is None
+    assert agent_provisioning._agent_model_config(lead) == {
+        "primary": "azure-foundry/gpt-4.1"
+    }
+    assert agent_provisioning._agent_model_config(merger) == {
+        "primary": "azure-foundry/gpt-4.1"
+    }
 
 
-def test_agent_model_config_without_runtime_routing_leaves_board_workers_on_gateway_default():
+def test_agent_model_config_treats_legacy_board_workers_as_developers():
     worker = _AgentStub(
         name="Developer Agent",
         board_id=uuid4(),
@@ -253,7 +263,9 @@ def test_agent_model_config_without_runtime_routing_leaves_board_workers_on_gate
         identity_profile=None,
     )
 
-    assert agent_provisioning._agent_model_config(worker) is None
+    assert agent_provisioning._agent_model_config(worker) == {
+        "primary": "azure-foundry/kimi-k2-6"
+    }
 
 
 def test_agent_model_config_explicit_identity_profile_override_wins():

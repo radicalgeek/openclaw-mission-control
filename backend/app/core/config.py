@@ -186,10 +186,6 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("AXIACRAFT_AGENT_MODEL_ROUTING", "agent_model_routing"),
     )
-    agent_wake_limits: str = Field(
-        default="",
-        validation_alias=AliasChoices("AXIACRAFT_AGENT_WAKE_LIMITS", "agent_wake_limits"),
-    )
 
     # Logging
     log_level: str = "INFO"
