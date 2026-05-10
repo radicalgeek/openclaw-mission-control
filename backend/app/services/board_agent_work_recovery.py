@@ -190,14 +190,22 @@ async def _register_runtime_agent(*, gateway: Gateway, config: object, agent: Ag
     if not gateway.workspace_root:
         msg = "gateway workspace_root is required"
         raise OpenClawGatewayError(msg)
-    await OpenClawGatewayControlPlane(config).upsert_agent(
+    control_plane = OpenClawGatewayControlPlane(config)
+    agent_id = _agent_key(agent)
+    workspace_path = _workspace_path(agent, gateway.workspace_root)
+    heartbeat = _heartbeat_config(agent)
+    model = _agent_model_config(agent)
+    await control_plane.upsert_agent(
         GatewayAgentRegistration(
-            agent_id=_agent_key(agent),
+            agent_id=agent_id,
             name=agent.name,
-            workspace_path=_workspace_path(agent, gateway.workspace_root),
-            heartbeat=_heartbeat_config(agent),
-            model=_agent_model_config(agent),
+            workspace_path=workspace_path,
+            heartbeat=heartbeat,
+            model=model,
         )
+    )
+    await control_plane.patch_agent_heartbeats(
+        [(agent_id, workspace_path, heartbeat, model)],
     )
 
 

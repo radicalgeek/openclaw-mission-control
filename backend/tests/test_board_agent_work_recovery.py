@@ -38,6 +38,8 @@ def _patch_wake_services(
     *,
     wake_errors: list[OpenClawGatewayError | None] | None = None,
     registrations: list[dict[str, Any]] | None = None,
+    heartbeat_patches: list[list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]]
+    | None = None,
 ) -> None:
     class _FakeDispatch:
         def __init__(self, session: AsyncSession) -> None:
@@ -68,6 +70,13 @@ def _patch_wake_services(
                         "model": registration.model,
                     }
                 )
+
+        async def patch_agent_heartbeats(
+            self,
+            entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]],
+        ) -> None:
+            if heartbeat_patches is not None:
+                heartbeat_patches.append(entries)
 
     monkeypatch.setattr(recovery, "GatewayDispatchService", _FakeDispatch)
     monkeypatch.setattr(recovery, "OpenClawGatewayControlPlane", _FakeControlPlane)
@@ -244,6 +253,9 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
 ) -> None:
     wake_calls: list[dict[str, Any]] = []
     registrations: list[dict[str, Any]] = []
+    heartbeat_patches: list[
+        list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]
+    ] = []
     _patch_wake_services(
         monkeypatch,
         wake_calls,
@@ -252,6 +264,7 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
             None,
         ],
         registrations=registrations,
+        heartbeat_patches=heartbeat_patches,
     )
     engine = await _make_engine()
     try:
@@ -321,6 +334,24 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
                     "workspace_path": "/tmp/openclaw/workspace-worker",
                     "model": {"primary": "azure-foundry/kimi-k2-6"},
                 }
+            ]
+            assert heartbeat_patches == [
+                [
+                    (
+                        "worker",
+                        "/tmp/openclaw/workspace-worker",
+                        heartbeat_patches[0][0][2],
+                        {"primary": "azure-foundry/kimi-k2-6"},
+                    )
+                ],
+                [
+                    (
+                        "worker",
+                        "/tmp/openclaw/workspace-worker",
+                        heartbeat_patches[1][0][2],
+                        {"primary": "azure-foundry/kimi-k2-6"},
+                    )
+                ],
             ]
     finally:
         await engine.dispose()
