@@ -176,11 +176,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
                     .where(col(ActivityEvent.event_type) == "task.comment"),
                 )
             ).all()
-            assert len(comments) == 1
-            assert comments[0].agent_id is None
-            assert comments[0].message is not None
-            assert "System wake sent to worker" in comments[0].message
-            assert "Expected code worktree:" in comments[0].message
+            assert comments == []
     finally:
         await engine.dispose()
 
@@ -447,8 +443,7 @@ async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
                     .where(col(ActivityEvent.event_type) == "task.comment"),
                 )
             ).all()
-            assert len(comments) == 1
-            assert "The agent must verify code access" in (comments[0].message or "")
+            assert comments == []
     finally:
         await engine.dispose()
 
@@ -576,7 +571,7 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
                 Task(
                     board_id=board_id,
                     title="Developer work",
-                    status="in_progress",
+                    status="review",
                     assigned_agent_id=worker_id,
                     in_progress_at=utcnow() - timedelta(minutes=30),
                 ),
@@ -605,7 +600,7 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
                 )
             ).all()
             assert len(events) == 1
-            assert "Active tasks: 1" in (events[0].message or "")
+            assert "review tasks: 1" in (events[0].message or "")
     finally:
         await engine.dispose()
 

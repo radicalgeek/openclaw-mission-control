@@ -68,6 +68,7 @@ from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.task_comment_visibility import visible_task_comment_clause
 from app.services.openclaw.provisioning import (
     OpenClawGatewayProvisioner,
     _agent_session_model,
@@ -220,6 +221,19 @@ def _review_required_for_done_error() -> HTTPException:
                 "Task can only be marked done from review when the board rule is enabled."
             ),
             "blocked_by_task_ids": [],
+        },
+    )
+
+
+def _lead_review_required_for_done_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "message": (
+                "Developer agents cannot mark tasks done directly. Move the task to review; "
+                "the board lead must accept or send it back."
+            ),
+            "code": "lead_review_required_for_done",
         },
     )
 
@@ -658,6 +672,12 @@ async def _fetch_task_events(
         .outerjoin(Task, col(ActivityEvent.task_id) == col(Task.id))
         .where(col(ActivityEvent.task_id).in_(task_ids))
         .where(col(ActivityEvent.event_type).in_(TASK_EVENT_TYPES))
+        .where(
+            or_(
+                col(ActivityEvent.event_type) != "task.comment",
+                visible_task_comment_clause(col(ActivityEvent.message)),
+            )
+        )
         .where(col(ActivityEvent.created_at) >= since)
         .order_by(asc(col(ActivityEvent.created_at)))
     )
@@ -2005,6 +2025,7 @@ async def list_task_comments(
         select(ActivityEvent)
         .where(col(ActivityEvent.task_id) == task.id)
         .where(col(ActivityEvent.event_type) == "task.comment")
+        .where(visible_task_comment_clause(col(ActivityEvent.message)))
         .order_by(asc(col(ActivityEvent.created_at)))
     )
     return await paginate(session, statement)
@@ -2828,6 +2849,12 @@ async def _apply_non_lead_agent_task_rules(
             update.task.previous_in_progress_at = update.task.in_progress_at
             update.task.assigned_agent_id = None
             update.task.in_progress_at = None
+        elif (
+            status_value == "done"
+            and update.actor.agent
+            and not update.actor.agent.is_board_lead
+        ):
+            raise _lead_review_required_for_done_error()
         else:
             update.task.assigned_agent_id = (
                 update.actor.agent.id if update.actor.agent else None

@@ -224,6 +224,10 @@ You are a worker agent for this board. You own execution quality.
 ### Approval and External Actions
 {% if is_lead %}
 - For review-stage tasks requiring approval, raise and track approval before closure.
+- For code tasks in `review`, coordinate with the merge agent. `review` means ready to merge,
+  not ready for `done`; move to `done` only after merge-agent evidence is posted on the task.
+- If the merge agent reports uncommitted work, missing branch metadata, conflicts, or failing checks,
+  keep the task in `review` and notify the original developer in the task thread.
 - If an external action is requested, execute it only after required approval.
 - If approval is rejected, do not execute the external action.
 - Move tasks to `done` only after required gates pass and external action succeeds.
@@ -250,6 +254,7 @@ You are a worker agent for this board. You own execution quality.
 ### Definition of Done
 - Owner, expected artifact, acceptance criteria, due timing, and required fields are clear.
 - Board-rule gates are satisfied before moving tasks to `done`.
+- Code tasks have merge-agent evidence before they move from `review` to `done`.
 - External actions (if any) are completed successfully under required approval policy.
 - Evidence and decisions are captured in task context.
 - No unresolved blockers remain for the next stage.

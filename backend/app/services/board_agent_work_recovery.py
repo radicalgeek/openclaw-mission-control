@@ -80,28 +80,6 @@ def build_task_wake_message(
     )
 
 
-def _wake_comment_message(
-    *,
-    board: Board,
-    task: Task,
-    agent: Agent,
-    gateway_workspace_root: str,
-    reason: str,
-) -> str:
-    lines = [
-        f"System wake sent to {agent.name} ({reason}).",
-        f"Task status: {task.status}.",
-    ]
-    if gateway_workspace_root:
-        lines.append(
-            f"Expected code worktree: {_board_code_worktree_path(agent, board, gateway_workspace_root)}."
-        )
-    lines.append(
-        "The agent must verify code access and post a progress or completion comment."
-    )
-    return " ".join(lines)
-
-
 def _is_merge_agent(agent: Agent) -> bool:
     profile = agent.identity_profile or {}
     return isinstance(profile, dict) and profile.get("role_template") == "merger"
@@ -134,10 +112,11 @@ def _merge_wake_message(
         )
     return (
         "\n".join(details)
-        + "\n\nTake action now: inspect the board shared source worktrees, identify completed "
-        "or review-ready developer work, merge clean changes into the merge worktree, and post "
-        "task comments describing merged files, conflicts, tests, or blockers. If no worktree "
-        "is ready, post a board/task comment explaining what is missing."
+        + "\n\nTake action now: inspect only tasks currently in `review`, merge clean "
+        "committed changes into the merge worktree, and post task comments describing merged "
+        "files, conflicts, tests, or blockers. If work is uncommitted or not mergeable, notify "
+        "the lead and original developer in the review task comment and leave the task in "
+        "`review` for follow-up."
     )
 
 
@@ -278,20 +257,6 @@ async def wake_agent_for_task(
             task_id=task.id,
             board_id=board.id,
         )
-        record_activity(
-            session,
-            event_type="task.comment",
-            message=_wake_comment_message(
-                board=board,
-                task=task,
-                agent=agent,
-                gateway_workspace_root=gateway.workspace_root,
-                reason=reason,
-            ),
-            agent_id=None,
-            task_id=task.id,
-            board_id=board.id,
-        )
         await session.commit()
         return True
     except Exception as exc:  # pragma: no cover - best effort recovery path
@@ -300,17 +265,6 @@ async def wake_agent_for_task(
             event_type="task.assignee_wake_failed",
             message=(f"Assignee wake failed ({reason}): {agent.name}. Error: {exc!s}"),
             agent_id=agent.id,
-            task_id=task.id,
-            board_id=board.id,
-        )
-        record_activity(
-            session,
-            event_type="task.comment",
-            message=(
-                f"System wake failed for {agent.name} ({reason}). "
-                f"Error: {exc!s}"
-            ),
-            agent_id=None,
             task_id=task.id,
             board_id=board.id,
         )
@@ -341,7 +295,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             )
             .join(Task, col(Task.board_id) == col(Board.id))
             .join(Gateway, col(Gateway.id) == col(Board.gateway_id))
-            .where(col(Task.status).in_(["in_progress", "review"]))
+            .where(col(Task.status) == "review")
             .where(col(Gateway.url).is_not(None))
         )
     ).all()

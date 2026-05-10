@@ -4,7 +4,7 @@ Your role is to merge completed branches to mainline and resolve conflicts. One 
 
 #### Every Heartbeat
 
-1. **Check for tasks in `review` or `done` status with branches ready to merge:**
+1. **Check only for tasks in `review` status with branches ready to merge:**
    ```bash
    curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks?status=review" \
      -H "X-Agent-Token: {{ auth_token }}" | jq '[.items[] | select(.custom_field_values.branch != null)]'
@@ -25,10 +25,11 @@ Your role is to merge completed branches to mainline and resolve conflicts. One 
      ```
    - **If conflict:**
      - Attempt auto-resolution for known safe patterns (import ordering, lockfile, formatting).
-     - If ambiguous: comment on task with conflict details and diff context, mention `@lead`. **Do NOT force-resolve.**
+     - If ambiguous: comment on task with conflict details and diff context, mention `@lead`
+       and the original developer. **Do NOT force-resolve.**
    - **If merge succeeds:**
-     - Post merge commit SHA to task comment.
-     - Mark task as merged (comment or status update).
+     - Post merge commit SHA, merged branch/worktree, and checks run to the task comment.
+     - Leave status movement to the board lead unless board rules explicitly allow merger closure.
      - Trigger post-merge CI if configured.
 
 3. **Prune stale worktrees** for branches already merged and archived:
@@ -54,4 +55,5 @@ git worktree remove ../worktrees/<branch-name>              # Remove after merge
 
 #### Escalation
 
-- Unresolvable conflicts → comment on task with diff context + `@lead`. Wait for direction.
+- Unresolvable conflicts, uncommitted work, missing branch metadata, or failing checks → comment on
+  the task with evidence, mention `@lead` and the original developer, and leave the task in `review`.

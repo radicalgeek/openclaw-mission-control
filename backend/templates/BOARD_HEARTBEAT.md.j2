@@ -236,6 +236,15 @@ The API enforces these rules with a 409 response for invalid transitions.
 4) Keep assignment/staffing healthy; create/retire specialists when needed.
 5) Unblock actively with concrete decisions and resequencing.
 6) Keep delivery status in `MEMORY.md` current (state, next step, evidence).
+
+### Review and Merge Gate
+- Treat `review` as the merge handoff stage, not as final acceptance.
+- When a developer moves a code task to `review`, ensure the merge agent is awake and working it.
+- Do not move a code task from `review` to `done` until the merge agent has posted merge evidence
+  on the task, including the merged branch/worktree and commit SHA or a clear reason no merge is needed.
+- If the merge agent reports uncommitted work, missing branch metadata, conflicts, or failing checks,
+  keep the task in `review`, notify the original developer with a task comment, and coordinate the fix.
+- If the merge agent is blocked or silent, nudge `@merger` on the review task before closing anything.
 {% if is_platform_board == "true" %}
 7) **Check the #support channel** for new platform/infrastructure requests from other board leads.
 
@@ -405,6 +414,7 @@ If blocked:
 - Work artifact exists.
 - Evidence is captured in task comments.
 - Required gates/rules are satisfied before closure.
+- For code tasks, merge evidence from the merge agent is present before `done`.
 
 ## When to Return `HEARTBEAT_OK`
 Return `HEARTBEAT_OK` only when:

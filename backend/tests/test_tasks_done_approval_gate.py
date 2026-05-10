@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api import tasks as tasks_api
 from app.api.deps import ActorContext
+from app.models.activity_events import ActivityEvent
 from app.models.agents import Agent
 from app.models.approval_task_links import ApprovalTaskLink
 from app.models.approvals import Approval
@@ -115,12 +116,27 @@ async def _update_task_status(
     )
 
 
+def _add_completion_comment(session: AsyncSession, *, task: Task, agent: Agent) -> None:
+    session.add(
+        ActivityEvent(
+            event_type="task.comment",
+            message="Completion evidence: implemented, tested, and ready for lead acceptance.",
+            task_id=task.id,
+            board_id=task.board_id,
+            agent_id=agent.id,
+        )
+    )
+
+
 @pytest.mark.asyncio
 async def test_update_task_rejects_done_without_approved_linked_approval() -> None:
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
-            board, task, agent = await _seed_board_task_and_agent(session)
+            board, task, agent = await _seed_board_task_and_agent(
+                session,
+                agent_is_board_lead=True,
+            )
             session.add(
                 Approval(
                     id=uuid4(),
@@ -151,7 +167,10 @@ async def test_update_task_allows_done_with_approved_primary_task_approval() -> 
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
-            board, task, agent = await _seed_board_task_and_agent(session)
+            board, task, agent = await _seed_board_task_and_agent(
+                session,
+                agent_is_board_lead=True,
+            )
             session.add(
                 Approval(
                     id=uuid4(),
@@ -162,6 +181,7 @@ async def test_update_task_allows_done_with_approved_primary_task_approval() -> 
                     status="approved",
                 ),
             )
+            _add_completion_comment(session, task=task, agent=agent)
             await session.commit()
 
             updated = await tasks_api.update_task(
@@ -182,7 +202,10 @@ async def test_update_task_allows_done_with_approved_multi_task_link() -> None:
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
-            board, task, agent = await _seed_board_task_and_agent(session)
+            board, task, agent = await _seed_board_task_and_agent(
+                session,
+                agent_is_board_lead=True,
+            )
             primary_task_id = uuid4()
             session.add(Task(id=primary_task_id, board_id=board.id, title="Primary"))
 
@@ -200,6 +223,7 @@ async def test_update_task_allows_done_with_approved_multi_task_link() -> None:
             await session.commit()
 
             session.add(ApprovalTaskLink(approval_id=approval_id, task_id=task.id))
+            _add_completion_comment(session, task=task, agent=agent)
             await session.commit()
 
             updated = await tasks_api.update_task(
@@ -222,7 +246,10 @@ async def test_update_task_allows_done_without_approval_when_board_toggle_disabl
             _board, task, agent = await _seed_board_task_and_agent(
                 session,
                 require_approval_for_done=False,
+                agent_is_board_lead=True,
             )
+            _add_completion_comment(session, task=task, agent=agent)
+            await session.commit()
 
             updated = await tasks_api.update_task(
                 payload=TaskUpdate(status="done"),
@@ -241,7 +268,7 @@ async def test_update_task_rejects_done_from_in_progress_when_review_toggle_enab
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
-            _board, task, agent = await _seed_board_task_and_agent(
+            _board, task, _agent = await _seed_board_task_and_agent(
                 session,
                 task_status="in_progress",
                 require_approval_for_done=False,
@@ -249,7 +276,12 @@ async def test_update_task_rejects_done_from_in_progress_when_review_toggle_enab
             )
 
             with pytest.raises(HTTPException) as exc:
-                await _update_task_to_done(session, task=task, agent=agent)
+                await tasks_api.update_task(
+                    payload=TaskUpdate(status="done"),
+                    task=task,
+                    session=session,
+                    actor=ActorContext(actor_type="user"),
+                )
 
             assert exc.value.status_code == 409
             detail = exc.value.detail
@@ -271,7 +303,10 @@ async def test_update_task_allows_done_from_review_when_review_toggle_enabled() 
                 task_status="review",
                 require_approval_for_done=False,
                 require_review_before_done=True,
+                agent_is_board_lead=True,
             )
+            _add_completion_comment(session, task=task, agent=agent)
+            await session.commit()
 
             updated = await tasks_api.update_task(
                 payload=TaskUpdate(status="done"),

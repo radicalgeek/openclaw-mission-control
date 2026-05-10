@@ -719,6 +719,83 @@ async def test_non_lead_agent_moves_task_to_review_and_reassigns_to_lead() -> No
 
 
 @pytest.mark.asyncio
+async def test_non_lead_agent_cannot_move_task_directly_to_done() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            board_id = uuid4()
+            gateway_id = uuid4()
+            worker_id = uuid4()
+            task_id = uuid4()
+
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/workspace",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    require_approval_for_done=False,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=worker_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="assigned task",
+                    description="",
+                    status="in_progress",
+                    assigned_agent_id=worker_id,
+                    in_progress_at=utcnow() - timedelta(minutes=20),
+                ),
+            )
+            await session.commit()
+
+            task = (
+                await session.exec(select(Task).where(col(Task.id) == task_id))
+            ).first()
+            actor = (
+                await session.exec(select(Agent).where(col(Agent.id) == worker_id))
+            ).first()
+            assert task is not None
+            assert actor is not None
+
+            with pytest.raises(HTTPException) as exc:
+                await tasks_api.update_task(
+                    payload=TaskUpdate(status="done", comment="Finished."),
+                    task=task,
+                    session=session,
+                    actor=ActorContext(actor_type="agent", agent=actor),
+                )
+
+            assert exc.value.status_code == 403
+            assert isinstance(exc.value.detail, dict)
+            assert exc.value.detail["code"] == "lead_review_required_for_done"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_lead_done_transition_records_actual_minutes_from_in_progress_start() -> (
     None
 ):

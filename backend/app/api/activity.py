@@ -29,6 +29,7 @@ from app.services.organizations import (
     get_active_membership,
     list_accessible_board_ids,
 )
+from app.services.task_comment_visibility import visible_task_comment_clause
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -235,6 +236,7 @@ async def _fetch_task_comment_events(
         .where(col(ActivityEvent.event_type) == "task.comment")
         .where(col(ActivityEvent.created_at) >= since)
         .where(func.length(func.trim(col(ActivityEvent.message))) > 0)
+        .where(visible_task_comment_clause(col(ActivityEvent.message)))
         .order_by(asc(col(ActivityEvent.created_at)))
     )
     if board_id is not None:
@@ -310,6 +312,7 @@ async def list_task_comment_feed(
         .outerjoin(Agent, col(ActivityEvent.agent_id) == col(Agent.id))
         .where(col(ActivityEvent.event_type) == "task.comment")
         .where(func.length(func.trim(col(ActivityEvent.message))) > 0)
+        .where(visible_task_comment_clause(col(ActivityEvent.message)))
         .order_by(desc(col(ActivityEvent.created_at)))
     )
     board_ids = await list_accessible_board_ids(session, member=ctx.member, write=False)
