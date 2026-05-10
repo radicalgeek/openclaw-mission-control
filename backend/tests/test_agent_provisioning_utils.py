@@ -254,6 +254,19 @@ def test_agent_model_config_pins_board_agents_to_gpt_4_1():
     }
 
 
+def test_agent_model_config_treats_legacy_board_workers_as_developers():
+    worker = _AgentStub(
+        name="Developer Agent",
+        board_id=uuid4(),
+        agent_type="board_worker",
+        identity_profile=None,
+    )
+
+    assert agent_provisioning._agent_model_config(worker) == {
+        "primary": "azure-foundry/kimi-k2-6"
+    }
+
+
 def test_agent_model_config_explicit_identity_profile_override_wins():
     agent = _AgentStub(
         name="Custom",

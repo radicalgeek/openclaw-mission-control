@@ -21,7 +21,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoes
 from app.core.branding import get_branding
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.agents import AGENT_TYPE_STANDALONE, Agent
+from app.models.agents import AGENT_TYPE_BOARD_WORKER, AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
@@ -186,6 +186,12 @@ def _agent_model_config(agent: Agent) -> dict[str, object] | str | None:
 
     role_template = profile.get("role_template")
     if not isinstance(role_template, str):
+        if (
+            getattr(agent, "board_id", None) is not None
+            and getattr(agent, "agent_type", None) == AGENT_TYPE_BOARD_WORKER
+            and not getattr(agent, "is_board_lead", False)
+        ):
+            return {"primary": ROLE_TEMPLATE_MODEL_PRIMARY["developer"]}
         if getattr(agent, "board_id", None) is not None:
             return {"primary": DEFAULT_BOARD_AGENT_MODEL_PRIMARY}
         return None
