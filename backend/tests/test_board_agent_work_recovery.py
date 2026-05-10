@@ -41,6 +41,7 @@ def _patch_wake_services(
     registrations: list[dict[str, Any]] | None = None,
     heartbeat_patches: list[list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]]
     | None = None,
+    reset_calls: list[dict[str, Any]] | None = None,
 ) -> None:
     class _FakeDispatch:
         def __init__(self, session: AsyncSession) -> None:
@@ -81,6 +82,13 @@ def _patch_wake_services(
 
     monkeypatch.setattr(recovery, "GatewayDispatchService", _FakeDispatch)
     monkeypatch.setattr(recovery, "OpenClawGatewayControlPlane", _FakeControlPlane)
+
+    async def _fake_reset_session_for_wake(**kwargs: Any) -> bool:
+        if reset_calls is not None:
+            reset_calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(recovery, "reset_session_for_wake", _fake_reset_session_for_wake)
 
 
 @pytest.mark.asyncio
@@ -343,6 +351,72 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
             assert woken == 0
             assert wake_calls == []
             assert heartbeat_patches == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_resets_missed_checkin_session_before_wake(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    reset_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls, reset_calls=reset_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            session_key = "agent:worker:main"
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="updating",
+                    openclaw_session_id=session_key,
+                    last_wake_sent_at=utcnow() - timedelta(minutes=20),
+                    checkin_deadline_at=utcnow() - timedelta(minutes=10),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Do the work",
+                    status="in_progress",
+                    assigned_agent_id=agent_id,
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert [call["session_key"] for call in reset_calls] == [session_key]
+            assert [call["session_key"] for call in wake_calls] == [session_key]
     finally:
         await engine.dispose()
 

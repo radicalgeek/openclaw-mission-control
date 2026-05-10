@@ -20,6 +20,8 @@ from app.models.tasks import Task
 from app.services.activity_log import record_activity
 from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+from app.services.openclaw.gateway_dispatch import reset_session_for_wake
+from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 from app.services.openclaw.provisioning import (
     GatewayAgentRegistration,
@@ -315,6 +317,27 @@ async def _refresh_runtime_agent_registration(
     )
 
 
+def _agent_missed_checkin(agent: Agent) -> bool:
+    return agent.checkin_deadline_at is not None and agent.checkin_deadline_at <= utcnow()
+
+
+async def _reset_missed_checkin_session_if_needed(
+    *, config: GatewayClientConfig, agent: Agent
+) -> bool:
+    if not agent.openclaw_session_id or not _agent_missed_checkin(agent):
+        return False
+    await reset_session_for_wake(
+        session_key=agent.openclaw_session_id,
+        config=config,
+    )
+    logger.info(
+        "board_agent_work_recovery.session_reset agent_id=%s session_key=%s reason=missed_checkin",
+        agent.id,
+        agent.openclaw_session_id,
+    )
+    return True
+
+
 async def wake_agent_for_task(
     *,
     session: AsyncSession,
@@ -337,6 +360,7 @@ async def wake_agent_for_task(
             reason=reason,
         )
         await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+        await _reset_missed_checkin_session_if_needed(config=config, agent=agent)
         error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -348,6 +372,7 @@ async def wake_agent_for_task(
         )
         if error is not None and _is_missing_runtime_agent_error(error):
             await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+            await _reset_missed_checkin_session_if_needed(config=config, agent=agent)
             error = await dispatch.try_wake_agent_session(
                 session_key=agent.openclaw_session_id,
                 config=config,
@@ -461,6 +486,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             review_count=int(board_stats["review_count"]),
         )
         await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+        await _reset_missed_checkin_session_if_needed(config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -472,6 +498,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
         )
         if error is not None and _is_missing_runtime_agent_error(error):
             await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+            await _reset_missed_checkin_session_if_needed(config=config, agent=agent)
             error = await GatewayDispatchService(session).try_wake_agent_session(
                 session_key=agent.openclaw_session_id,
                 config=config,
@@ -588,6 +615,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             review_count=int(board_stats["review_count"]),
         )
         await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+        await _reset_missed_checkin_session_if_needed(config=config, agent=agent)
         error = await GatewayDispatchService(session).try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
@@ -599,6 +627,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
         )
         if error is not None and _is_missing_runtime_agent_error(error):
             await _refresh_runtime_agent_registration(gateway=gateway, config=config, agent=agent)
+            await _reset_missed_checkin_session_if_needed(config=config, agent=agent)
             error = await GatewayDispatchService(session).try_wake_agent_session(
                 session_key=agent.openclaw_session_id,
                 config=config,
@@ -656,9 +685,11 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
     """Wake stale board agents that already own executable board tasks.
 
     This is intentionally not lifecycle reconciliation. Active task recovery
-    should preserve the existing OpenClaw session and workspace. It wakes only
-    concrete work, but first refreshes lightweight gateway runtime registration
-    so current infra-owned model policy and heartbeat metadata are applied.
+    should preserve the existing workspace. It wakes only concrete work, but
+    first refreshes lightweight gateway runtime registration so current
+    infra-owned model policy and heartbeat metadata are applied. When a prior
+    wake missed its check-in deadline, the session is reset before retrying so
+    stale or malformed chat history does not poison every model fallback.
     """
     rows = (
         await session.exec(
