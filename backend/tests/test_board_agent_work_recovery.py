@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -146,7 +147,7 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
             assert wake_calls
             assert wake_calls[0]["session_key"] == "agent:worker:main"
             assert wake_calls[0]["model"] is None
-            assert wake_calls[0]["clear_model_override"] is True
+            assert wake_calls[0]["clear_model_override"] is False
             assert wake_calls[0]["reset_stuck_session"] is True
             assert "TASK WAKE" in wake_calls[0]["message"]
             assert "Repo URL: https://example.test/repo.git" in wake_calls[0]["message"]
@@ -178,6 +179,104 @@ async def test_active_work_recovery_wakes_offline_agent_even_after_max_attempts(
                 )
             ).all()
             assert comments == []
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_respects_configured_role_wake_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recovery.settings,
+        "agent_wake_limits",
+        json.dumps(
+            {
+                "roles": {
+                    "developer": {
+                        "max_concurrent_wakes": 1,
+                        "min_wake_interval_seconds": 600,
+                    },
+                },
+            }
+        ),
+    )
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            active_agent_id = uuid4()
+            blocked_agent_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=active_agent_id,
+                    name="worker-1",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="updating",
+                    openclaw_session_id="agent:worker-1:main",
+                    last_wake_sent_at=utcnow() - timedelta(minutes=2),
+                    checkin_deadline_at=utcnow() + timedelta(minutes=8),
+                ),
+            )
+            session.add(
+                Agent(
+                    id=blocked_agent_id,
+                    name="worker-2",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:worker-2:main",
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Already running",
+                    status="in_progress",
+                    assigned_agent_id=active_agent_id,
+                    in_progress_at=utcnow() - timedelta(minutes=30),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Wait for lane",
+                    status="in_progress",
+                    assigned_agent_id=blocked_agent_id,
+                    in_progress_at=utcnow() - timedelta(minutes=20),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 0
+            assert wake_calls == []
     finally:
         await engine.dispose()
 
@@ -327,7 +426,7 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
                     "agent_id": "worker",
                     "name": "worker",
                     "workspace_path": "/tmp/openclaw/workspace-worker",
-                    "model": {"primary": "azure-foundry/kimi-k2-6"},
+                    "model": None,
                 }
             ]
             assert heartbeat_patches == [
@@ -336,7 +435,7 @@ async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_miss
                         "worker",
                         "/tmp/openclaw/workspace-worker",
                         heartbeat_patches[0][0][2],
-                        {"primary": "azure-foundry/kimi-k2-6"},
+                        None,
                     )
                 ],
             ]

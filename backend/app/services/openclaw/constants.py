@@ -26,18 +26,12 @@ DEFAULT_HEARTBEAT_CONFIG: dict[str, Any] = {
     "includeReasoning": False,
 }
 
-# Keep the gateway-wide default cheap, but promote roles that need deeper
-# reasoning to explicit per-agent models in OpenClaw's agents.list[].model.
-# Recreated standalone agents inherit this from their durable role_template.
-ROLE_TEMPLATE_MODEL_PRIMARY: dict[str, str] = {
-    "developer": "azure-foundry/kimi-k2-6",
-    "triager": "azure-foundry/gpt-5-4",
-    "quality_reviewer": "azure-foundry/gpt-5-4",
-    "security_reviewer": "azure-foundry/gpt-5-4",
-    "architecture_reviewer": "azure-foundry/gpt-5-4",
-}
+# Model choices are deployment policy, not AxiaCraft product logic. Infra can
+# provide explicit role/default routing through AXIACRAFT_AGENT_MODEL_ROUTING;
+# without that, sessions inherit the gateway runtime default.
+ROLE_TEMPLATE_MODEL_PRIMARY: dict[str, str] = {}
 
-DEFAULT_BOARD_AGENT_MODEL_PRIMARY = "azure-foundry/gpt-4.1"
+DEFAULT_BOARD_AGENT_MODEL_PRIMARY = None
 
 ROLE_TEMPLATE_HEARTBEAT_PROMPT: dict[str, str] = {
     "estimator": (

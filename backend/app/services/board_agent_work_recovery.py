@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlmodel import col, select
@@ -11,6 +13,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_BOARD_WORKER
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.tasks import Task
@@ -33,6 +36,14 @@ from app.services.openclaw.provisioning import (
 )
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class RoleWakeLimit:
+    """Config-driven wake budget for a role key."""
+
+    max_concurrent_wakes: int | None = None
+    min_wake_interval_seconds: int | None = None
 
 
 def _truncate_snippet(value: str | None, *, limit: int = 500) -> str:
@@ -84,6 +95,117 @@ def build_task_wake_message(
 def _is_merge_agent(agent: Agent) -> bool:
     profile = agent.identity_profile or {}
     return isinstance(profile, dict) and profile.get("role_template") == "merger"
+
+
+def _agent_role_key(agent: Agent) -> str:
+    profile = agent.identity_profile or {}
+    if isinstance(profile, dict):
+        role_template = profile.get("role_template")
+        if isinstance(role_template, str) and role_template.strip():
+            return role_template.strip()
+    if agent.is_board_lead:
+        return "board_lead"
+    if agent.agent_type == AGENT_TYPE_BOARD_WORKER:
+        return "developer"
+    return agent.agent_type
+
+
+def _configured_role_wake_limits() -> dict[str, RoleWakeLimit]:
+    raw_config = (settings.agent_wake_limits or "").strip()
+    if not raw_config:
+        return {}
+    try:
+        parsed = json.loads(raw_config)
+    except json.JSONDecodeError:
+        logger.warning("agent_wake_limits.invalid_json")
+        return {}
+    if not isinstance(parsed, dict):
+        logger.warning("agent_wake_limits.invalid_shape")
+        return {}
+    roles = parsed.get("roles") or parsed.get("role_limits")
+    if not isinstance(roles, dict):
+        return {}
+
+    limits: dict[str, RoleWakeLimit] = {}
+    for role, raw_limit in roles.items():
+        if not isinstance(role, str) or not isinstance(raw_limit, dict):
+            continue
+        max_concurrent = raw_limit.get("max_concurrent_wakes")
+        min_interval = raw_limit.get("min_wake_interval_seconds")
+        limit = RoleWakeLimit(
+            max_concurrent_wakes=(
+                max(0, int(max_concurrent)) if isinstance(max_concurrent, int) else None
+            ),
+            min_wake_interval_seconds=(
+                max(0, int(min_interval)) if isinstance(min_interval, int) else None
+            ),
+        )
+        if limit.max_concurrent_wakes is not None or limit.min_wake_interval_seconds is not None:
+            limits[role] = limit
+    return limits
+
+
+async def _role_wake_limited(
+    session: AsyncSession,
+    *,
+    board_id: object,
+    agent: Agent,
+) -> bool:
+    limits = _configured_role_wake_limits()
+    role_key = _agent_role_key(agent)
+    limit = limits.get(role_key)
+    if limit is None:
+        return False
+
+    now = utcnow()
+    peers = (
+        await session.exec(
+            select(Agent)
+            .where(col(Agent.board_id) == board_id)
+            .where(col(Agent.id) != agent.id),
+        )
+    ).all()
+    role_peers = [peer for peer in peers if _agent_role_key(peer) == role_key]
+
+    if limit.max_concurrent_wakes is not None:
+        active_count = sum(
+            1
+            for peer in role_peers
+            if peer.checkin_deadline_at is not None and peer.checkin_deadline_at > now
+        )
+        if active_count >= limit.max_concurrent_wakes:
+            logger.info(
+                "board_agent_work_recovery.role_wake_limited reason=max_concurrent role=%s board_id=%s agent_id=%s active_count=%s max=%s",
+                role_key,
+                board_id,
+                agent.id,
+                active_count,
+                limit.max_concurrent_wakes,
+            )
+            return True
+
+    if limit.min_wake_interval_seconds is not None:
+        cutoff = now - timedelta(seconds=limit.min_wake_interval_seconds)
+        recent_peer = next(
+            (
+                peer
+                for peer in role_peers
+                if peer.last_wake_sent_at is not None and peer.last_wake_sent_at > cutoff
+            ),
+            None,
+        )
+        if recent_peer is not None:
+            logger.info(
+                "board_agent_work_recovery.role_wake_limited reason=min_interval role=%s board_id=%s agent_id=%s peer_id=%s interval_seconds=%s",
+                role_key,
+                board_id,
+                agent.id,
+                recent_peer.id,
+                limit.min_wake_interval_seconds,
+            )
+            return True
+
+    return False
 
 
 def _merge_wake_message(
@@ -563,6 +685,8 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
             continue
         seen_agent_ids.add(agent.id)
         if not _agent_needs_work_wake(agent):
+            continue
+        if await _role_wake_limited(session, board_id=board.id, agent=agent):
             continue
         reason = (
             "active_work_recovery"
