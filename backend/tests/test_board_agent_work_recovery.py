@@ -190,7 +190,10 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     wake_calls: list[dict[str, Any]] = []
-    _patch_wake_services(monkeypatch, wake_calls)
+    heartbeat_patches: list[
+        list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]
+    ] = []
+    _patch_wake_services(monkeypatch, wake_calls, heartbeat_patches=heartbeat_patches)
     engine = await _make_engine()
     try:
         async with await _make_session(engine) as session:
@@ -243,6 +246,10 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
             assert woken == 0
             assert wake_calls == []
+            assert len(heartbeat_patches) == 1
+            assert heartbeat_patches[0][0][0] == "worker"
+            assert heartbeat_patches[0][0][1] == "/tmp/openclaw/workspace-worker"
+            assert heartbeat_patches[0][0][3] == {"primary": "azure-foundry/kimi-k2-6"}
     finally:
         await engine.dispose()
 
