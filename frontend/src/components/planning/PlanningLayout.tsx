@@ -8,7 +8,6 @@ import {
   type listBoardsApiV1BoardsGetResponse,
   useListBoardsApiV1BoardsGet,
 } from "@/api/generated/boards/boards";
-import { cn } from "@/lib/utils";
 import {
   type PlanRead,
   type PlanStatus,
@@ -33,9 +32,7 @@ export function PlanningLayout({ boardId }: Props) {
     ApiError
   >(undefined, { query: { refetchOnMount: false } });
   const allBoards =
-    boardsQuery.data?.status === 200
-      ? (boardsQuery.data.data.items ?? [])
-      : [];
+    boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
 
   // ── Plans ──────────────────────────────────────────────────────────────────
   const [plans, setPlans] = useState<PlanRead[]>([]);
@@ -46,6 +43,9 @@ export function PlanningLayout({ boardId }: Props) {
   );
   const [showArchived, setShowArchived] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [pendingAgentPlanIds, setPendingAgentPlanIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
@@ -69,10 +69,20 @@ export function PlanningLayout({ boardId }: Props) {
   };
 
   const handlePlanUpdated = (updated: PlanRead) => {
-    setPlans((prev) =>
-      prev.map((p) => (p.id === updated.id ? updated : p)),
-    );
+    setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     setSelectedPlan(updated);
+    const messages = updated.messages ?? [];
+    if (
+      messages.length === 0 ||
+      messages[messages.length - 1].role !== "user"
+    ) {
+      setPendingAgentPlanIds((prev) => {
+        if (!prev.has(updated.id)) return prev;
+        const next = new Set(prev);
+        next.delete(updated.id);
+        return next;
+      });
+    }
   };
 
   const handlePlanDeleted = () => {
@@ -91,7 +101,19 @@ export function PlanningLayout({ boardId }: Props) {
       const newPlan = result.data;
       setPlans((prev) => [newPlan, ...prev]);
       setSelectedPlan(newPlan);
+      if (initialPrompt.trim()) {
+        setPendingAgentPlanIds((prev) => new Set(prev).add(newPlan.id));
+      }
     }
+  };
+
+  const handleAgentSettled = (planId: string) => {
+    setPendingAgentPlanIds((prev) => {
+      if (!prev.has(planId)) return prev;
+      const next = new Set(prev);
+      next.delete(planId);
+      return next;
+    });
   };
 
   const currentBoard = allBoards.find((b) => b.id === boardId);
@@ -110,7 +132,9 @@ export function PlanningLayout({ boardId }: Props) {
       {/* Plan list */}
       <div className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
         <PlanList
-          plans={showArchived ? plans : plans.filter((p) => p.status !== "archived")}
+          plans={
+            showArchived ? plans : plans.filter((p) => p.status !== "archived")
+          }
           selectedPlanId={selectedPlan?.id ?? null}
           onSelectPlan={handleSelectPlan}
           onNewPlan={() => setShowNewModal(true)}
@@ -129,6 +153,8 @@ export function PlanningLayout({ boardId }: Props) {
             plan={selectedPlan}
             onPlanUpdated={handlePlanUpdated}
             onPlanDeleted={handlePlanDeleted}
+            startAgentPolling={pendingAgentPlanIds.has(selectedPlan.id)}
+            onAgentSettled={handleAgentSettled}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">

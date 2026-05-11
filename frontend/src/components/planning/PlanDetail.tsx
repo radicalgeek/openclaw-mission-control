@@ -38,12 +38,20 @@ function isAwaitingAgentReply(msgs: PlanMessage[]): boolean {
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, boardId }: { msg: PlanMessage; boardId: string }) {
+function MessageBubble({
+  msg,
+  boardId,
+}: {
+  msg: PlanMessage;
+  boardId: string;
+}) {
   const isUser = msg.role === "user";
   const meta = msg.metadata ?? null;
-  const resourceUri = typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
+  const resourceUri =
+    typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
   const agentId = typeof meta?.agent_id === "string" ? meta.agent_id : null;
-  const resourceHtml = typeof meta?.resource_html === "string" ? meta.resource_html : null;
+  const resourceHtml =
+    typeof meta?.resource_html === "string" ? meta.resource_html : null;
   return (
     <div className={cn("flex flex-col gap-0.5", isUser && "items-end")}>
       <span className="text-[10px] text-slate-400 px-1">
@@ -133,6 +141,8 @@ type Props = {
   plan: PlanRead;
   onPlanUpdated: (plan: PlanRead) => void;
   onPlanDeleted: () => void;
+  startAgentPolling?: boolean;
+  onAgentSettled?: (planId: string) => void;
 };
 
 export function PlanDetail({
@@ -140,17 +150,21 @@ export function PlanDetail({
   plan: initialPlan,
   onPlanUpdated,
   onPlanDeleted,
+  startAgentPolling = false,
+  onAgentSettled,
 }: Props) {
   const [plan, setPlan] = useState<PlanRead>(initialPlan);
   const [contentMode, setContentMode] = useState<ContentMode>("preview");
   const [editContent, setEditContent] = useState(initialPlan.content);
   const [isEditing, setIsEditing] = useState(false);
-  const [agentPendingContent, setAgentPendingContent] = useState<string | null>(null);
+  const [agentPendingContent, setAgentPendingContent] = useState<string | null>(
+    null,
+  );
   const [messages, setMessages] = useState<PlanMessage[]>(
     initialPlan.messages ?? [],
   );
   const [agentThinking, setAgentThinking] = useState(
-    () => isAwaitingAgentReply(initialPlan.messages ?? []),
+    () => startAgentPolling && isAwaitingAgentReply(initialPlan.messages ?? []),
   );
   const [generating, setGenerating] = useState(false);
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
@@ -168,29 +182,22 @@ export function PlanDetail({
     setEditContent(initialPlan.content);
     const msgs = initialPlan.messages ?? [];
     setMessages(msgs);
-    setAgentThinking(isAwaitingAgentReply(msgs));
+    setAgentThinking(startAgentPolling && isAwaitingAgentReply(msgs));
     setAgentPendingContent(null);
     setContentMode("preview");
     setIsEditing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPlan.id]);
+  }, [initialPlan.id, startAgentPolling]);
 
   // Auto-scroll chat
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: "smooth" });
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     }
   }, [messages, agentThinking]);
-
-  // Auto-start polling when the plan loads with a pending agent reply
-  // (e.g., immediately after creation with an initial prompt)
-  useEffect(() => {
-    if (isAwaitingAgentReply(messages)) {
-      startPolling();
-    }
-    // Only run on plan switch, not every messages change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPlan.id]);
 
   // Debounced auto-save for manual edits
   const scheduleAutoSave = useCallback(
@@ -213,43 +220,71 @@ export function PlanDetail({
   );
 
   // Poll for agent reply
-  const startPolling = useCallback(() => {
-    let attempts = 0;
-    const MAX_ATTEMPTS = 30;
+  const markAgentSettled = useCallback(() => {
+    setAgentThinking(false);
+    onAgentSettled?.(plan.id);
+  }, [onAgentSettled, plan.id]);
 
-    const poll = async () => {
-      attempts++;
-      try {
-        const result = await getPlan(boardId, plan.id);
-        if (result.status === 200) {
-          const fresh = result.data;
-          const freshCount = fresh.messages?.length ?? 0;
-          const currentCount = messages.length;
-          if (freshCount > currentCount) {
-            setMessages(fresh.messages ?? []);
-            // Update content unless user is editing
-            if (!isEditing) {
-              setPlan(fresh);
-              setEditContent(fresh.content);
-              onPlanUpdated(fresh);
-            } else if (fresh.content !== plan.content) {
-              setAgentPendingContent(fresh.content);
+  const startPolling = useCallback(
+    (baselineMessageCount = messages.length) => {
+      let attempts = 0;
+      const MAX_ATTEMPTS = 30;
+
+      const poll = async () => {
+        attempts++;
+        try {
+          const result = await getPlan(boardId, plan.id);
+          if (result.status === 200) {
+            const fresh = result.data;
+            const freshCount = fresh.messages?.length ?? 0;
+            const contentChanged = fresh.content !== plan.content;
+            if (freshCount > baselineMessageCount || contentChanged) {
+              setMessages(fresh.messages ?? []);
+              // Update content unless user is editing
+              if (!isEditing) {
+                setPlan(fresh);
+                setEditContent(fresh.content);
+                onPlanUpdated(fresh);
+              } else if (fresh.content !== plan.content) {
+                setAgentPendingContent(fresh.content);
+              }
+              markAgentSettled();
+              return;
             }
-            setAgentThinking(false);
-            return;
           }
+        } catch {
+          // ignore poll errors
         }
-      } catch {
-        // ignore poll errors
-      }
-      if (attempts < MAX_ATTEMPTS) {
-        pollTimerRef.current = setTimeout(poll, 2000);
-      } else {
-        setAgentThinking(false);
-      }
-    };
-    pollTimerRef.current = setTimeout(poll, 2000);
-  }, [boardId, plan.id, messages.length, isEditing, plan.content, onPlanUpdated]);
+        if (attempts < MAX_ATTEMPTS) {
+          pollTimerRef.current = setTimeout(poll, 2000);
+        } else {
+          markAgentSettled();
+        }
+      };
+      pollTimerRef.current = setTimeout(poll, 2000);
+    },
+    [
+      boardId,
+      plan.id,
+      messages.length,
+      isEditing,
+      plan.content,
+      onPlanUpdated,
+      markAgentSettled,
+    ],
+  );
+
+  // Only poll automatically for a plan that was submitted in this browser
+  // session. Stored transcripts can end with a user message for many reasons
+  // (gateway failure, timed-out agent, user navigation); merely loading that
+  // state must not re-enter the "drafting" UX or disable chat.
+  useEffect(() => {
+    if (startAgentPolling && isAwaitingAgentReply(messages)) {
+      startPolling(messages.length);
+    }
+    // Only run on plan switch / explicit local pending state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPlan.id, startAgentPolling]);
 
   // Send chat message
   const handleSend = async (message: string) => {
@@ -263,9 +298,9 @@ export function PlanDetail({
 
     try {
       await chatWithPlan(boardId, plan.id, { message });
-      startPolling();
+      startPolling(messages.length + 1);
     } catch {
-      setAgentThinking(false);
+      markAgentSettled();
     }
   };
 
@@ -446,7 +481,8 @@ export function PlanDetail({
                 contentMode === "edit"
                   ? "bg-slate-100 text-slate-700"
                   : "text-slate-500 hover:bg-slate-50",
-                (isArchived || agentThinking) && "opacity-40 cursor-not-allowed",
+                (isArchived || agentThinking) &&
+                  "opacity-40 cursor-not-allowed",
               )}
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -468,11 +504,20 @@ export function PlanDetail({
                   <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                     <div className="flex gap-1.5 text-[color:var(--text-quiet)]">
                       <span className="animate-bounce text-lg">●</span>
-                      <span className="animate-bounce delay-100 text-lg">●</span>
-                      <span className="animate-bounce delay-200 text-lg">●</span>
+                      <span className="animate-bounce delay-100 text-lg">
+                        ●
+                      </span>
+                      <span className="animate-bounce delay-200 text-lg">
+                        ●
+                      </span>
                     </div>
-                    <p className="text-sm text-[color:var(--text-muted)]">Agent is drafting your plan…</p>
-                    <p className="text-xs text-[color:var(--text-quiet)]">Editing and chat are disabled until the first draft is ready.</p>
+                    <p className="text-sm text-[color:var(--text-muted)]">
+                      Agent is drafting your plan…
+                    </p>
+                    <p className="text-xs text-[color:var(--text-quiet)]">
+                      Editing and chat are disabled until the first draft is
+                      ready.
+                    </p>
                   </div>
                 ) : plan.content ? (
                   <Markdown content={plan.content} variant="description" />
@@ -503,7 +548,10 @@ export function PlanDetail({
             </span>
           </div>
 
-          <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div
+            ref={chatContainerRef}
+            className="flex-1 space-y-4 overflow-y-auto px-4 py-4"
+          >
             {messages.length === 0 && !agentThinking && (
               <p className="text-center text-xs text-slate-400">
                 Chat with the project agent to build your plan.
