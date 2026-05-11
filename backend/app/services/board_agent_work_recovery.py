@@ -137,8 +137,11 @@ def _merge_wake_message(
         f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}} and JSON "
         '{"status":"done","comment":"<merge SHA, branch/worktree, checks, and evidence>"}. '
         "If work is uncommitted, missing, conflicted, or not mergeable, notify the lead and "
-        "original developer in the review task comment and leave the task in `review` for "
-        "follow-up."
+        "original developer in the review task comment, and also post one concise board chat "
+        "message via POST "
+        f"/api/v1/agent/boards/{board.id}/memory with tags [\"chat\",\"merge_blocker\"]. "
+        "Do not use OpenClaw message/channel-send tools for board chat. Leave the task in "
+        "`review` for follow-up."
     )
 
 
@@ -178,8 +181,8 @@ def _lead_wake_message(
         "mention the merge agent with the task id, branch/commit/worktree evidence, and expected "
         "checks. If the merge agent reports that mainline contains the work but the task is "
         "still in `review`, move it to `done` with a comment containing the merge SHA. If work "
-        "is blocked, post a task comment naming the blocker and send it back to the developer "
-        "when rework is needed."
+        "is blocked, read recent board chat for merge_blocker messages, post a task comment "
+        "naming the blocker, and send it back to the developer when rework is needed."
     )
 
 

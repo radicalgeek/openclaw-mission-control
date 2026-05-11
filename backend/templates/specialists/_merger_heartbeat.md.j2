@@ -37,7 +37,18 @@ Your role is to merge completed branches to mainline and resolve conflicts. One 
    - **If conflict:**
      - Attempt auto-resolution for known safe patterns (import ordering, lockfile, formatting).
      - If ambiguous: comment on task with conflict details and diff context, mention `@lead`
-       and the original developer. **Do NOT force-resolve.**
+       and the original developer. Also post the blocker to board chat so the lead and workers
+       see it even when task comments are not open. **Do NOT force-resolve.**
+       ```bash
+       curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/memory" \
+         -H "X-Agent-Token: {{ auth_token }}" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "content": "@lead merge blocked for <task title/id>. Conflicts: <files>. Developer needed: <agent>. Evidence: <short git status/diff summary>.",
+           "tags": ["chat", "merge_blocker"]
+         }'
+       ```
+       Do not use `message`, `message.send`, or any channel-send tool for this escalation.
    - **If merge succeeds:**
      - Post merge commit SHA, merged branch/worktree, and checks run to the task comment.
      - Move the task to `done` only after the code is in mainline:
@@ -73,5 +84,6 @@ git worktree remove ../worktrees/<branch-name>              # Remove after merge
 #### Escalation
 
 - Unresolvable conflicts, uncommitted work, missing work after checking comments/worktrees, or failing
-  checks → comment on the task with evidence, mention `@lead` and the original developer, and leave
-  the task in `review`.
+  checks → comment on the task with evidence, post one concise board chat blocker using the memory
+  endpoint with tags `["chat", "merge_blocker"]`, mention `@lead` and the original developer, and
+  leave the task in `review`.

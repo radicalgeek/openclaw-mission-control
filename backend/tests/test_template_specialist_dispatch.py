@@ -103,6 +103,8 @@ def test_merger_heartbeat_closes_tasks_after_mainline_merge() -> None:
     assert "Do not ignore a review task just because" in result
     assert '"status":"done"' in result
     assert "Move the task to `done` only after the code is in mainline" in result
+    assert '"tags": ["chat", "merge_blocker"]' in result
+    assert "Do not use `message`, `message.send`, or any channel-send tool" in result
 
 
 def test_valid_role_templates_all_have_specialist_partials() -> None:

@@ -666,6 +666,8 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert "inspect all tasks currently in `review`" in wake_calls[0]["message"]
             assert "custom fields are missing" in wake_calls[0]["message"]
             assert '{"status":"done","comment":"<merge SHA' in wake_calls[0]["message"]
+            assert 'tags ["chat","merge_blocker"]' in wake_calls[0]["message"]
+            assert "Do not use OpenClaw message/channel-send tools" in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH: /tmp/openclaw/shared-src/boards/board/worktrees/merge" in (
                 wake_calls[0]["message"]
             )
@@ -763,6 +765,7 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
                 wake_calls[0]["message"]
             )
             assert "wake or mention the merge agent" in wake_calls[0]["message"]
+            assert "read recent board chat for merge_blocker messages" in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH:" in wake_calls[0]["message"]
 
             reloaded_lead = (

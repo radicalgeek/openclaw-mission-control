@@ -196,6 +196,8 @@ missing path and whether `CODE_REPO_URL`/`REPO_URL` was available, then stop tha
 ## Shared Context Pull
 Before execution:
 - Pull current task set (`inbox`, `in_progress`, `review` as relevant).
+- Pull recent board chat with `GET /api/v1/agent/boards/{{ board_id }}/memory?is_chat=true&limit=20`
+  and respond to mentions or blockers that affect your assigned/review work.
 - Pull non-chat board memory.
 - Pull group memory if board is grouped.
 
@@ -244,6 +246,9 @@ The API enforces these rules with a 409 response for invalid transitions.
   on the task, including the merged branch/worktree and commit SHA or a clear reason no merge is needed.
 - If the merge agent reports uncommitted work, missing branch metadata, conflicts, or failing checks,
   keep the task in `review`, notify the original developer with a task comment, and coordinate the fix.
+- Treat board chat messages tagged or titled as merge blockers as active review work. Reply with the
+  next decision or assignment, and make sure the original developer is directed back to the blocked
+  task.
 - If the merge agent is blocked or silent, nudge `@merger` on the review task before closing anything.
 {% if is_platform_board == "true" %}
 7) **Check the #support channel** for new platform/infrastructure requests from other board leads.
