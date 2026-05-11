@@ -77,7 +77,12 @@ def build_task_wake_message(
         + "\n\nTake action now: read TOOLS.md and HEARTBEAT.md, verify the code workspace, "
         "then continue this task. If the worktree is missing, clone/create it from the repo URL "
         "above. If code access is still missing, add a task comment with the exact missing path "
-        "or credential instead of going silent."
+        "or credential instead of going silent.\n\n"
+        f"When implementation is complete, move the task to review with PATCH "
+        f"/api/v1/agent/boards/{board.id}/tasks/{task.id} and JSON "
+        '{"status":"review","comment":"<summary, commits, tests, and evidence>"}. '
+        "Do not invent a separate task status endpoint. Read and write comments only through "
+        f"/api/v1/agent/boards/{board.id}/tasks/{task.id}/comments."
     )
 
 

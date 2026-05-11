@@ -173,6 +173,8 @@ Always query the API for real data — never fabricate values.
 |---|---|
 | Task list with statuses | `GET /api/v1/agent/boards/{{ board_id }}/tasks` |
 | Single task detail | `GET /api/v1/agent/boards/{{ board_id }}/tasks/{task_id}` |
+| Move/update a task | `PATCH /api/v1/agent/boards/{{ board_id }}/tasks/{task_id}` with JSON such as `{"status":"review","comment":"..."}` |
+| Task comments | `GET/POST /api/v1/agent/boards/{{ board_id }}/tasks/{task_id}/comments` |
 | Sprint list | `GET /api/v1/agent/boards/{{ board_id }}/sprints` |
 | Sprint tickets and estimates | `GET /api/v1/agent/boards/{{ board_id }}/sprints/{sprint_id}/tickets` |
 | Board activity events | `GET /api/v1/agent/boards/{{ board_id }}/activity` |

@@ -14,6 +14,7 @@ from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.tasks import Task
 from app.schemas.tasks import TaskCreate
+from app.schemas.tasks import TaskUpdate
 
 
 class _FakeSession:
@@ -118,6 +119,66 @@ async def test_agent_task_detail_returns_single_task(monkeypatch: pytest.MonkeyP
     assert captured["session"] is not None
     assert captured["task"] is task
     assert captured["board_id"] == board_id
+
+
+@pytest.mark.asyncio
+async def test_agent_task_status_endpoint_forwards_to_task_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board_id = uuid4()
+    task = Task(
+        id=uuid4(),
+        board_id=board_id,
+        title="Implement work",
+        status="in_progress",
+    )
+    payload = TaskUpdate(status="review", comment="Implemented and tested.")
+    captured: dict[str, Any] = {}
+
+    async def fake_guard(*_args: object, **kwargs: object) -> None:
+        captured["write"] = kwargs["write"]
+
+    async def fake_update_task(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return {"id": str(task.id), "status": "review"}
+
+    monkeypatch.setattr(agent_api, "_guard_task_access", fake_guard)
+    monkeypatch.setattr(agent_api.tasks_api, "update_task", fake_update_task)
+
+    result = await agent_api.update_task_status(
+        payload=payload,
+        task=task,
+        session=object(),  # type: ignore[arg-type]
+        agent_ctx=_agent_ctx(board_id),
+    )
+
+    assert result == {"id": str(task.id), "status": "review"}
+    assert captured["write"] is True
+    assert captured["payload"] is payload
+    assert captured["task"] is task
+    assert captured["actor"].agent.board_id == board_id
+
+
+@pytest.mark.asyncio
+async def test_agent_task_status_endpoint_requires_status() -> None:
+    board_id = uuid4()
+    task = Task(
+        id=uuid4(),
+        board_id=board_id,
+        title="Implement work",
+        status="in_progress",
+    )
+
+    with pytest.raises(agent_api.HTTPException) as exc:
+        await agent_api.update_task_status(
+            payload=TaskUpdate(comment="Just a note."),
+            task=task,
+            session=object(),  # type: ignore[arg-type]
+            agent_ctx=_agent_ctx(board_id),
+        )
+
+    assert exc.value.status_code == 422
+    assert exc.value.detail == "status is required"
 
 
 @pytest.mark.asyncio

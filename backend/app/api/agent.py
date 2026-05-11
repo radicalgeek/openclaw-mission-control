@@ -1272,6 +1272,62 @@ async def update_task(
     )
 
 
+@router.post(
+    "/boards/{board_id}/tasks/{task_id}/status",
+    response_model=TaskRead,
+    tags=AGENT_BOARD_TAGS,
+    openapi_extra=_agent_board_openapi_hints(
+        intent="agent_task_status_update",
+        when_to_use=[
+            "Compatibility endpoint for agents that try to move a task via a status-specific route.",
+            "Worker has finished implementation and needs to move in_progress work to review.",
+        ],
+        routing_examples=[
+            {
+                "input": {
+                    "intent": "worker moves completed task to review",
+                    "required_privilege": "any_agent",
+                },
+                "decision": "agent_task_status_update",
+            }
+        ],
+        negative_guidance=[
+            "Prefer PATCH /api/v1/agent/boards/{board_id}/tasks/{task_id} for new clients.",
+            "Do not use non-board-scoped /api/v1/tasks/{task_id}/status routes.",
+        ],
+    ),
+)
+@router.patch(
+    "/boards/{board_id}/tasks/{task_id}/status",
+    response_model=TaskRead,
+    tags=AGENT_BOARD_TAGS,
+    include_in_schema=False,
+)
+async def update_task_status(
+    payload: TaskUpdate,
+    task: Task = TASK_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> TaskRead:
+    """Compatibility wrapper for status-only task updates.
+
+    OpenClaw agents occasionally infer a status-specific URL from generic API
+    shapes. Keep that route valid so completed work can still advance to review.
+    """
+    if "status" not in payload.model_fields_set or payload.status is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="status is required",
+        )
+    await _guard_task_access(session, agent_ctx, task, write=True)
+    return await tasks_api.update_task(
+        payload=payload,
+        task=task,
+        session=session,
+        actor=_actor(agent_ctx),
+    )
+
+
 @router.delete(
     "/boards/{board_id}/tasks/{task_id}",
     response_model=OkResponse,
