@@ -527,18 +527,24 @@ async def agent_update_plan(
             assistant_msg["metadata"] = payload.app_metadata
         messages.append(assistant_msg)
 
+    has_ticket_decomposition = bool(payload.tickets)
+
     # Prefer explicitly pushed content; otherwise try extracting from reply.
+    # Ticket decomposition updates are status/chat updates, not plan document
+    # edits. Some triage agents include a short summary in ``content`` while
+    # posting ``tickets``; preserving the existing plan body keeps the planning
+    # screen focused on the source plan instead of the agent's chat/status text.
     new_content: str | None = None
-    if isinstance(pushed_content, str) and pushed_content.strip():
+    if not has_ticket_decomposition and isinstance(pushed_content, str) and pushed_content.strip():
         new_content = pushed_content.strip()
-    elif reply:
+    elif not has_ticket_decomposition and reply:
         new_content = extract_plan_content(reply)
 
     if new_content is not None:
         plan.content = new_content
 
     # Store decomposed tickets if agent provided them
-    if payload.tickets:
+    if has_ticket_decomposition and payload.tickets:
         plan.decomposed_tickets = [
             {
                 "title": t.title,

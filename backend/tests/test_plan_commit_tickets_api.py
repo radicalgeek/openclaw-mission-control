@@ -334,6 +334,45 @@ async def test_agent_update_with_tickets_commits_backlog_when_none_exist() -> No
 
 
 @pytest.mark.asyncio
+async def test_agent_update_with_tickets_preserves_plan_content() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, plan = await _seed(session, decomposed_tickets=None)
+            original_content = plan.content
+
+            await plans_api.agent_update_plan(
+                plan.id,
+                payload=PlanAgentUpdateRequest(
+                    reply="Decomposed into 1 ticket",
+                    content="Decomposed into 1 ticket",
+                    tickets=[
+                        DecomposedTicket(
+                            title="[API] Add auth guard",
+                            description="## Context\nGuard the production API.",
+                            priority="high",
+                        ),
+                    ],
+                ),
+                board=board,
+                session=session,
+            )
+
+            refreshed = await session.get(Plan, plan.id)
+            tasks = (await session.exec(select(Task).where(Task.plan_id == plan.id))).all()
+
+        assert refreshed is not None
+        assert refreshed.content == original_content
+        assert refreshed.messages is not None
+        assert refreshed.messages[-1]["content"] == "Decomposed into 1 ticket"
+        assert refreshed.decomposed_tickets is not None
+        assert len(tasks) == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_agent_update_with_tickets_does_not_duplicate_existing_plan_tasks() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

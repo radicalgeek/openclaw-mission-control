@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -15,9 +16,14 @@ from app.models.plans import Plan
 from app.services.openclaw.coordination_service import AbstractGatewayMessagingService
 from app.services.openclaw.exceptions import GatewayOperation, map_gateway_error_to_http_exception
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
-from app.services.openclaw.shared import GatewayAgentIdentity
+from app.services.openclaw.provisioning_db import (
+    LeadAgentOptions,
+    LeadAgentRequest,
+    OpenClawProvisioningService,
+)
 
 PLAN_DISPATCH_OPERATION = GatewayOperation.LEAD_MESSAGE_DISPATCH
 
@@ -113,6 +119,161 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             raise_gateway_errors=False,
             extra_files=None,
         )
+
+    async def _ensure_board_lead_agent(
+        self,
+        *,
+        board: Board,
+        gateway: Gateway,
+        config: GatewayClientConfig,
+    ) -> Agent:
+        """Ensure planning chat has a real board lead session to target."""
+        lead, _created = await OpenClawProvisioningService(self.session).ensure_board_lead_agent(
+            request=LeadAgentRequest(
+                board=board,
+                gateway=gateway,
+                config=config,
+                user=None,
+                options=LeadAgentOptions(action="provision"),
+            ),
+        )
+        if not lead.openclaw_session_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Lead agent has no session key",
+            )
+        return lead
+
+    async def _wake_board_lead_agent(
+        self,
+        *,
+        agent: Agent,
+        gateway: Gateway,
+        board: Board,
+        log_prefix: str,
+        trace_id: str,
+    ) -> None:
+        """Re-register the board lead without reprovisioning its workspace."""
+        self.logger.info(
+            "gateway.%s.lead_relifecycle trace_id=%s agent_id=%s session_key=%s",
+            log_prefix,
+            trace_id,
+            agent.id,
+            agent.openclaw_session_id,
+        )
+        await AgentLifecycleOrchestrator(self.session).run_lifecycle(
+            gateway=gateway,
+            agent_id=agent.id,
+            board=board,
+            user=None,
+            action="update",
+            force_bootstrap=False,
+            reset_session=False,
+            wake=True,
+            deliver_wakeup=False,
+            clear_confirm_token=False,
+            raise_gateway_errors=False,
+            extra_files=None,
+        )
+
+    async def _dispatch_to_board_lead(
+        self,
+        *,
+        board: Board,
+        gateway: Gateway,
+        config: GatewayClientConfig,
+        prompt: str,
+        correlation_id: str | None,
+        log_prefix: str,
+        deliver: bool = True,
+        plan: Plan | None = None,
+    ) -> str:
+        trace_id = GatewayDispatchService.resolve_trace_id(correlation_id, prefix=log_prefix)
+        lead = await self._ensure_board_lead_agent(board=board, gateway=gateway, config=config)
+        session_key = lead.openclaw_session_id
+        if not session_key:  # pragma: no cover - guarded above for type narrowing
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Lead agent has no session key",
+            )
+
+        async def _send() -> None:
+            await self._dispatch_gateway_message(
+                session_key=session_key,
+                config=config,
+                agent_name=lead.name,
+                message=prompt,
+                deliver=deliver,
+            )
+
+        try:
+            await _send()
+        except OpenClawGatewayError as exc:
+            if _AGENT_MISSING_HINT in str(exc):
+                self.logger.warning(
+                    "gateway.%s.lead_missing_in_config trace_id=%s board_id=%s "
+                    "session_key=%s re-registering and retrying",
+                    log_prefix,
+                    trace_id,
+                    board.id,
+                    session_key,
+                )
+                await self._wake_board_lead_agent(
+                    agent=lead,
+                    gateway=gateway,
+                    board=board,
+                    log_prefix=log_prefix,
+                    trace_id=trace_id,
+                )
+                try:
+                    await _send()
+                except (OpenClawGatewayError, TimeoutError) as retry_exc:
+                    self.logger.error(
+                        "gateway.%s.failed trace_id=%s board_id=%s plan_id=%s "
+                        "session_key=%s error=%s (after lead re-register)",
+                        log_prefix,
+                        trace_id,
+                        board.id,
+                        plan.id if plan is not None else None,
+                        session_key,
+                        str(retry_exc),
+                    )
+                    raise map_gateway_error_to_http_exception(
+                        PLAN_DISPATCH_OPERATION,
+                        retry_exc,
+                    ) from retry_exc
+            else:
+                self.logger.error(
+                    "gateway.%s.failed trace_id=%s board_id=%s plan_id=%s session_key=%s "
+                    "error=%s",
+                    log_prefix,
+                    trace_id,
+                    board.id,
+                    plan.id if plan is not None else None,
+                    session_key,
+                    str(exc),
+                )
+                raise map_gateway_error_to_http_exception(PLAN_DISPATCH_OPERATION, exc) from exc
+        except TimeoutError as exc:
+            self.logger.error(
+                "gateway.%s.failed trace_id=%s board_id=%s plan_id=%s session_key=%s error=%s",
+                log_prefix,
+                trace_id,
+                board.id,
+                plan.id if plan is not None else None,
+                session_key,
+                str(exc),
+            )
+            raise map_gateway_error_to_http_exception(PLAN_DISPATCH_OPERATION, exc) from exc
+        self.logger.info(
+            "gateway.%s.success trace_id=%s board_id=%s plan_id=%s session_key=%s",
+            log_prefix,
+            trace_id,
+            board.id,
+            plan.id if plan is not None else None,
+            session_key,
+        )
+        return session_key
 
     async def dispatch_plan_decompose(
         self,
@@ -302,8 +463,8 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         """Send the opening prompt to the board lead agent's gateway session.
 
         Uses the board lead's existing session so the agent has proper board
-        context, auth token, and memory.  Falls back to the gateway main
-        session when no provisioned lead is found.
+        context, auth token, and memory. If the lead is missing, it is
+        provisioned instead of falling back to the gateway main session.
         """
         trace_id = GatewayDispatchService.resolve_trace_id(correlation_id, prefix="planning.start")
         self.logger.log(
@@ -315,48 +476,14 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         gateway, config = await GatewayDispatchService(
             self.session
         ).require_gateway_config_for_board(board)
-
-        # Prefer the board lead's session: it has the right X-Agent-Token and board context.
-        lead = await Agent.objects.filter_by(board_id=board.id, is_board_lead=True).first(
-            self.session
+        return await self._dispatch_to_board_lead(
+            board=board,
+            gateway=gateway,
+            config=config,
+            prompt=prompt,
+            correlation_id=correlation_id,
+            log_prefix="planning.start_dispatch",
         )
-
-        if lead is not None and lead.openclaw_session_id:
-            session_key = lead.openclaw_session_id
-            agent_name = lead.name
-        else:
-            # Fallback: gateway main session (no board-specific auth token).
-            session_key = GatewayAgentIdentity.session_key(gateway)
-            agent_name = "Gateway Agent"
-            self.logger.warning(
-                "gateway.planning.start_dispatch.no_lead trace_id=%s board_id=%s "
-                "falling back to gateway main session",
-                trace_id,
-                board.id,
-            )
-        try:
-            await self._dispatch_gateway_message(
-                session_key=session_key,
-                config=config,
-                agent_name=agent_name,
-                message=prompt,
-                deliver=True,
-            )
-        except (OpenClawGatewayError, TimeoutError) as exc:
-            self.logger.error(
-                "gateway.planning.start_dispatch.failed trace_id=%s board_id=%s error=%s",
-                trace_id,
-                board.id,
-                str(exc),
-            )
-            raise map_gateway_error_to_http_exception(PLAN_DISPATCH_OPERATION, exc) from exc
-        self.logger.info(
-            "gateway.planning.start_dispatch.success trace_id=%s board_id=%s session_key=%s",
-            trace_id,
-            board.id,
-            session_key,
-        )
-        return session_key
 
     async def dispatch_plan_message(
         self,
@@ -377,43 +504,15 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             board.id,
             plan.id,
         )
-        _gateway, config = await GatewayDispatchService(
+        gateway, config = await GatewayDispatchService(
             self.session
         ).require_gateway_config_for_board(board)
-
-        # Always route to the board lead's session for proper auth and board context.
-        lead = await Agent.objects.filter_by(board_id=board.id, is_board_lead=True).first(
-            self.session
-        )
-
-        if lead is not None and lead.openclaw_session_id:
-            session_key = lead.openclaw_session_id
-            agent_name = lead.name
-        else:
-            session_key = plan.session_key
-            agent_name = "Gateway Agent"
-
-        try:
-            await self._dispatch_gateway_message(
-                session_key=session_key,
-                config=config,
-                agent_name=agent_name,
-                message=message,
-                deliver=True,
-            )
-        except (OpenClawGatewayError, TimeoutError) as exc:
-            self.logger.error(
-                "gateway.planning.message_dispatch.failed trace_id=%s board_id=%s "
-                "plan_id=%s error=%s",
-                trace_id,
-                board.id,
-                plan.id,
-                str(exc),
-            )
-            raise map_gateway_error_to_http_exception(PLAN_DISPATCH_OPERATION, exc) from exc
-        self.logger.info(
-            "gateway.planning.message_dispatch.success trace_id=%s board_id=%s plan_id=%s",
-            trace_id,
-            board.id,
-            plan.id,
+        await self._dispatch_to_board_lead(
+            board=board,
+            gateway=gateway,
+            config=config,
+            prompt=message,
+            correlation_id=correlation_id,
+            log_prefix="planning.message_dispatch",
+            plan=plan,
         )

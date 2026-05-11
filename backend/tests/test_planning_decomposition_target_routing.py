@@ -25,6 +25,9 @@ from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.plans import Plan
+from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
+from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.internal.session_keys import board_lead_session_key
 from app.services.openclaw.planning_service import PlanningMessagingService
 
 
@@ -116,8 +119,10 @@ def _capture_dispatches() -> tuple[list[dict[str, Any]], Any]:
     async def _fake_dispatch_gateway_message(self: Any, **kwargs: Any) -> None:
         captured.append(kwargs)
 
-    async def _fake_require_gateway_config(self: Any, board: Board) -> tuple[Any, Any]:
-        return object(), object()
+    async def _fake_require_gateway_config(self: Any, board: Board) -> tuple[Gateway, Any]:
+        gateway = await Gateway.objects.by_id(board.gateway_id).first(self.session)
+        assert gateway is not None
+        return gateway, GatewayClientConfig(url=gateway.url, token=gateway.token)
 
     return captured, (
         patch(
@@ -131,6 +136,168 @@ def _capture_dispatches() -> tuple[list[dict[str, Any]], Any]:
             _fake_require_gateway_config,
         ),
     )
+
+
+def _expected_lead_session(board: Board) -> str:
+    return board_lead_session_key(board.id)
+
+
+@pytest.mark.asyncio
+async def test_plan_start_ensures_board_lead_instead_of_gateway_fallback() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            board, _plan, _lead, _org = await _seed(session, lead_session=None)
+            captured, (p1, p2) = _capture_dispatches()
+            ensure_calls: list[UUID] = []
+
+            async def _fake_ensure(self: Any, *, request: Any) -> tuple[Agent, bool]:
+                ensure_calls.append(request.board.id)
+                return (
+                    Agent(
+                        id=uuid4(),
+                        board_id=request.board.id,
+                        gateway_id=request.gateway.id,
+                        name="Lead Agent",
+                        agent_type=AGENT_TYPE_BOARD_LEAD,
+                        is_board_lead=True,
+                        openclaw_session_id="created-lead-session",
+                    ),
+                    True,
+                )
+
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.services.openclaw.planning_service.OpenClawProvisioningService."
+                    "ensure_board_lead_agent",
+                    _fake_ensure,
+                ),
+            ):
+                svc = PlanningMessagingService(session)
+                returned = await svc.dispatch_plan_start(board=board, prompt="write a plan")
+
+        assert returned == "created-lead-session"
+        assert ensure_calls == [board.id]
+        assert captured[0]["session_key"] == "created-lead-session"
+        assert captured[0]["agent_name"] == "Lead Agent"
+        assert captured[0]["agent_name"] != "Gateway Agent"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_plan_message_uses_ensured_lead_not_plan_session_fallback() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            board, plan, _lead, _org = await _seed(session, lead_session=None)
+            plan.session_key = "gateway-main-session"
+            session.add(plan)
+            await session.commit()
+            captured, (p1, p2) = _capture_dispatches()
+
+            async def _fake_ensure(self: Any, *, request: Any) -> tuple[Agent, bool]:
+                return (
+                    Agent(
+                        id=uuid4(),
+                        board_id=request.board.id,
+                        gateway_id=request.gateway.id,
+                        name="Lead Agent",
+                        agent_type=AGENT_TYPE_BOARD_LEAD,
+                        is_board_lead=True,
+                        openclaw_session_id="created-lead-session",
+                    ),
+                    True,
+                )
+
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.services.openclaw.planning_service.OpenClawProvisioningService."
+                    "ensure_board_lead_agent",
+                    _fake_ensure,
+                ),
+            ):
+                svc = PlanningMessagingService(session)
+                await svc.dispatch_plan_message(board=board, plan=plan, message="revise it")
+
+        assert captured[0]["session_key"] == "created-lead-session"
+        assert captured[0]["session_key"] != "gateway-main-session"
+        assert captured[0]["agent_name"] == "Lead Agent"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_plan_start_reregisters_lead_once_when_runtime_config_lost() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            board, _plan, lead, _org = await _seed(session)
+            assert lead is not None
+            captured: list[dict[str, Any]] = []
+            lifecycle_calls: list[UUID] = []
+
+            async def _fake_dispatch_gateway_message(self: Any, **kwargs: Any) -> None:
+                captured.append(kwargs)
+                if len(captured) == 1:
+                    raise OpenClawGatewayError("agent no longer exists in configuration")
+
+            async def _fake_require_gateway_config(self: Any, board: Board) -> tuple[Gateway, Any]:
+                gateway = await Gateway.objects.by_id(board.gateway_id).first(self.session)
+                assert gateway is not None
+                return gateway, GatewayClientConfig(url=gateway.url, token=gateway.token)
+
+            async def _fake_ensure(self: Any, *, request: Any) -> tuple[Agent, bool]:
+                return lead, False
+
+            async def _fake_run_lifecycle(self: Any, **kwargs: Any) -> Agent:
+                lifecycle_calls.append(kwargs["agent_id"])
+                assert kwargs["action"] == "update"
+                assert kwargs["force_bootstrap"] is False
+                assert kwargs["reset_session"] is False
+                assert kwargs["deliver_wakeup"] is False
+                return lead
+
+            with (
+                patch(
+                    "app.services.openclaw.planning_service.AbstractGatewayMessagingService."
+                    "_dispatch_gateway_message",
+                    _fake_dispatch_gateway_message,
+                ),
+                patch(
+                    "app.services.openclaw.gateway_dispatch.GatewayDispatchService."
+                    "require_gateway_config_for_board",
+                    _fake_require_gateway_config,
+                ),
+                patch(
+                    "app.services.openclaw.planning_service.OpenClawProvisioningService."
+                    "ensure_board_lead_agent",
+                    _fake_ensure,
+                ),
+                patch(
+                    "app.services.openclaw.planning_service.AgentLifecycleOrchestrator."
+                    "run_lifecycle",
+                    _fake_run_lifecycle,
+                ),
+            ):
+                svc = PlanningMessagingService(session)
+                returned = await svc.dispatch_plan_start(board=board, prompt="write a plan")
+
+        assert returned == "lead-session-key"
+        assert lifecycle_calls == [lead.id]
+        assert [item["session_key"] for item in captured] == [
+            "lead-session-key",
+            "lead-session-key",
+        ]
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -194,8 +361,8 @@ async def test_decompose_falls_back_to_board_lead_when_org_planner_unset() -> No
                     plan=plan,
                     prompt="decompose",
                 )
-        assert returned == "lead-session-key"
-        assert captured[0]["session_key"] == "lead-session-key"
+        assert returned == _expected_lead_session(board)
+        assert captured[0]["session_key"] == _expected_lead_session(board)
     finally:
         await engine.dispose()
 
@@ -227,7 +394,7 @@ async def test_decompose_falls_back_when_org_planner_agent_id_does_not_exist() -
                     plan=plan,
                     prompt="decompose",
                 )
-        assert returned == "lead-session-key"
+        assert returned == _expected_lead_session(board)
     finally:
         await engine.dispose()
 
@@ -258,7 +425,7 @@ async def test_decompose_falls_back_when_org_planner_setting_is_invalid_uuid() -
                     plan=plan,
                     prompt="decompose",
                 )
-        assert returned == "lead-session-key"
+        assert returned == _expected_lead_session(board)
     finally:
         await engine.dispose()
 
@@ -294,7 +461,7 @@ async def test_decompose_target_board_lead_routes_to_lead_even_with_org_planner_
                 )
         # Even though an org planner is configured, the plan's target was
         # board_lead — that wins.
-        assert returned == "lead-session-key"
+        assert returned == _expected_lead_session(board)
     finally:
         await engine.dispose()
 
@@ -424,7 +591,7 @@ async def test_decompose_falls_back_to_lead_when_triager_unavailable() -> None:
                     plan=plan,
                     prompt="decompose",
                 )
-        assert returned == "lead-session-key"
+        assert returned == _expected_lead_session(board)
     finally:
         await engine.dispose()
 
@@ -519,6 +686,6 @@ async def test_decompose_falls_back_when_org_planner_has_no_session_yet() -> Non
                     prompt="decompose",
                 )
         # Org planner exists but is offline → must fall back to board lead.
-        assert returned == "lead-session-key"
+        assert returned == _expected_lead_session(board)
     finally:
         await engine.dispose()
