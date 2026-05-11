@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import TypedDict
 
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -17,11 +18,11 @@ from app.models.tasks import Task
 from app.services.activity_log import record_activity
 from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
-from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.gateway_rpc import GatewayConfig, OpenClawGatewayError
+from app.services.openclaw.internal.agent_key import agent_key as _agent_key
 from app.services.openclaw.provisioning import (
     GatewayAgentRegistration,
     OpenClawGatewayControlPlane,
-    _agent_key,
     _agent_model_config,
     _agent_session_model,
     _agent_session_should_clear_model,
@@ -33,6 +34,17 @@ from app.services.openclaw.provisioning import (
 )
 
 logger = get_logger(__name__)
+
+
+class _MergeBoardStats(TypedDict):
+    name: object
+    workspace_root: object
+    active_count: int
+    review_count: int
+
+
+class _LeadBoardStats(_MergeBoardStats):
+    inbox_count: int
 
 
 def _truncate_snippet(value: str | None, *, limit: int = 500) -> str:
@@ -118,11 +130,15 @@ def _merge_wake_message(
         )
     return (
         "\n".join(details)
-        + "\n\nTake action now: inspect only tasks currently in `review`, merge clean "
-        "committed changes into the merge worktree, and post task comments describing merged "
-        "files, conflicts, tests, or blockers. If work is uncommitted or not mergeable, notify "
-        "the lead and original developer in the review task comment and leave the task in "
-        "`review` for follow-up."
+        + "\n\nTake action now: inspect all tasks currently in `review`, including task "
+        "comments and developer worktrees when branch custom fields are missing. Merge clean "
+        "committed changes into the merge worktree/mainline, run the relevant checks, then "
+        "move successfully merged tasks to `done` with PATCH "
+        f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}} and JSON "
+        '{"status":"done","comment":"<merge SHA, branch/worktree, checks, and evidence>"}. '
+        "If work is uncommitted, missing, conflicted, or not mergeable, notify the lead and "
+        "original developer in the review task comment and leave the task in `review` for "
+        "follow-up."
     )
 
 
@@ -156,9 +172,14 @@ def _lead_wake_message(
     return (
         "\n".join(details)
         + "\n\nTake action now: inspect the board, assign ready inbox work, check in-progress "
-        "developer tasks for progress comments or blockers, and move review-ready work through "
-        "the process. Wake the assigned developer or merge agent only when there is specific "
-        "work for them. If work is blocked, post a task comment naming the blocker."
+        "developer tasks for progress comments or blockers, and review tasks in `review` for "
+        "quality, acceptance criteria, test evidence, and merge readiness. Do not mark review "
+        "tasks `done` before the code is merged to mainline. If the work is ready, wake or "
+        "mention the merge agent with the task id, branch/commit/worktree evidence, and expected "
+        "checks. If the merge agent reports that mainline contains the work but the task is "
+        "still in `review`, move it to `done` with a comment containing the merge SHA. If work "
+        "is blocked, post a task comment naming the blocker and send it back to the developer "
+        "when rework is needed."
     )
 
 
@@ -172,7 +193,7 @@ def _is_missing_runtime_agent_error(error: OpenClawGatewayError) -> bool:
 
 
 async def _refresh_runtime_agent_registration(
-    *, gateway: Gateway, config: object, agent: Agent
+    *, gateway: Gateway, config: GatewayConfig, agent: Agent
 ) -> None:
     """Refresh lightweight gateway runtime state without touching agent files."""
 
@@ -202,7 +223,7 @@ async def _wake_session_with_lazy_registration(
     *,
     dispatch: GatewayDispatchService,
     gateway: Gateway,
-    config: object,
+    config: GatewayConfig,
     agent: Agent,
     message: str,
 ) -> OpenClawGatewayError | None:
@@ -327,7 +348,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
     if not active_counts:
         return 0
 
-    boards: dict[object, dict[str, object]] = {}
+    boards: dict[object, _MergeBoardStats] = {}
     for board_id, board_name, workspace_root, task_status in active_counts:
         item = boards.setdefault(
             board_id,
@@ -427,7 +448,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
     if not task_rows:
         return 0
 
-    boards: dict[object, dict[str, object]] = {}
+    boards: dict[object, _LeadBoardStats] = {}
     for board_id, board_name, workspace_root, task_status in task_rows:
         item = boards.setdefault(
             board_id,
@@ -543,10 +564,9 @@ async def wake_stale_board_agents_with_active_work(session: AsyncSession) -> int
     ).all()
     woken = 0
     if not rows:
-        return (
-            await wake_board_leads_for_active_board_work(session)
-            + await wake_merge_agents_for_active_board_work(session)
-        )
+        return await wake_board_leads_for_active_board_work(
+            session
+        ) + await wake_merge_agents_for_active_board_work(session)
 
     seen_agent_ids: set[object] = set()
     for agent, task, board, gateway in rows:

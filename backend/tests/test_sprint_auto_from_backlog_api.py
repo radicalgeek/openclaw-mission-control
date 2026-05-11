@@ -17,8 +17,8 @@ from app.api.deps import (
     get_board_for_actor_write,
     get_board_for_user_read,
     get_board_for_user_write,
-    require_user_or_agent,
     require_user_auth,
+    require_user_or_agent,
 )
 from app.api.sprints import router as sprints_router
 from app.core.auth import AuthContext

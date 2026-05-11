@@ -145,13 +145,12 @@ describe("BrandingProvider", () => {
         ),
       );
 
-    let brandingResult: { current: ReturnType<typeof useBranding> };
     let refreshResult: { current: ReturnType<typeof useBrandingRefresh> };
 
     await act(async () => {
-      ({ result: brandingResult } = renderHook(() => useBranding(), {
+      renderHook(() => useBranding(), {
         wrapper,
-      }));
+      });
     });
     // Separate hook for refresh (same context)
     await act(async () => {

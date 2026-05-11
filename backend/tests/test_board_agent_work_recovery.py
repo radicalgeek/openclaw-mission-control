@@ -39,8 +39,9 @@ def _patch_wake_services(
     *,
     wake_errors: list[OpenClawGatewayError | None] | None = None,
     registrations: list[dict[str, Any]] | None = None,
-    heartbeat_patches: list[list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]]
-    | None = None,
+    heartbeat_patches: (
+        list[list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]]] | None
+    ) = None,
 ) -> None:
     class _FakeDispatch:
         def __init__(self, session: AsyncSession) -> None:
@@ -662,6 +663,9 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert len(wake_calls) == 1
             assert wake_calls[0]["session_key"] == "agent:merge:main"
             assert "MERGE WATCH WAKE" in wake_calls[0]["message"]
+            assert "inspect all tasks currently in `review`" in wake_calls[0]["message"]
+            assert "custom fields are missing" in wake_calls[0]["message"]
+            assert '{"status":"done","comment":"<merge SHA' in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH: /tmp/openclaw/shared-src/boards/board/worktrees/merge" in (
                 wake_calls[0]["message"]
             )
@@ -755,6 +759,10 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert "BOARD LEAD WATCH WAKE" in wake_calls[0]["message"]
             assert "Inbox tasks: 1" in wake_calls[0]["message"]
             assert "Active assigned tasks: 1" in wake_calls[0]["message"]
+            assert "Do not mark review tasks `done` before the code is merged" in (
+                wake_calls[0]["message"]
+            )
+            assert "wake or mention the merge agent" in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH:" in wake_calls[0]["message"]
 
             reloaded_lead = (

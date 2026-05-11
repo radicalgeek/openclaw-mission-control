@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/auth/clerk";
@@ -31,10 +31,13 @@ export default function SprintsIndexPage() {
     },
   });
 
-  const boards =
-    boardsQuery.data?.status === 200
-      ? (boardsQuery.data.data.items ?? [])
-      : [];
+  const boards = useMemo(
+    () =>
+      boardsQuery.data?.status === 200
+        ? (boardsQuery.data.data.items ?? [])
+        : [],
+    [boardsQuery.data],
+  );
 
   useEffect(() => {
     if (redirectedRef.current) return;

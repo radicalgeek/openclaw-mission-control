@@ -10,7 +10,7 @@ from sqlmodel import SQLModel
 
 RUNTIME_ANNOTATION_TYPES = (datetime, UUID)
 
-SprintStatus = Literal["draft", "queued", "active", "completed", "cancelled"]
+SprintStatus = Literal["draft", "queued", "active", "reviewing", "completed", "cancelled"]
 
 
 class SprintCreate(SQLModel):

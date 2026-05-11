@@ -47,7 +47,12 @@ export interface McpAppRendererProps {
 // ─── PostMessage protocol ─────────────────────────────────────────────────────
 
 interface MpcAppMessage {
-  type: "callServerTool" | "sendMessage" | "openLink" | "updateContext" | "ready";
+  type:
+    | "callServerTool"
+    | "sendMessage"
+    | "openLink"
+    | "updateContext"
+    | "ready";
   payload?: unknown;
 }
 
@@ -73,7 +78,6 @@ export function McpAppRenderer({
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
 
     (async () => {
@@ -100,7 +104,11 @@ export function McpAppRenderer({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load MCP App resource");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load MCP App resource",
+          );
           setLoading(false);
         }
       }
@@ -109,7 +117,13 @@ export function McpAppRenderer({
     return () => {
       cancelled = true;
     };
-  }, [boardId, agentId, resourceUri, resourceHtmlProp, toolResult?.resource_html]);
+  }, [
+    boardId,
+    agentId,
+    resourceUri,
+    resourceHtmlProp,
+    toolResult?.resource_html,
+  ]);
 
   // ── Inject tool result after iframe loads ────────────────────────────────
   const handleIframeLoad = useCallback(() => {
@@ -167,7 +181,10 @@ export function McpAppRenderer({
           } catch {
             // Surface errors back to iframe so it can display them
             iframeRef.current?.contentWindow?.postMessage(
-              { type: "toolError", payload: { name, error: "Tool call failed" } },
+              {
+                type: "toolError",
+                payload: { name, error: "Tool call failed" },
+              },
               "*",
             );
           }
@@ -194,7 +211,9 @@ export function McpAppRenderer({
   if (error || !html) {
     return (
       <div className="my-1 w-full rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-500">
-        <span className="font-mono">[mcp-app error: {error ?? "empty resource"}]</span>
+        <span className="font-mono">
+          [mcp-app error: {error ?? "empty resource"}]
+        </span>
         {fallbackContent && (
           <div className="mt-1 text-slate-600">
             <Markdown content={fallbackContent} variant="basic" />

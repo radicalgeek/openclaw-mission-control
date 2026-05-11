@@ -15,7 +15,13 @@ export type TagRef = {
   color: string;
 };
 
-export type SprintStatus = "draft" | "queued" | "active" | "completed" | "cancelled";
+export type SprintStatus =
+  | "draft"
+  | "queued"
+  | "active"
+  | "reviewing"
+  | "completed"
+  | "cancelled";
 
 export type SprintRead = {
   id: string;
@@ -134,10 +140,10 @@ export const updateSprint = (
   sprintId: string,
   payload: SprintUpdate,
 ): Promise<ApiResponse<SprintRead>> =>
-  customFetch<ApiResponse<SprintRead>>(
-    `${sprintsBase(boardId)}/${sprintId}`,
-    { method: "PATCH", body: JSON.stringify(payload) },
-  );
+  customFetch<ApiResponse<SprintRead>>(`${sprintsBase(boardId)}/${sprintId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 
 export const deleteSprint = (
   boardId: string,
@@ -164,6 +170,21 @@ export const completeSprint = (
 ): Promise<ApiResponse<SprintRead>> =>
   customFetch<ApiResponse<SprintRead>>(
     `${sprintsBase(boardId)}/${sprintId}/complete`,
+    { method: "POST" },
+  );
+
+export type RunSprintReviewResponse = {
+  sprint_id: string;
+  dispatched_reviewers: string[];
+  skipped_reviewers: { role: string; reason: string }[];
+};
+
+export const runSprintReview = (
+  boardId: string,
+  sprintId: string,
+): Promise<ApiResponse<RunSprintReviewResponse>> =>
+  customFetch<ApiResponse<RunSprintReviewResponse>>(
+    `${sprintsBase(boardId)}/${sprintId}/run-review`,
     { method: "POST" },
   );
 
@@ -248,9 +269,7 @@ export type PagedTags = {
   offset: number;
 };
 
-export const listOrgTags = (
-  limit = 200,
-): Promise<ApiResponse<PagedTags>> =>
+export const listOrgTags = (limit = 200): Promise<ApiResponse<PagedTags>> =>
   customFetch<ApiResponse<PagedTags>>(`/api/v1/tags?limit=${limit}`, {
     method: "GET",
   });
@@ -306,7 +325,9 @@ export const organiseBacklog = (
   const url = qs
     ? `${backlogBase(boardId)}/organise?${qs}`
     : `${backlogBase(boardId)}/organise`;
-  return customFetch<ApiResponse<BacklogOrganiseResponse>>(url, { method: "POST" });
+  return customFetch<ApiResponse<BacklogOrganiseResponse>>(url, {
+    method: "POST",
+  });
 };
 
 // ─── Board settings ───────────────────────────────────────────────────────────

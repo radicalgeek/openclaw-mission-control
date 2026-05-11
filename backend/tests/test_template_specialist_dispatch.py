@@ -96,6 +96,15 @@ def test_each_role_template_renders_specialist_agents() -> None:
         assert len(result) > 500, f"role_template '{role_tpl}' rendered suspiciously short output"
 
 
+def test_merger_heartbeat_closes_tasks_after_mainline_merge() -> None:
+    result = _render("BOARD_HEARTBEAT.md.j2", _ctx_with_role("merger"))
+
+    assert "Check all tasks in `review` status" in result
+    assert "Do not ignore a review task just because" in result
+    assert '"status":"done"' in result
+    assert "Move the task to `done` only after the code is in mainline" in result
+
+
 def test_valid_role_templates_all_have_specialist_partials() -> None:
     """Every value in VALID_ROLE_TEMPLATES must have corresponding partial files."""
     for role_tpl in VALID_ROLE_TEMPLATES:

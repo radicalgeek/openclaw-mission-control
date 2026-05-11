@@ -7,10 +7,10 @@ import {
   BarChart3,
   Bot,
   Boxes,
+  Building2,
   CheckCircle2,
   FileText,
   Folder,
-  Building2,
   LayoutGrid,
   MessageSquare,
   Network,
@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/auth/clerk";
-import { ApiError } from "@/api/mutator";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -34,7 +33,9 @@ export function DashboardSidebar() {
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: async () => {
-      const res = await fetch(`${getApiBaseUrl()}/healthz`, { cache: "no-store" });
+      const res = await fetch(`${getApiBaseUrl()}/healthz`, {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error("Health check failed");
       return res.json() as Promise<{ ok: boolean }>;
     },

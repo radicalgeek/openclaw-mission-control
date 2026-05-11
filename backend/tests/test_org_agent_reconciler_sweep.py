@@ -10,10 +10,10 @@ from uuid import uuid4
 
 import pytest
 
+import app.services.openclaw.org_agent_reconciler as org_agent_reconciler
 from app.core.config import settings
 from app.core.time import utcnow
 from app.models.agents import Agent
-from app.services.openclaw import org_agent_reconciler
 from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.lifecycle_queue import QueuedAgentLifecycleReconcile
 
@@ -58,8 +58,7 @@ def _stale_agent(
         gateway_id=uuid4(),
         status=status,
         openclaw_session_id=f"agent:{agent_id}:main" if openclaw_session else None,
-        updated_at=now
-        - timedelta(seconds=settings.agent_stuck_provisioning_sweep_seconds + 1),
+        updated_at=now - timedelta(seconds=settings.agent_stuck_provisioning_sweep_seconds + 1),
         last_seen_at=seen_at,
         wake_attempts=wake_attempts,
         lifecycle_generation=12,

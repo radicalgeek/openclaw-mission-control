@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, X, Zap, CheckCircle2 } from "lucide-react";
+import { Plus, X, Zap, CheckCircle2, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type SprintRead,
@@ -11,6 +11,7 @@ import {
   listBacklog,
   startSprint,
   completeSprint,
+  runSprintReview,
   cancelSprint,
   deleteSprint,
   addSprintTickets,
@@ -32,11 +33,18 @@ const statusColor: Record<string, string> = {
   draft: "bg-neutral-soft text-neutral border border-neutral-border",
   queued: "bg-warning-soft text-warning border border-warning-border",
   active: "bg-success-soft text-success border border-success-border",
+  reviewing: "bg-warning-soft text-warning border border-warning-border",
   completed: "bg-info-soft text-info border border-info-border",
   cancelled: "bg-danger-soft text-danger border border-danger-border",
 };
 
-export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _orgTags, onRefresh }: Props) {
+export function SprintDetail({
+  boardId,
+  sprint,
+  sprints: _sprints,
+  orgTags: _orgTags,
+  onRefresh,
+}: Props) {
   const [tickets, setTickets] = useState<TaskRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -89,18 +97,22 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
   }, [loadBacklog]);
 
   const handleAction = useCallback(
-    async (action: "start" | "complete" | "cancel" | "delete") => {
+    async (action: "start" | "review" | "complete" | "cancel" | "delete") => {
       setBusy(true);
       setActionError(null);
       try {
         if (action === "start") await startSprint(boardId, sprint.id);
-        else if (action === "complete") await completeSprint(boardId, sprint.id);
+        else if (action === "review") await runSprintReview(boardId, sprint.id);
+        else if (action === "complete")
+          await completeSprint(boardId, sprint.id);
         else if (action === "cancel") await cancelSprint(boardId, sprint.id);
         else if (action === "delete") await deleteSprint(boardId, sprint.id);
         onRefresh();
       } catch (err) {
         setActionError(
-          err instanceof ApiError ? (err.message ?? "Action failed") : "Action failed",
+          err instanceof ApiError
+            ? (err.message ?? "Action failed")
+            : "Action failed",
         );
       } finally {
         setBusy(false);
@@ -156,7 +168,9 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
       : 0;
 
   const canEdit =
-    sprint.status === "draft" || sprint.status === "queued" || sprint.status === "active";
+    sprint.status === "draft" ||
+    sprint.status === "queued" ||
+    sprint.status === "active";
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -196,6 +210,17 @@ export function SprintDetail({ boardId, sprint, sprints: _sprints, orgTags: _org
             )}
             {sprint.status === "active" && (
               <>
+                {sprint.ticket_count > 0 &&
+                  sprint.tickets_done_count === sprint.ticket_count && (
+                    <button
+                      disabled={busy}
+                      onClick={() => void handleAction("review")}
+                      className="flex items-center gap-1.5 rounded-lg bg-warning px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 transition shadow-sm"
+                    >
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                      Run review
+                    </button>
+                  )}
                 <button
                   disabled={busy}
                   onClick={() => void handleAction("complete")}

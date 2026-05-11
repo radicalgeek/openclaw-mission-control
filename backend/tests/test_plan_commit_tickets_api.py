@@ -12,12 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.api import plans as plans_api
 from app.api.deps import (
     get_board_for_user_read,
     get_board_for_user_write,
     require_user_auth,
 )
-from app.api import plans as plans_api
 from app.core.auth import AuthContext
 from app.db.session import get_session
 from app.models.boards import Board

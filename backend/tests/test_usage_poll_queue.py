@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.time import utcnow
+from app.services.queue import QueuedTask
 from app.services.telemetry.usage_poll_queue import (
     TASK_TYPE,
     clear_usage_poll_lock,
@@ -13,7 +14,6 @@ from app.services.telemetry.usage_poll_queue import (
     is_current_usage_poll_task,
     purge_stale_usage_poll_tasks,
 )
-from app.services.queue import QueuedTask
 
 
 class _FakeRedis:

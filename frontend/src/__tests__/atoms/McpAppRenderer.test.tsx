@@ -7,8 +7,11 @@ vi.mock("@/api/mcp", () => ({
   callMcpTool: vi.fn(),
 }));
 
-import { McpAppRenderer, mcpToolContentText } from "@/components/atoms/McpAppRenderer";
-import { readMcpResource, callMcpTool } from "@/api/mcp";
+import {
+  McpAppRenderer,
+  mcpToolContentText,
+} from "@/components/atoms/McpAppRenderer";
+import { readMcpResource } from "@/api/mcp";
 
 const DEFAULT_PROPS = {
   boardId: "board-1",

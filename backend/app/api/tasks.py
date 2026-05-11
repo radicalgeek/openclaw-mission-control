@@ -23,8 +23,8 @@ from app.api.deps import (
     require_user_auth,
     require_user_or_agent,
 )
-from app.core.logging import get_logger
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.db import crud
 from app.db.pagination import paginate
@@ -68,7 +68,6 @@ from app.services.mentions import extract_mentions, matches_agent_mention
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
-from app.services.task_comment_visibility import visible_task_comment_clause
 from app.services.openclaw.provisioning import (
     OpenClawGatewayProvisioner,
     _agent_session_model,
@@ -84,6 +83,7 @@ from app.services.tags import (
     replace_tags,
     validate_tag_ids,
 )
+from app.services.task_comment_visibility import visible_task_comment_clause
 from app.services.task_dependencies import (
     blocked_by_dependency_ids,
     dependency_ids_by_task_id,
@@ -194,9 +194,7 @@ def _approval_required_for_done_error() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={
-            "message": (
-                "Task can only be marked done when a linked approval has been approved."
-            ),
+            "message": ("Task can only be marked done when a linked approval has been approved."),
             "blocked_by_task_ids": [],
         },
     )
@@ -218,9 +216,7 @@ def _review_required_for_done_error() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={
-            "message": (
-                "Task can only be marked done from review when the board rule is enabled."
-            ),
+            "message": ("Task can only be marked done from review when the board rule is enabled."),
             "blocked_by_task_ids": [],
         },
     )
@@ -239,13 +235,18 @@ def _lead_review_required_for_done_error() -> HTTPException:
     )
 
 
+def _is_merger_agent(agent: Agent | None) -> bool:
+    if agent is None:
+        return False
+    profile = agent.identity_profile or {}
+    return isinstance(profile, dict) and profile.get("role_template") == "merger"
+
+
 def _pending_approval_blocks_status_change_error() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={
-            "message": (
-                "Task status cannot be changed while a linked approval is pending."
-            ),
+            "message": ("Task status cannot be changed while a linked approval is pending."),
             "blocked_by_task_ids": [],
         },
     )
@@ -301,9 +302,7 @@ async def _require_approved_linked_approval_for_done(
         return
     requires_approval = (
         await session.exec(
-            select(col(Board.require_approval_for_done)).where(
-                col(Board.id) == board_id
-            ),
+            select(col(Board.require_approval_for_done)).where(col(Board.id) == board_id),
         )
     ).first()
     if requires_approval is False:
@@ -327,9 +326,7 @@ async def _require_review_before_done_when_enabled(
         return
     requires_review = (
         await session.exec(
-            select(col(Board.require_review_before_done)).where(
-                col(Board.id) == board_id
-            ),
+            select(col(Board.require_review_before_done)).where(col(Board.id) == board_id),
         )
     ).first()
     if requires_review and previous_status != "review":
@@ -343,9 +340,7 @@ async def _require_comment_for_review_when_enabled(
 ) -> bool:
     requires_comment = (
         await session.exec(
-            select(col(Board.comment_required_for_review)).where(
-                col(Board.id) == board_id
-            ),
+            select(col(Board.comment_required_for_review)).where(col(Board.id) == board_id),
         )
     ).first()
     return bool(requires_comment)
@@ -531,9 +526,7 @@ def _coerce_task_event_rows(
                 msg = "Expected (ActivityEvent, Task | None) rows"
                 raise TypeError(msg)
 
-        if isinstance(first, ActivityEvent) and (
-            isinstance(second, Task) or second is None
-        ):
+        if isinstance(first, ActivityEvent) and (isinstance(second, Task) or second is None):
             rows.append((first, second))
             continue
 
@@ -632,8 +625,7 @@ async def _reconcile_dependents_for_dependency_toggle(
                     event_type="task.status_changed",
                     task_id=dependent.id,
                     message=(
-                        "Task returned to inbox: dependency reopened "
-                        f"({dependency_task.title})."
+                        "Task returned to inbox: dependency reopened " f"({dependency_task.title})."
                     ),
                     agent_id=actor_agent_id,
                     board_id=dependent.board_id,
@@ -742,14 +734,13 @@ def _assignment_notification_message(*, board: Board, task: Task, agent: Agent) 
     return (
         "TASK ASSIGNED\n"
         + "\n".join(details)
-        + (
-            "\n\nTake action: open the task and begin work. "
-            "Post updates as task comments."
-        )
+        + ("\n\nTake action: open the task and begin work. " "Post updates as task comments.")
     )
 
 
-def _task_wake_message(*, board: Board, task: Task, agent: Agent, gateway_workspace_root: str, reason: str) -> str:
+def _task_wake_message(
+    *, board: Board, task: Task, agent: Agent, gateway_workspace_root: str, reason: str
+) -> str:
     description = _truncate_snippet(task.description or "")
     details = [
         f"Board: {board.name}",
@@ -1250,9 +1241,7 @@ async def _task_custom_field_rows_by_definition_id(
         await session.exec(
             select(TaskCustomFieldValue).where(
                 col(TaskCustomFieldValue.task_id) == task_id,
-                col(TaskCustomFieldValue.task_custom_field_definition_id).in_(
-                    definition_ids
-                ),
+                col(TaskCustomFieldValue.task_custom_field_definition_id).in_(definition_ids),
             ),
         ),
     )
@@ -1323,9 +1312,7 @@ async def _set_task_custom_field_values_for_update(
         custom_field_values=custom_field_values,
         definitions_by_key=definitions_by_key,
     )
-    definitions_by_id = {
-        definition.id: definition for definition in definitions_by_key.values()
-    }
+    definitions_by_id = {definition.id: definition for definition in definitions_by_key.values()}
     rows_by_definition_id = await _task_custom_field_rows_by_definition_id(
         session,
         task_id=task_id,
@@ -1385,12 +1372,9 @@ async def _task_custom_field_values_by_task_id(
     if not definitions_by_key:
         return {task_id: {} for task_id in unique_task_ids}
 
-    definitions_by_id = {
-        definition.id: definition for definition in definitions_by_key.values()
-    }
+    definitions_by_id = {definition.id: definition for definition in definitions_by_key.values()}
     default_values = {
-        field_key: definition.default_value
-        for field_key, definition in definitions_by_key.items()
+        field_key: definition.default_value for field_key, definition in definitions_by_key.items()
     }
     values_by_task_id: dict[UUID, TaskCustomFieldValues] = {
         task_id: dict(default_values) for task_id in unique_task_ids
@@ -1493,9 +1477,7 @@ async def _task_read_page(
                     "tags": tag_state.tags,
                     "blocked_by_task_ids": blocked_by,
                     "is_blocked": bool(blocked_by),
-                    "custom_field_values": custom_field_values_by_task_id.get(
-                        task.id, {}
-                    ),
+                    "custom_field_values": custom_field_values_by_task_id.get(task.id, {}),
                 },
             ),
         )
@@ -1514,9 +1496,7 @@ async def _stream_task_state(
     dict[UUID, TaskCustomFieldValues],
 ]:
     task_ids = [
-        task.id
-        for event, task in rows
-        if task is not None and event.event_type != "task.comment"
+        task.id for event, task in rows if task is not None and event.event_type != "task.comment"
     ]
     if not task_ids:
         return {}, {}, {}, {}
@@ -1707,9 +1687,7 @@ async def create_task(
     auth: AuthContext = USER_AUTH_DEP,
 ) -> TaskRead:
     """Create a task and initialize dependency rows."""
-    data = payload.model_dump(
-        exclude={"depends_on_task_ids", "tag_ids", "custom_field_values"}
-    )
+    data = payload.model_dump(exclude={"depends_on_task_ids", "tag_ids", "custom_field_values"})
     depends_on_task_ids = list(payload.depends_on_task_ids)
     tag_ids = list(payload.tag_ids)
     custom_field_values = dict(payload.custom_field_values)
@@ -1822,15 +1800,11 @@ async def update_task(
     updates = payload.model_dump(exclude_unset=True)
     comment = payload.comment if "comment" in payload.model_fields_set else None
     depends_on_task_ids = (
-        payload.depends_on_task_ids
-        if "depends_on_task_ids" in payload.model_fields_set
-        else None
+        payload.depends_on_task_ids if "depends_on_task_ids" in payload.model_fields_set else None
     )
     tag_ids = payload.tag_ids if "tag_ids" in payload.model_fields_set else None
     custom_field_values = (
-        payload.custom_field_values
-        if "custom_field_values" in payload.model_fields_set
-        else None
+        payload.custom_field_values if "custom_field_values" in payload.model_fields_set else None
     )
     custom_field_values_set = "custom_field_values" in payload.model_fields_set
     updates.pop("comment", None)
@@ -1845,9 +1819,7 @@ async def update_task(
         previous_status=previous_status,
         previous_assigned=previous_assigned,
         previous_in_progress_at=task.in_progress_at,
-        status_requested=(
-            requested_status is not None and requested_status != previous_status
-        ),
+        status_requested=(requested_status is not None and requested_status != previous_status),
         updates=updates,
         comment=comment,
         depends_on_task_ids=depends_on_task_ids,
@@ -1898,9 +1870,7 @@ async def delete_task_and_related_records(
     )
     if primary_approvals:
         primary_ids = [approval.id for approval in primary_approvals]
-        remaining_by_approval = await load_task_ids_by_approval(
-            session, approval_ids=primary_ids
-        )
+        remaining_by_approval = await load_task_ids_by_approval(session, approval_ids=primary_ids)
         for approval in primary_approvals:
             remaining_task_ids = remaining_by_approval.get(approval.id, [])
             if remaining_task_ids:
@@ -1939,9 +1909,7 @@ async def delete_task_and_related_records(
 
             from app.models.plans import Plan as _Plan  # noqa: PLC0415
 
-            _result = await session.exec(
-                _select(_Plan).where(_col(_Plan.task_id) == task.id)
-            )
+            _result = await session.exec(_select(_Plan).where(_col(_Plan.task_id) == task.id))
             for _linked_plan in _result.all():
                 _linked_plan.task_id = None
                 session.add(_linked_plan)
@@ -2015,9 +1983,7 @@ async def list_task_comments(
             return await paginate(
                 session,
                 thread_stmt,
-                transformer=lambda items: [
-                    _thread_message_to_task_comment_read(m) for m in items
-                ],
+                transformer=lambda items: [_thread_message_to_task_comment_read(m) for m in items],
             )
     except Exception:
         pass  # Fall through to legacy path on any error
@@ -2431,11 +2397,7 @@ async def _lead_apply_assignment(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Board leads cannot assign tasks to themselves.",
         )
-    if (
-        agent.board_id
-        and update.task.board_id
-        and agent.board_id != update.task.board_id
-    ):
+    if agent.board_id and update.task.board_id and agent.board_id != update.task.board_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT)
     update.task.assigned_agent_id = agent.id
 
@@ -2485,11 +2447,7 @@ async def _lead_apply_status(
         assigning_agent = "assigned_agent_id" in update.updates and bool(
             _optional_assigned_agent_id(update.updates["assigned_agent_id"])
         )
-        if (
-            update.task.status == "inbox"
-            and target_status == "in_progress"
-            and assigning_agent
-        ):
+        if update.task.status == "inbox" and target_status == "in_progress" and assigning_agent:
             update.task.status = target_status
             return
         raise HTTPException(
@@ -2535,9 +2493,7 @@ def _apply_task_timing_fields(update: _TaskUpdateInput, *, now: datetime) -> Non
     if update.previous_status != "done" and update.task.status == "done":
         update.task.done_at = now
         if "actual_minutes" not in update.updates:
-            started_at = (
-                update.task.in_progress_at or update.task.previous_in_progress_at
-            )
+            started_at = update.task.in_progress_at or update.task.previous_in_progress_at
             if started_at is not None:
                 update.task.actual_minutes = _elapsed_minutes(started_at, now)
         return
@@ -2697,9 +2653,7 @@ async def _apply_lead_task_update(
 
             await auto_resolve_thread_for_completed_task(session, update.task)
         except Exception:
-            logger.exception(
-                "task.thread_auto_resolve_failed task_id=%s", update.task.id
-            )
+            logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
 
     # Auto-complete plan when task moves to done
     if (
@@ -2723,9 +2677,7 @@ async def _apply_lead_task_update(
                 session.add(_linked_plan)
                 await session.commit()
         except Exception:
-            logger.exception(
-                "task.plan_auto_complete_failed task_id=%s", update.task.id
-            )
+            logger.exception("task.plan_auto_complete_failed task_id=%s", update.task.id)
 
     # Auto-revert plan to active when task is reopened
     if (
@@ -2855,12 +2807,11 @@ async def _apply_non_lead_agent_task_rules(
             status_value == "done"
             and update.actor.agent
             and not update.actor.agent.is_board_lead
+            and not (update.task.status == "review" and _is_merger_agent(update.actor.agent))
         ):
             raise _lead_review_required_for_done_error()
         else:
-            update.task.assigned_agent_id = (
-                update.actor.agent.id if update.actor.agent else None
-            )
+            update.task.assigned_agent_id = update.actor.agent.id if update.actor.agent else None
             if status_value == "in_progress":
                 update.task.in_progress_at = utcnow()
 
@@ -2934,11 +2885,7 @@ async def _apply_admin_task_rules(
         agent = await Agent.objects.by_id(assigned_agent_id).first(session)
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-        if (
-            agent.board_id
-            and update.task.board_id
-            and agent.board_id != update.task.board_id
-        ):
+        if agent.board_id and update.task.board_id and agent.board_id != update.task.board_id:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT)
 
 
@@ -2971,9 +2918,7 @@ async def _record_task_update_activity(
 ) -> None:
     event_type, message = _task_event_details(update.task, update.previous_status)
     actor_agent_id = (
-        update.actor.agent.id
-        if update.actor.actor_type == "agent" and update.actor.agent
-        else None
+        update.actor.agent.id if update.actor.actor_type == "agent" and update.actor.agent else None
     )
     # Record the task transition first, then reconcile dependents so any
     # cascaded dependency effects are logged after the source change.
@@ -3156,9 +3101,7 @@ async def _finalize_updated_task(
         board_id=update.board_id,
     ):
         comment_text = (update.comment or "").strip()
-        review_comment_author = (
-            update.task.assigned_agent_id or update.previous_assigned
-        )
+        review_comment_author = update.task.assigned_agent_id or update.previous_assigned
         review_comment_since = (
             update.task.previous_in_progress_at
             if update.task.previous_in_progress_at is not None
@@ -3219,9 +3162,7 @@ async def _finalize_updated_task(
 
             await auto_resolve_thread_for_completed_task(session, update.task)
         except Exception:
-            logger.exception(
-                "task.thread_auto_resolve_failed task_id=%s", update.task.id
-            )
+            logger.exception("task.thread_auto_resolve_failed task_id=%s", update.task.id)
 
     # Auto-complete plan when task moves to done
     if (
@@ -3245,9 +3186,7 @@ async def _finalize_updated_task(
                 session.add(_linked_plan)
                 await session.commit()
         except Exception:
-            logger.exception(
-                "task.plan_auto_complete_failed task_id=%s", update.task.id
-            )
+            logger.exception("task.plan_auto_complete_failed task_id=%s", update.task.id)
 
     # Auto-revert plan to active when task is reopened
     if (
@@ -3278,13 +3217,9 @@ async def _finalize_updated_task(
         try:
             from app.services.sprint_lifecycle import SprintService  # noqa: PLC0415
 
-            await SprintService.check_sprint_completion(
-                session, board_id=update.board_id
-            )
+            await SprintService.check_sprint_completion(session, board_id=update.board_id)
         except Exception:
-            logger.exception(
-                "task.sprint_completion_check_failed task_id=%s", update.task.id
-            )
+            logger.exception("task.sprint_completion_check_failed task_id=%s", update.task.id)
 
     return await _task_read_response(
         session,

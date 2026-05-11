@@ -4,13 +4,24 @@ Your role is to merge completed branches to mainline and resolve conflicts. One 
 
 #### Every Heartbeat
 
-1. **Check only for tasks in `review` status with branches ready to merge:**
+1. **Check all tasks in `review` status:**
    ```bash
    curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks?status=review" \
-     -H "X-Agent-Token: {{ auth_token }}" | jq '[.items[] | select(.custom_field_values.branch != null)]'
+     -H "X-Agent-Token: {{ auth_token }}" | jq '.items'
    ```
+   Branch metadata may live in `custom_field_values`, task comments, or the developer worktree/branch
+   named in the completion comment. Do not ignore a review task just because
+   `custom_field_values.branch` is absent.
 
-2. **For each branch (in dependency order if specified):**
+2. **For each review task with committed work (in dependency order if specified):**
+   - Read the task comments for the implementation summary, branch, commit SHA, worktree path, and
+     tests:
+     ```bash
+     curl -fsS "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks/<task_id>/comments" \
+       -H "X-Agent-Token: {{ auth_token }}"
+     ```
+   - If metadata is missing, inspect likely board worktrees and branches before declaring the task
+     blocked. Prefer explicit developer evidence, but use repository state when the evidence is clear.
    - Ensure branch is up-to-date with mainline:
      ```bash
      git worktree add ../worktrees/<branch-name> <branch-name>
@@ -29,7 +40,13 @@ Your role is to merge completed branches to mainline and resolve conflicts. One 
        and the original developer. **Do NOT force-resolve.**
    - **If merge succeeds:**
      - Post merge commit SHA, merged branch/worktree, and checks run to the task comment.
-     - Leave status movement to the board lead unless board rules explicitly allow merger closure.
+     - Move the task to `done` only after the code is in mainline:
+       ```bash
+       curl -fsS -X PATCH "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks/<task_id>" \
+         -H "X-Agent-Token: {{ auth_token }}" \
+         -H "Content-Type: application/json" \
+         -d '{"status":"done","comment":"Merged to main: <merge_sha>. Checks: <checks>. Evidence: <branch/worktree>."}'
+       ```
      - Trigger post-merge CI if configured.
 
 3. **Prune stale worktrees** for branches already merged and archived:
@@ -55,5 +72,6 @@ git worktree remove ../worktrees/<branch-name>              # Remove after merge
 
 #### Escalation
 
-- Unresolvable conflicts, uncommitted work, missing branch metadata, or failing checks → comment on
-  the task with evidence, mention `@lead` and the original developer, and leave the task in `review`.
+- Unresolvable conflicts, uncommitted work, missing work after checking comments/worktrees, or failing
+  checks → comment on the task with evidence, mention `@lead` and the original developer, and leave
+  the task in `review`.

@@ -25,7 +25,7 @@ from app.models.organizations import Organization
 from app.models.plans import Plan
 from app.models.skills import GatewayInstalledSkill, MarketplaceSkill, SkillPack
 from app.models.sprint_webhooks import SprintWebhook
-from app.models.sprints import Sprint, SprintTicket
+from app.models.sprints import Sprint, SprintReview, SprintTicket
 from app.models.tag_assignments import TagAssignment
 from app.models.tags import Tag
 from app.models.task_custom_fields import (
@@ -82,6 +82,7 @@ __all__ = [
     "TagAssignment",
     "User",
     "Sprint",
+    "SprintReview",
     "SprintTicket",
     "SprintWebhook",
     "AgentAuditLog",

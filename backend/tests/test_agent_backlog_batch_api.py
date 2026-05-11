@@ -13,8 +13,7 @@ from app.core.agent_auth import AgentAuthContext
 from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.tasks import Task
-from app.schemas.tasks import TaskCreate
-from app.schemas.tasks import TaskUpdate
+from app.schemas.tasks import TaskCreate, TaskUpdate
 
 
 class _FakeSession:

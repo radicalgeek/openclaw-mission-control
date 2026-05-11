@@ -26,6 +26,7 @@ from app.models.boards import Board
 from app.models.sprints import Sprint, SprintTicket
 from app.models.tasks import Task
 from app.schemas.common import OkResponse
+from app.schemas.sprint_reviews import SprintReviewGateRead
 from app.schemas.sprints import (
     SprintCreate,
     SprintRead,
@@ -97,9 +98,7 @@ async def _sprint_ticket_counts(
 ) -> tuple[int, int]:
     """Return (total_tickets, done_tickets) for a sprint."""
     tickets = (
-        await session.exec(
-            select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id)
-        )
+        await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id))
     ).all()
     total = len(tickets)
     done = 0
@@ -487,40 +486,6 @@ class _RunReviewResponse(BaseModel):
     skipped_reviewers: list[dict[str, str]]  # [{role, reason}]
 
 
-def _build_review_prompt(
-    board: Board, sprint: Sprint, role: str, tasks: list[Task]
-) -> str:
-    role_intros = {
-        "qa": "QA REVIEW REQUEST: assess test coverage, acceptance criteria, regression risk.",
-        "security": (
-            "SECURITY REVIEW REQUEST: assess OWASP Top 10, secrets exposure, dependency "
-            "vulnerabilities, IAM misconfigurations."
-        ),
-        "architecture": (
-            "ARCHITECTURE REVIEW REQUEST: assess scalability, resilience, observability, cost."
-        ),
-    }
-    lines = [
-        role_intros.get(role, f"{role.upper()} REVIEW REQUEST"),
-        f"Board: {board.name}",
-        f"Sprint: {sprint.name}",
-        f"Sprint goal: {sprint.goal or '(none)'}",
-        "",
-        "Reviewer instructions:",
-        "- If the work meets the bar, post agent-update on this sprint with verdict=approve.",
-        f"- If not, create new tickets on the board via POST /api/v1/boards/{board.id}/backlog ",
-        "  describing the gaps. Do NOT mark approve until those tickets are addressed.",
-        "",
-        "Sprint tickets to review:",
-    ]
-    for t in tasks:
-        lines.append(
-            f"- task_id={t.id} | status={t.status} | title={t.title} | "
-            f"description={(t.description or '').replace(chr(10), ' ')[:200]}",
-        )
-    return "\n".join(lines)
-
-
 @router.post("/sprints/{sprint_id}/run-review", response_model=_RunReviewResponse)
 async def run_sprint_review(
     sprint_id: UUID,
@@ -528,74 +493,30 @@ async def run_sprint_review(
     session: "AsyncSession" = SESSION_DEP,
     _auth: "AuthContext" = USER_AUTH_DEP,
 ) -> _RunReviewResponse:
-    """Dispatch QA, Security, and Architecture reviewer agents over the sprint scope.
-
-    Reviewers either post an approve verdict via the existing agent-update
-    pathway, or create new backlog tickets via the Tasks API. This endpoint
-    only handles dispatch; verdict aggregation is the caller's concern.
-    """
-    from app.services.openclaw.planning_service import (  # noqa: PLC0415
-        PlanningMessagingService,
-    )
-
+    """Dispatch QA, Security, and Architecture reviewer agents over the sprint scope."""
     sprint = await _require_sprint(session, sprint_id, board)
-    if sprint.status not in {"active", "queued"}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot run review on sprint with status '{sprint.status}'",
-        )
+    from app.services.sprint_reviews import begin_sprint_review  # noqa: PLC0415
 
-    tickets_stmt = (
-        select(Task)
-        .join(SprintTicket, col(SprintTicket.task_id) == col(Task.id))
-        .where(col(SprintTicket.sprint_id) == sprint.id)
-    )
-    tasks = list((await session.exec(tickets_stmt)).all())
-    if not tasks:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Sprint has no tickets to review.",
-        )
-
-    dispatcher = PlanningMessagingService(session)
-    dispatched: list[str] = []
-    skipped: list[dict[str, str]] = []
-    role_to_agent = {
-        "qa": ("quality_reviewer", settings.org_qa_reviewer_agent_id),
-        "security": ("security_reviewer", settings.org_security_reviewer_agent_id),
-        "architecture": (
-            "architecture_reviewer",
-            settings.org_architecture_reviewer_agent_id,
-        ),
-    }
-    for role, (role_template, agent_id) in role_to_agent.items():
-        prompt = _build_review_prompt(board, sprint, role, tasks)
-        session_key = await dispatcher.dispatch_to_configured_org_agent(
-            board=board,
-            configured_agent_id=agent_id,
-            role_template=role_template,
-            prompt=prompt,
-            log_prefix=f"sprint.review.{role}",
-            correlation_id=f"sprint.review.{role}:{sprint.id}",
-        )
-        if session_key is None:
-            skipped.append({"role": role, "reason": "agent_offline_or_missing"})
-        else:
-            dispatched.append(role)
-
-    record_activity(
-        session,
-        event_type="sprint_review_dispatched",
-        message=f"Sprint review dispatched: {len(dispatched)} reviewers ({', '.join(dispatched)})",
-        board_id=board.id,
-    )
-    await session.commit()
-
+    result = await begin_sprint_review(session, sprint=sprint, board=board)
     return _RunReviewResponse(
-        sprint_id=sprint.id,
-        dispatched_reviewers=dispatched,
-        skipped_reviewers=skipped,
+        sprint_id=result.sprint_id,
+        dispatched_reviewers=result.dispatched_reviewers,
+        skipped_reviewers=result.skipped_reviewers,
     )
+
+
+@router.get("/sprints/{sprint_id}/reviews", response_model=SprintReviewGateRead)
+async def get_sprint_reviews(
+    sprint_id: UUID,
+    board: Board = BOARD_ACTOR_READ_DEP,
+    session: "AsyncSession" = SESSION_DEP,
+    _actor: object = ACTOR_DEP,
+) -> SprintReviewGateRead:
+    """Get aggregate review gate status for a sprint."""
+    sprint = await _require_sprint(session, sprint_id, board)
+    from app.services.sprint_reviews import sprint_review_gate  # noqa: PLC0415
+
+    return await sprint_review_gate(session, sprint=sprint)
 
 
 @router.post("/sprints/{sprint_id}/cancel", response_model=SprintRead)
@@ -676,16 +597,12 @@ async def add_sprint_tickets(
             continue
 
         existing_link = (
-            await session.exec(
-                select(SprintTicket).where(col(SprintTicket.task_id) == task_id)
-            )
+            await session.exec(select(SprintTicket).where(col(SprintTicket.task_id) == task_id))
         ).first()
         if existing_link is not None:
             continue
 
-        link = SprintTicket(
-            sprint_id=sprint.id, task_id=task_id, position=next_position
-        )
+        link = SprintTicket(sprint_id=sprint.id, task_id=task_id, position=next_position)
         session.add(link)
         task.sprint_id = sprint.id
         task.updated_at = utcnow()
@@ -780,11 +697,7 @@ async def list_backlog(
     """List all backlog tasks for a board, filterable by sprint or unassigned."""
     from sqlalchemy import or_  # noqa: PLC0415
 
-    query = (
-        select(Task)
-        .where(col(Task.board_id) == board.id)
-        .order_by(col(Task.created_at).desc())
-    )
+    query = select(Task).where(col(Task.board_id) == board.id).order_by(col(Task.created_at).desc())
     if task_status is not None:
         # Explicit status filter
         statuses = [s.strip() for s in task_status.split(",") if s.strip()]
@@ -825,13 +738,10 @@ async def create_backlog_task(
         description=payload.description,
         status="backlog",
         priority=payload.priority,
-        priority_score=payload.priority_score
-        if hasattr(payload, "priority_score")
-        else 35,
+        priority_score=payload.priority_score if hasattr(payload, "priority_score") else 35,
         due_at=payload.due_at,
         assigned_agent_id=payload.assigned_agent_id,
-        created_by_user_id=payload.created_by_user_id
-        or (auth.user.id if auth.user else None),
+        created_by_user_id=payload.created_by_user_id or (auth.user.id if auth.user else None),
         is_backlog=True,
     )
     session.add(task)
@@ -1268,9 +1178,7 @@ async def organise_backlog(
             else:
                 existing_count = len(
                     (
-                        await session.exec(
-                            select(Sprint).where(col(Sprint.board_id) == board.id)
-                        )
+                        await session.exec(select(Sprint).where(col(Sprint.board_id) == board.id))
                     ).all()
                 )
                 auto_name = f"Sprint {existing_count + 1}"
@@ -1328,9 +1236,7 @@ async def organise_backlog(
     )
 
 
-@router.post(
-    "/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED
-)
+@router.post("/backlog/batch", response_model=list[TaskRead], status_code=status.HTTP_201_CREATED)
 async def batch_create_backlog(
     payload: _BatchBacklogCreate,
     board: Board = BOARD_WRITE_DEP,
@@ -1440,9 +1346,7 @@ async def board_velocity(
                 actual_minutes=sprint.actual_minutes,
                 estimation_accuracy=acc,
                 started_at=sprint.started_at.isoformat() if sprint.started_at else None,
-                completed_at=sprint.completed_at.isoformat()
-                if sprint.completed_at
-                else None,
+                completed_at=sprint.completed_at.isoformat() if sprint.completed_at else None,
             )
         )
         if sprint.completed_minutes is not None:
@@ -1454,9 +1358,7 @@ async def board_velocity(
         round(sum(velocity_values) / len(velocity_values)) if velocity_values else None
     )
     rolling_accuracy = (
-        round(sum(accuracy_values) / len(accuracy_values), 3)
-        if accuracy_values
-        else None
+        round(sum(accuracy_values) / len(accuracy_values), 3) if accuracy_values else None
     )
 
     return _VelocityResponse(

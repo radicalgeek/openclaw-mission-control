@@ -47,6 +47,7 @@ from app.schemas.souls_directory import (
     SoulsDirectorySearchResponse,
     SoulsDirectorySoulRef,
 )
+from app.schemas.sprint_reviews import SprintReviewGateRead, SprintReviewRead, SprintReviewUpdate
 from app.schemas.tags import TagCreate, TagRead, TagRef, TagUpdate
 from app.schemas.tasks import TaskCreate, TaskRead, TaskUpdate
 from app.schemas.users import UserCreate, UserRead, UserUpdate
@@ -99,6 +100,9 @@ __all__ = [
     "SkillPackCreate",
     "SkillPackRead",
     "SkillPackSyncResponse",
+    "SprintReviewGateRead",
+    "SprintReviewRead",
+    "SprintReviewUpdate",
     "TagCreate",
     "TagRead",
     "TagRef",

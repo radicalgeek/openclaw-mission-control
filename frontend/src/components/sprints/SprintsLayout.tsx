@@ -16,7 +16,6 @@ import {
   updateSprint,
   listOrgTags,
 } from "@/api/sprints";
-import { cn } from "@/lib/utils";
 import { BoardSelectorSidebar } from "@/components/boards/BoardSelectorSidebar";
 import { SprintList } from "./SprintList";
 import { SprintDetail } from "./SprintDetail";
@@ -37,17 +36,17 @@ export function SprintsLayout({ boardId }: Props) {
     ApiError
   >(undefined, { query: { refetchOnMount: false } });
   const allBoards =
-    boardsQuery.data?.status === 200
-      ? (boardsQuery.data.data.items ?? [])
-      : [];
+    boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
   const currentBoard = allBoards.find((b) => b.id === boardId);
 
   // ── Org tags ───────────────────────────────────────────────────────────────
   const [orgTags, setOrgTags] = useState<TagRef[]>([]);
   useEffect(() => {
-    void listOrgTags().then((res) => {
-      if (res.status === 200) setOrgTags(res.data.items ?? []);
-    }).catch(() => undefined);
+    void listOrgTags()
+      .then((res) => {
+        if (res.status === 200) setOrgTags(res.data.items ?? []);
+      })
+      .catch(() => undefined);
   }, []);
 
   // ── Sprints ────────────────────────────────────────────────────────────────
@@ -68,7 +67,9 @@ export function SprintsLayout({ boardId }: Props) {
       setView((prev) => {
         if (prev.type === "sprint") {
           const updated = res.data.find((s) => s.id === prev.sprint.id);
-          return updated ? { type: "sprint", sprint: updated } : { type: "backlog" };
+          return updated
+            ? { type: "sprint", sprint: updated }
+            : { type: "backlog" };
         }
         return prev;
       });
@@ -122,15 +123,16 @@ export function SprintsLayout({ boardId }: Props) {
       // Persist to backend
       await Promise.all(
         orderedIds.map((id, idx) =>
-          updateSprint(boardId, id, { position: idx + 1 }).catch(() => undefined),
+          updateSprint(boardId, id, { position: idx + 1 }).catch(
+            () => undefined,
+          ),
         ),
       );
     },
     [boardId],
   );
 
-  const selectedSprintId =
-    view.type === "sprint" ? view.sprint.id : null;
+  const selectedSprintId = view.type === "sprint" ? view.sprint.id : null;
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -162,7 +164,9 @@ export function SprintsLayout({ boardId }: Props) {
         {/* New sprint form (slide-in) */}
         {showNewForm && (
           <div className="border-b border-slate-200 bg-white px-6 py-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-700">New Sprint</h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">
+              New Sprint
+            </h3>
             <form
               onSubmit={(e) => void handleCreateSprint(e)}
               className="space-y-3"

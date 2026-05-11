@@ -26,6 +26,7 @@ from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.plans import Plan
+from app.models.sprints import Sprint
 from app.models.tags import Tag
 from app.models.task_dependencies import TaskDependency
 from app.models.tasks import Task
@@ -55,6 +56,7 @@ from app.schemas.gateway_coordination import (
 from app.schemas.health import AgentHealthStatusResponse
 from app.schemas.pagination import DefaultLimitOffsetPage
 from app.schemas.plans import PlanRead
+from app.schemas.sprint_reviews import SprintReviewGateRead, SprintReviewUpdate
 from app.schemas.tags import TagRef
 from app.schemas.tasks import TaskCommentCreate, TaskCommentRead, TaskCreate, TaskRead, TaskUpdate
 from app.services.activity_log import record_activity
@@ -92,6 +94,12 @@ AGENT_LEAD_TAGS = cast("list[str | Enum]", ["agent-lead"])
 AGENT_MAIN_TAGS = cast("list[str | Enum]", ["agent-main"])
 AGENT_BOARD_TAGS = cast("list[str | Enum]", ["agent-lead", "agent-worker"])
 AGENT_ALL_ROLE_TAGS = cast("list[str | Enum]", ["agent-lead", "agent-worker", "agent-main"])
+
+REVIEW_ROLE_BY_TEMPLATE = {
+    "quality_reviewer": "qa",
+    "security_reviewer": "security",
+    "architecture_reviewer": "architecture",
+}
 
 
 def _coerce_agent_items(items: Sequence[Any]) -> list[Agent]:
@@ -1182,6 +1190,69 @@ async def batch_create_backlog_tasks(
         )
         for task in created
     ]
+
+
+@router.post(
+    "/boards/{board_id}/sprints/{sprint_id}/review-update",
+    response_model=SprintReviewGateRead,
+    tags=AGENT_BOARD_TAGS,
+    summary="Submit a sprint review verdict as a reviewer agent",
+    description=(
+        "Reviewer-only endpoint used by quality/security/architecture standalone "
+        "agents after sprint review. When every active reviewer approves, the "
+        "sprint is completed and the board may auto-advance to the next queued sprint."
+    ),
+    operation_id="agent_submit_sprint_review_verdict",
+    openapi_extra={
+        "x-llm-intent": "submit_sprint_review_verdict",
+        "x-when-to-use": [
+            "A sprint reviewer has finished quality/security/architecture review",
+            "Reviewer needs to approve sprint closure or request changes",
+        ],
+        "x-required-actor": "standalone_reviewer_agent",
+        "x-side-effects": [
+            "Records reviewer verdict",
+            "Completes sprint when all active reviewer roles approve",
+            "May auto-start the next queued sprint if board auto-advance is enabled",
+        ],
+    },
+)
+async def submit_sprint_review_verdict(
+    sprint_id: UUID,
+    payload: SprintReviewUpdate,
+    board: Board = BOARD_DEP,
+    session: AsyncSession = SESSION_DEP,
+    agent_ctx: AgentAuthContext = AGENT_CTX_DEP,
+) -> SprintReviewGateRead:
+    """Record a reviewer verdict for a sprint review gate."""
+    await _guard_board_access(session, agent_ctx, board, write=True)
+
+    profile = agent_ctx.agent.identity_profile or {}
+    role_template = profile.get("role_template")
+    role = REVIEW_ROLE_BY_TEMPLATE.get(str(role_template))
+    if role is None or agent_ctx.agent.agent_type != AGENT_TYPE_STANDALONE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only standalone reviewer agents can submit sprint review verdicts.",
+        )
+
+    sprint = await session.get(Sprint, sprint_id)
+    if sprint is None or sprint.board_id != board.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    from app.services.sprint_reviews import record_sprint_review_verdict  # noqa: PLC0415
+
+    return await record_sprint_review_verdict(
+        session,
+        sprint=sprint,
+        board=board,
+        role=role,
+        agent_id=agent_ctx.agent.id,
+        verdict=payload.verdict,
+        summary=payload.summary,
+        findings=payload.findings,
+        created_ticket_ids=payload.created_ticket_ids,
+    )
 
 
 @router.get(

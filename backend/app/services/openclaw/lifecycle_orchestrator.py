@@ -29,9 +29,8 @@ from app.services.openclaw.db_agent_state import (
     mint_agent_token,
 )
 from app.services.openclaw.db_service import OpenClawDBService
-from app.services.openclaw.gateway_rpc import OpenClawGatewayError
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
-from app.services.openclaw.gateway_rpc import openclaw_call
+from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
 from app.services.openclaw.internal.agent_key import agent_key as _agent_key
 from app.services.openclaw.lifecycle_queue import (
     QueuedAgentLifecycleReconcile,
@@ -239,6 +238,7 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
         # matches the DB hash we can safely refresh workspace files; if it does
         # not match, the agent is already broken with 401s, so rotate once and
         # rewrite the workspace before waking it.
+        raw_token: str | None
         if auth_token:
             raw_token = auth_token
         elif action == "provision" or locked.agent_token_hash is None:

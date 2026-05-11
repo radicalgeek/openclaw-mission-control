@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from uuid import uuid4
 
 from app.core.config import settings
@@ -91,23 +92,25 @@ def purge_stale_usage_poll_tasks(current_task_id: str | None) -> int:
         scheduled_queue_name = _scheduled_queue_name(queue_name)
         removed = 0
 
-        for raw_item in client.lrange(queue_name, 0, -1):
+        queue_items = cast(list[Any], client.lrange(queue_name, 0, -1))
+        for raw_item in queue_items:
             task = _decode_task(raw_item, queue_name)
             if task.task_type != TASK_TYPE:
                 continue
             task_id = task.payload.get("task_id")
             if current_task_id is not None and task_id == current_task_id:
                 continue
-            removed += int(client.lrem(queue_name, 0, raw_item) or 0)
+            removed += int(cast(int, client.lrem(queue_name, 0, raw_item) or 0))
 
-        for raw_item in client.zrange(scheduled_queue_name, 0, -1):
+        scheduled_items = cast(list[Any], client.zrange(scheduled_queue_name, 0, -1))
+        for raw_item in scheduled_items:
             task = _decode_task(raw_item, scheduled_queue_name)
             if task.task_type != TASK_TYPE:
                 continue
             task_id = task.payload.get("task_id")
             if current_task_id is not None and task_id == current_task_id:
                 continue
-            removed += int(client.zrem(scheduled_queue_name, raw_item) or 0)
+            removed += int(cast(int, client.zrem(scheduled_queue_name, raw_item) or 0))
 
         return removed
     except Exception:

@@ -17,8 +17,6 @@ import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import { buttonVariants } from "@/components/ui/button";
 
-const BOARD_SORTABLE_COLUMNS = ["name", "group", "updated_at"];
-
 export default function BoardsPage() {
   const router = useRouter();
   const { isSignedIn } = useAuth();

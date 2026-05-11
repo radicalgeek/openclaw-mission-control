@@ -1,14 +1,14 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle, Pin, PinOff, Send, TicketPlus, X } from "lucide-react";
 import type { ThreadMessageRead, ThreadRead } from "@/api/channels";
-import { createTaskFromThread, getThreadMessages, sendMessage, updateThread } from "@/api/channels";
+import {
+  createTaskFromThread,
+  getThreadMessages,
+  sendMessage,
+  updateThread,
+} from "@/api/channels";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/atoms/Markdown";
 import { MpcAppResultCard } from "@/components/atoms/MpcAppResultCard";
@@ -69,14 +69,16 @@ function MessageBubble({
 
   if (message.content_type === "mcp_app_result") {
     const meta = message.event_metadata ?? null;
-    const resourceUri = typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
+    const resourceUri =
+      typeof meta?.resource_uri === "string" ? meta.resource_uri : null;
     const agentId =
       typeof meta?.agent_id === "string"
         ? meta.agent_id
         : typeof message.sender_id === "string"
           ? message.sender_id
           : null;
-    const resourceHtml = typeof meta?.resource_html === "string" ? meta.resource_html : null;
+    const resourceHtml =
+      typeof meta?.resource_html === "string" ? meta.resource_html : null;
     return (
       <div className="w-full">
         {resourceUri && agentId ? (
@@ -166,7 +168,11 @@ type MentionDropdownProps = {
   onSelect: (name: string) => void;
 };
 
-function MentionDropdown({ suggestions, filter, onSelect }: MentionDropdownProps) {
+function MentionDropdown({
+  suggestions,
+  filter,
+  onSelect,
+}: MentionDropdownProps) {
   const matches = suggestions.filter((s) =>
     s.toLowerCase().startsWith(filter.toLowerCase()),
   );
@@ -271,7 +277,7 @@ export function MessageThread({
         setUnreadWhileScrolledUp((prev) => prev + (newCount - prevCount));
       }
     }
-  }, [messages, isNearBottom]);
+  }, [messages, isNearBottom, scrollToBottom]);
 
   // Track scroll position
   useEffect(() => {
@@ -334,7 +340,7 @@ export function MessageThread({
       setIsSending(false);
       composerRef.current?.focus();
     }
-  }, [composerText, thread.id]);
+  }, [composerText, scrollToBottom, thread.id]);
 
   const handleToggleResolved = useCallback(async () => {
     setIsUpdatingThread(true);
@@ -508,9 +514,7 @@ export function MessageThread({
               onClick={() => void handleToggleResolved()}
               disabled={isUpdatingThread}
               title={
-                currentThread.is_resolved
-                  ? "Re-open thread"
-                  : "Mark resolved"
+                currentThread.is_resolved ? "Re-open thread" : "Mark resolved"
               }
               className={cn(
                 "rounded-lg border p-1.5 transition",
@@ -536,10 +540,7 @@ export function MessageThread({
         {/* Linked task badge */}
         {currentThread.task_id ? (
           <div className="mt-2">
-            <LinkedTaskBadge
-              taskId={currentThread.task_id}
-              boardId={boardId}
-            />
+            <LinkedTaskBadge taskId={currentThread.task_id} boardId={boardId} />
           </div>
         ) : null}
         {createTaskError ? (
@@ -548,7 +549,10 @@ export function MessageThread({
       </div>
 
       {/* Message list */}
-      <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={messagesContainerRef}
+        className="relative flex-1 overflow-y-auto px-4 py-4"
+      >
         {isLoadingMessages && messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-slate-400">Loading messages…</p>
@@ -559,7 +563,9 @@ export function MessageThread({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-slate-400">No messages yet. Start the conversation.</p>
+            <p className="text-sm text-slate-400">
+              No messages yet. Start the conversation.
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -590,7 +596,8 @@ export function MessageThread({
             }}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-lg transition hover:bg-[color:var(--accent-strong)]"
           >
-            {unreadWhileScrolledUp} new message{unreadWhileScrolledUp > 1 ? "s" : ""}
+            {unreadWhileScrolledUp} new message
+            {unreadWhileScrolledUp > 1 ? "s" : ""}
           </button>
         )}
       </div>

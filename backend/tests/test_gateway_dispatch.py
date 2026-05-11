@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.openclaw import gateway_dispatch
+import app.services.openclaw.gateway_dispatch as gateway_dispatch
 from app.services.openclaw.gateway_rpc import GatewayConfig
 
 
@@ -192,7 +192,9 @@ async def test_wake_agent_session_does_not_reset_idle_session_when_requested(mon
 
 
 @pytest.mark.asyncio
-async def test_wake_agent_session_stops_when_failed_session_reset_is_unavailable(monkeypatch) -> None:
+async def test_wake_agent_session_stops_when_failed_session_reset_is_unavailable(
+    monkeypatch,
+) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
     async def _openclaw_call(

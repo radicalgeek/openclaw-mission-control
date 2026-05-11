@@ -42,6 +42,7 @@ async def _seed_board_task_and_agent(
     block_status_changes_with_pending_approval: bool = False,
     only_lead_can_change_status: bool = False,
     agent_is_board_lead: bool = False,
+    role_template: str | None = None,
 ) -> tuple[Board, Task, Agent]:
     organization_id = uuid4()
     gateway = Gateway(
@@ -69,6 +70,7 @@ async def _seed_board_task_and_agent(
         name="agent",
         status="online",
         is_board_lead=agent_is_board_lead,
+        identity_profile={"role_template": role_template} if role_template else None,
     )
     task = Task(
         id=uuid4(),
@@ -445,6 +447,66 @@ async def test_update_task_allows_non_lead_status_change_when_only_lead_rule_dis
             )
 
             assert updated.status == "in_progress"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_update_task_allows_merger_to_close_review_after_merge() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            _board, task, merger = await _seed_board_task_and_agent(
+                session,
+                task_status="review",
+                require_approval_for_done=False,
+                only_lead_can_change_status=False,
+                role_template="merger",
+            )
+
+            updated = await tasks_api.update_task(
+                payload=TaskUpdate(
+                    status="done",
+                    comment="Merged to main: abc123. Checks: backend tests passed.",
+                ),
+                task=task,
+                session=session,
+                actor=ActorContext(actor_type="agent", agent=merger),
+            )
+
+            assert updated.status == "done"
+            assert updated.assigned_agent_id == merger.id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_update_task_rejects_merger_done_from_in_progress() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            _board, task, merger = await _seed_board_task_and_agent(
+                session,
+                task_status="in_progress",
+                require_approval_for_done=False,
+                only_lead_can_change_status=False,
+                role_template="merger",
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await tasks_api.update_task(
+                    payload=TaskUpdate(
+                        status="done",
+                        comment="Merged to main: abc123. Checks: backend tests passed.",
+                    ),
+                    task=task,
+                    session=session,
+                    actor=ActorContext(actor_type="agent", agent=merger),
+                )
+
+            assert exc.value.status_code == 403
+            assert isinstance(exc.value.detail, dict)
+            assert exc.value.detail["code"] == "lead_review_required_for_done"
     finally:
         await engine.dispose()
 

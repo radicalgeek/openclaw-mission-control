@@ -183,9 +183,9 @@ async def test_start_sprint_succeeds_no_active_sprint() -> None:
 
 @pytest.mark.asyncio
 async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch: Any) -> None:
+    import app.services.openclaw.gateway_rpc as gateway_rpc
+    import app.services.openclaw.provisioning as provisioning
     from app.services import sprint_lifecycle
-    from app.services.openclaw import provisioning
-    from app.services.openclaw import gateway_rpc
 
     board = _board()
     board.gateway_id = uuid4()
@@ -323,9 +323,10 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
     assert f"Sprint ID: {sprint.id}" in sent[0]["message"]
     assert "Assign all unassigned sprint inbox tickets" in sent[0]["message"]
     assert f"GET /api/v1/agent/agents?board_id={board.id}" in sent[0]["message"]
-    assert f"GET /api/v1/agent/boards/{board.id}/tasks?status=inbox&is_backlog=false" in sent[
-        0
-    ]["message"]
+    assert (
+        f"GET /api/v1/agent/boards/{board.id}/tasks?status=inbox&is_backlog=false"
+        in sent[0]["message"]
+    )
     assert f"PATCH /api/v1/agent/boards/{board.id}/tasks/<task_id>" in sent[0]["message"]
     assert "Do not rewrite, shorten, or substitute any UUID." in sent[0]["message"]
     assert "/api/v1/agent/boards/<board_id>/agents" in sent[0]["message"]

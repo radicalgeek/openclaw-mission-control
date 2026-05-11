@@ -233,6 +233,7 @@ async def _wake_board_lead_for_started_sprint(
     if lead is None or not lead.openclaw_session_id:
         logger.warning("sprint.start.lead_wake.skipped_no_lead board_id=%s", board.id)
         return
+    lead_session_key = lead.openclaw_session_id
 
     try:
         await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(gateway, list(agents))
@@ -254,11 +255,11 @@ async def _wake_board_lead_for_started_sprint(
     async def _send_lead_wake() -> None:
         await _reset_failed_lead_session_if_needed(
             openclaw_call=openclaw_call,
-            session_key=lead.openclaw_session_id,
+            session_key=lead_session_key,
             config=config,
         )
         await ensure_session(
-            lead.openclaw_session_id,
+            lead_session_key,
             config=config,
             label=lead.name,
             model=_agent_session_model(lead),
@@ -266,7 +267,7 @@ async def _wake_board_lead_for_started_sprint(
         )
         await send_session_message_nonblocking(
             message,
-            session_key=lead.openclaw_session_id,
+            session_key=lead_session_key,
             config=config,
             idempotency_key=str(
                 uuid5(
@@ -443,7 +444,7 @@ class SprintService:
         *,
         board_id: UUID,
     ) -> None:
-        """Check if the active sprint is complete; if so, complete it."""
+        """Check if the active sprint is ready for review; if so, start review."""
         from app.models.boards import Board as _Board  # noqa: PLC0415
         from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
         from app.models.sprints import SprintTicket
@@ -472,12 +473,14 @@ class SprintService:
             if task is None or task.status != "done":
                 return  # Still work to do
 
-        # All tickets are done — auto-complete
+        # All tickets are done — enter the review gate.
         board = await session.get(_Board, board_id)
         if board is None:
             return
 
-        await SprintService.complete_sprint(session, sprint=sprint, board=board)
+        from app.services.sprint_reviews import begin_sprint_review  # noqa: PLC0415
+
+        await begin_sprint_review(session, sprint=sprint, board=board)
 
     @staticmethod
     async def complete_sprint(
@@ -485,6 +488,7 @@ class SprintService:
         *,
         sprint: Sprint,
         board: Board,
+        allow_reviewing: bool = False,
     ) -> None:
         """Complete a sprint: archive done tickets, optionally auto-advance."""
         from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
@@ -492,13 +496,16 @@ class SprintService:
         from app.models.tasks import Task  # noqa: PLC0415
         from app.services.activity_log import record_activity  # noqa: PLC0415
 
-        if sprint.status != "active":
+        allowed_statuses = {"active"}
+        if allow_reviewing:
+            allowed_statuses.add("reviewing")
+        if sprint.status not in allowed_statuses:
             from fastapi import HTTPException
             from fastapi import status as http_status  # noqa: PLC0415
 
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
-                detail=f"Sprint must be active to complete (current: {sprint.status}).",
+                detail=f"Sprint cannot be completed from status '{sprint.status}'.",
             )
 
         sprint.status = "completed"

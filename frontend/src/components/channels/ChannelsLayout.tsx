@@ -1,7 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Hash, Link2, MessageCircle, Pencil, Plus, Rss, Shield, Trash2, User } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronDown,
+  Hash,
+  Link2,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Rss,
+  Shield,
+  Trash2,
+  User,
+} from "lucide-react";
 
 import type { ChannelRead, ThreadRead } from "@/api/channels";
 import {
@@ -62,12 +73,17 @@ function writeCollapsed(s: Set<string>) {
 
 export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   // ── Boards ────────────────────────────────────────────────────────────────
-  const boardsQuery = useListBoardsApiV1BoardsGet<listBoardsApiV1BoardsGetResponse, ApiError>(
-    undefined,
-    { query: { refetchOnMount: false } },
+  const boardsQuery = useListBoardsApiV1BoardsGet<
+    listBoardsApiV1BoardsGetResponse,
+    ApiError
+  >(undefined, { query: { refetchOnMount: false } });
+  const allBoards = useMemo(
+    () =>
+      boardsQuery.data?.status === 200
+        ? (boardsQuery.data.data.items ?? [])
+        : [],
+    [boardsQuery.data],
   );
-  const allBoards =
-    boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
 
   // ── Collapse state (per-board) ────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -94,7 +110,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
 
   // ── Channel cache (all boards, lazy-loaded) ───────────────────────────────
   const boardChannels = useRef<BoardChannels>({});
-  const [, forceUpdate] = useState(0);
+  const [renderVersion, forceUpdate] = useState(0);
   const rerender = () => forceUpdate((n) => n + 1);
 
   const loadBoardChannels = useCallback(async (bid: string) => {
@@ -104,7 +120,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     try {
       const result = await getBoardChannels(bid);
       if (result.status === 200) {
-        boardChannels.current[bid] = Array.isArray(result.data) ? result.data : [];
+        boardChannels.current[bid] = Array.isArray(result.data)
+          ? result.data
+          : [];
       } else {
         boardChannels.current[bid] = "error";
       }
@@ -122,10 +140,11 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     boardAgents.current[bid] = "loading";
     rerender();
     try {
-      const res: listAgentsApiV1AgentsGetResponse = await listAgentsApiV1AgentsGet({
-        board_id: bid,
-        limit: 100,
-      });
+      const res: listAgentsApiV1AgentsGetResponse =
+        await listAgentsApiV1AgentsGet({
+          board_id: bid,
+          limit: 100,
+        });
       if (res.status === 200) {
         boardAgents.current[bid] = (res.data.items ?? []) as AgentRead[];
       } else {
@@ -157,12 +176,16 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   }, [allBoards, collapsed, loadBoardChannels, loadBoardAgents]);
 
   // ── Channel/thread/message selection ─────────────────────────────────────
-  const currentBoardChannels: ChannelRead[] =
-    Array.isArray(boardChannels.current[boardId])
+  const currentBoardChannels: ChannelRead[] = useMemo(() => {
+    void renderVersion;
+    return Array.isArray(boardChannels.current[boardId])
       ? (boardChannels.current[boardId] as ChannelRead[])
       : [];
+  }, [boardId, renderVersion]);
 
-  const [selectedChannel, setSelectedChannel] = useState<ChannelRead | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<ChannelRead | null>(
+    null,
+  );
   const [threads, setThreads] = useState<ThreadRead[]>([]);
   const [isLoadingThreads, setIsLoadingThreads] = useState(false);
   const [selectedThread, setSelectedThread] = useState<ThreadRead | null>(null);
@@ -198,7 +221,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   const autoSelected = useRef(false);
   useEffect(() => {
     if (autoSelected.current) return;
-    const regularChannels = currentBoardChannels.filter((c) => c.channel_type !== "direct");
+    const regularChannels = currentBoardChannels.filter(
+      (c) => c.channel_type !== "direct",
+    );
     if (regularChannels.length > 0) {
       autoSelected.current = true;
       setSelectedChannel(regularChannels[0]);
@@ -219,7 +244,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     Array.isArray(boardAgents.current[agentBoardId])
       ? (boardAgents.current[agentBoardId] as AgentRead[])
       : []
-  ).map((a) => a.name).filter(Boolean) as string[];
+  )
+    .map((a) => a.name)
+    .filter(Boolean) as string[];
 
   // ── Thread loading ────────────────────────────────────────────────────────
   const loadThreads = useCallback(async (channelId: string) => {
@@ -257,10 +284,17 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   };
 
   // ── Create channel modal ────────────────────────────────────────────────
-  const [isCreateChannelModalOpen, setIsCreateChannelModalOpen] = useState(false);
-  const [targetBoardForChannel, setTargetBoardForChannel] = useState<string | null>(null);
+  const [isCreateChannelModalOpen, setIsCreateChannelModalOpen] =
+    useState(false);
+  const [targetBoardForChannel, setTargetBoardForChannel] = useState<
+    string | null
+  >(null);
 
-  const handleCreateChannel = async (data: { name: string; channel_type: "discussion" | "alert"; description: string }) => {
+  const handleCreateChannel = async (data: {
+    name: string;
+    channel_type: "discussion" | "alert";
+    description: string;
+  }) => {
     const bid = targetBoardForChannel || boardId;
     const result = await createChannel(bid, data);
     if (result.status === 200 || result.status === 201) {
@@ -271,7 +305,10 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
     }
   };
 
-  const handleDeleteChannel = async (channelId: string, channelBoardId: string) => {
+  const handleDeleteChannel = async (
+    channelId: string,
+    channelBoardId: string,
+  ) => {
     if (!confirm("Delete this channel? This action cannot be undone.")) return;
     try {
       await deleteChannel(channelId);
@@ -288,7 +325,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   };
 
   // ── Edit channel modal ──────────────────────────────────────────────────
-  const [editingChannel, setEditingChannel] = useState<ChannelRead | null>(null);
+  const [editingChannel, setEditingChannel] = useState<ChannelRead | null>(
+    null,
+  );
 
   const handleChannelUpdated = (updated: ChannelRead) => {
     // Update the channel in the cache using the channel's own board_id
@@ -306,7 +345,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   };
 
   // ── Channel webhook modal ───────────────────────────────────────────────
-  const [webhookChannel, setWebhookChannel] = useState<ChannelRead | null>(null);
+  const [webhookChannel, setWebhookChannel] = useState<ChannelRead | null>(
+    null,
+  );
 
   const handleThreadUpdated = (updated: ThreadRead) => {
     setThreads((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
@@ -323,7 +364,9 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
       const cached = boardChannels.current[targetBoardId];
       const existing = Array.isArray(cached)
         ? cached.find(
-            (c) => c.channel_type === "direct" && c.webhook_source_filter === agent.id,
+            (c) =>
+              c.channel_type === "direct" &&
+              c.webhook_source_filter === agent.id,
           )
         : undefined;
 
@@ -352,7 +395,10 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   // ── Mobile navigation ─────────────────────────────────────────────────────
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("channels");
 
-  const handleSelectChannel = (channel: ChannelRead, _targetBoardId?: string) => {
+  const handleSelectChannel = (
+    channel: ChannelRead,
+    _targetBoardId?: string,
+  ) => {
     // Select channel in-place without navigating to a different URL
     setSelectedChannel(channel);
     setSelectedThread(null);
@@ -367,7 +413,6 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-1 min-h-0 flex-col md:flex-row overflow-hidden">
-
       {/* ── Discord-style left sidebar ──────────────────────────────────── */}
       <div
         className={cn(
@@ -395,10 +440,16 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                 ? channelsState
                 : [];
               const isLoadingChList = channelsState === "loading";
-              const regularChannels = boardChList.filter((c) => c.channel_type !== "direct");
-              const directChannels = boardChList.filter((c) => c.channel_type === "direct");
+              const regularChannels = boardChList.filter(
+                (c) => c.channel_type !== "direct",
+              );
+              const directChannels = boardChList.filter(
+                (c) => c.channel_type === "direct",
+              );
               const agentsState = boardAgents.current[board.id];
-              const boardAgentList: AgentRead[] = Array.isArray(agentsState) ? agentsState : [];
+              const boardAgentList: AgentRead[] = Array.isArray(agentsState)
+                ? agentsState
+                : [];
 
               return (
                 <div key={board.id} className="mb-1">
@@ -406,9 +457,7 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                   <div
                     className={cn(
                       "group flex w-full items-center gap-1.5 px-3 py-1.5 transition-colors",
-                      isCurrentBoard
-                        ? "text-slate-900"
-                        : "text-slate-600",
+                      isCurrentBoard ? "text-slate-900" : "text-slate-600",
                     )}
                   >
                     <button
@@ -447,15 +496,22 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                     <div>
                       {/* Regular channels (discussion / alert) */}
                       {isLoadingChList ? (
-                        <p className="px-7 py-1 text-xs text-slate-400">Loading…</p>
+                        <p className="px-7 py-1 text-xs text-slate-400">
+                          Loading…
+                        </p>
                       ) : regularChannels.length === 0 ? (
-                        <p className="px-7 py-1 text-xs text-slate-400">No channels</p>
+                        <p className="px-7 py-1 text-xs text-slate-400">
+                          No channels
+                        </p>
                       ) : (
                         regularChannels.map((ch) => {
                           const isSelected = selectedChannel?.id === ch.id;
-                          const isPlatformBoard = (board as typeof board & { is_platform?: boolean }).is_platform;
+                          const isPlatformBoard = (
+                            board as typeof board & { is_platform?: boolean }
+                          ).is_platform;
                           const isSupportChannel = ch.slug === "support";
-                          const showPlatformIndicator = isPlatformBoard && isSupportChannel;
+                          const showPlatformIndicator =
+                            isPlatformBoard && isSupportChannel;
                           return (
                             <div
                               key={ch.id}
@@ -469,26 +525,31 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                             >
                               <button
                                 type="button"
-                                onClick={() => handleSelectChannel(ch, board.id)}
+                                onClick={() =>
+                                  handleSelectChannel(ch, board.id)
+                                }
                                 className="flex flex-1 items-center gap-2 text-left"
                               >
-                              {ch.channel_type === "alert" ? (
-                                <Rss className="h-3.5 w-3.5 flex-shrink-0" />
-                              ) : (
-                                <Hash className="h-3.5 w-3.5 flex-shrink-0" />
-                              )}
-                              <span className="truncate">{ch.name}</span>
-                              {showPlatformIndicator && (
-                                <span className="flex items-center gap-1 rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700" title="Cross-project platform support channel">
-                                  <Shield className="h-2.5 w-2.5" />
-                                  cross-project
-                                </span>
-                              )}
-                              {(ch.unread_count ?? 0) > 0 && (
-                                <span className="ml-auto flex-shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                                  {ch.unread_count}
-                                </span>
-                              )}
+                                {ch.channel_type === "alert" ? (
+                                  <Rss className="h-3.5 w-3.5 flex-shrink-0" />
+                                ) : (
+                                  <Hash className="h-3.5 w-3.5 flex-shrink-0" />
+                                )}
+                                <span className="truncate">{ch.name}</span>
+                                {showPlatformIndicator && (
+                                  <span
+                                    className="flex items-center gap-1 rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700"
+                                    title="Cross-project platform support channel"
+                                  >
+                                    <Shield className="h-2.5 w-2.5" />
+                                    cross-project
+                                  </span>
+                                )}
+                                {(ch.unread_count ?? 0) > 0 && (
+                                  <span className="ml-auto flex-shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                    {ch.unread_count}
+                                  </span>
+                                )}
                               </button>
                               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
                                 {ch.channel_type === "alert" && (
@@ -544,14 +605,17 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                               <button
                                 key={agent.id}
                                 type="button"
-                                onClick={() => void handleOpenDM(agent, board.id)}
+                                onClick={() =>
+                                  void handleOpenDM(agent, board.id)
+                                }
                                 disabled={isDmLoading === agent.id}
                                 title={`DM ${agent.name}`}
                                 className={cn(
                                   "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
                                   "mx-1 w-[calc(100%-8px)]",
                                   "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                                  isDmLoading === agent.id && "opacity-50 cursor-wait",
+                                  isDmLoading === agent.id &&
+                                    "opacity-50 cursor-wait",
                                 )}
                               >
                                 <span
@@ -580,13 +644,14 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                             Direct Messages
                           </p>
                           {directChannels.map((ch) => {
-                            const isSelected =
-                              selectedChannel?.id === ch.id;
+                            const isSelected = selectedChannel?.id === ch.id;
                             return (
                               <button
                                 key={ch.id}
                                 type="button"
-                                onClick={() => handleSelectChannel(ch, board.id)}
+                                onClick={() =>
+                                  handleSelectChannel(ch, board.id)
+                                }
                                 className={cn(
                                   "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
                                   "mx-1 w-[calc(100%-8px)]",

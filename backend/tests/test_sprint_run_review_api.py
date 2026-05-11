@@ -11,7 +11,7 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.deps import (
@@ -26,7 +26,7 @@ from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
-from app.models.sprints import Sprint, SprintTicket
+from app.models.sprints import Sprint, SprintReview, SprintTicket
 from app.models.tasks import Task
 from app.models.users import User
 
@@ -206,6 +206,19 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         assert sorted(sessions_dispatched) == sorted(
             ["qa-session", "security-session", "architecture-session"]
         )
+        async with sm() as session:
+            refreshed = await session.get(Sprint, sprint.id)
+            assert refreshed is not None
+            assert refreshed.status == "reviewing"
+            rows = (
+                await session.exec(select(SprintReview).where(SprintReview.sprint_id == sprint.id))
+            ).all()
+            assert sorted(row.role for row in rows) == ["architecture", "qa", "security"]
+            assert {row.status for row in rows} == {"pending"}
+        prompts = [call["message"] for call in captured]
+        assert all("Backlog tickets already planned:" in prompt for prompt in prompts)
+        assert all("Future sprint tickets already planned:" in prompt for prompt in prompts)
+        assert all("/review-update" in prompt for prompt in prompts)
     finally:
         await engine.dispose()
 
@@ -327,5 +340,58 @@ async def test_run_review_409_when_sprint_has_no_tickets() -> None:
             )
         assert resp.status_code == 409
         assert "no tickets" in resp.json()["detail"].lower()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reviewer_consensus_completes_sprint_and_archives_done_tasks() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                sprint_status="reviewing",
+            )
+            for role in ("qa", "security", "architecture"):
+                session.add(
+                    SprintReview(
+                        organization_id=board.organization_id,
+                        board_id=board.id,
+                        sprint_id=sprint.id,
+                        role=role,
+                        status="pending",
+                    )
+                )
+            await session.commit()
+
+            from app.services.sprint_reviews import record_sprint_review_verdict
+
+            for role, agent in reviewers.items():
+                gate = await record_sprint_review_verdict(
+                    session,
+                    sprint=sprint,
+                    board=board,
+                    role=role,
+                    agent_id=agent.id,
+                    verdict="approve",
+                    summary=f"{role} approved",
+                    findings=[],
+                    created_ticket_ids=[],
+                )
+
+            await session.refresh(sprint)
+            assert sprint.status == "completed"
+            assert gate.approved is True
+            task = (
+                await session.exec(
+                    select(Task)
+                    .join(SprintTicket, SprintTicket.task_id == Task.id)
+                    .where(SprintTicket.sprint_id == sprint.id)
+                )
+            ).first()
+            assert task is not None
+            assert task.status == "archived"
     finally:
         await engine.dispose()

@@ -176,7 +176,9 @@ def test_tools_exec_host_patch_forces_gateway_host():
     assert agent_provisioning._tools_exec_host_patch({"tools": {"exec": {"host": "auto"}}}) == {
         "exec": {"host": "gateway"},
     }
-    assert agent_provisioning._tools_exec_host_patch({"tools": {"exec": {"host": "gateway"}}}) is None
+    assert (
+        agent_provisioning._tools_exec_host_patch({"tools": {"exec": {"host": "gateway"}}}) is None
+    )
 
 
 def test_planner_heartbeat_prompt_requires_board_discovery_and_draft_sprints():
@@ -230,12 +232,8 @@ def test_agent_model_config_uses_role_template_model_policy():
         identity_profile={"role_template": "developer"},
     )
 
-    assert agent_provisioning._agent_model_config(triager) == {
-        "primary": "azure-foundry/gpt-5-4"
-    }
-    assert agent_provisioning._agent_model_config(reviewer) == {
-        "primary": "azure-foundry/gpt-5-4"
-    }
+    assert agent_provisioning._agent_model_config(triager) == {"primary": "azure-foundry/gpt-5-4"}
+    assert agent_provisioning._agent_model_config(reviewer) == {"primary": "azure-foundry/gpt-5-4"}
     assert agent_provisioning._agent_model_config(planner) is None
     assert agent_provisioning._agent_model_config(developer) == {
         "primary": "azure-foundry/kimi-k2-6"
@@ -250,12 +248,8 @@ def test_agent_model_config_pins_board_agents_to_gpt_4_1():
         identity_profile={"role_template": "merger"},
     )
 
-    assert agent_provisioning._agent_model_config(lead) == {
-        "primary": "azure-foundry/gpt-4.1"
-    }
-    assert agent_provisioning._agent_model_config(merger) == {
-        "primary": "azure-foundry/gpt-4.1"
-    }
+    assert agent_provisioning._agent_model_config(lead) == {"primary": "azure-foundry/gpt-4.1"}
+    assert agent_provisioning._agent_model_config(merger) == {"primary": "azure-foundry/gpt-4.1"}
 
 
 def test_agent_model_config_treats_legacy_board_workers_as_developers():
@@ -266,9 +260,7 @@ def test_agent_model_config_treats_legacy_board_workers_as_developers():
         identity_profile=None,
     )
 
-    assert agent_provisioning._agent_model_config(worker) == {
-        "primary": "azure-foundry/kimi-k2-6"
-    }
+    assert agent_provisioning._agent_model_config(worker) == {"primary": "azure-foundry/kimi-k2-6"}
 
 
 def test_agent_model_config_explicit_identity_profile_override_wins():
@@ -323,12 +315,8 @@ def test_agent_model_config_uses_runtime_model_routing(monkeypatch):
         "primary": "azure-foundry/deepseek-v3",
         "fallbacks": ["azure-foundry/gpt-4-1-mini"],
     }
-    assert agent_provisioning._agent_model_config(triager) == {
-        "primary": "azure-foundry/gpt-4.1"
-    }
-    assert agent_provisioning._agent_model_config(lead) == {
-        "primary": "azure-foundry/gpt-4-1-mini"
-    }
+    assert agent_provisioning._agent_model_config(triager) == {"primary": "azure-foundry/gpt-4.1"}
+    assert agent_provisioning._agent_model_config(lead) == {"primary": "azure-foundry/gpt-4-1-mini"}
     assert agent_provisioning._agent_model_config(planner) is None
 
 

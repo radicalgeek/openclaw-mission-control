@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.session import async_session_maker
+from app.services.board_agent_work_recovery import wake_stale_board_agents_with_active_work
 from app.services.openclaw.org_agent_reconcile_queue import (
     clear_org_agent_reconcile_lock,
     enqueue_org_agent_reconcile,
@@ -13,7 +14,6 @@ from app.services.openclaw.org_agent_reconciler import (
     reconcile_all_orgs,
     sweep_stuck_provisioning_agents,
 )
-from app.services.board_agent_work_recovery import wake_stale_board_agents_with_active_work
 from app.services.queue import QueuedTask
 
 logger = get_logger(__name__)

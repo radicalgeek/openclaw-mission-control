@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/auth/clerk";
@@ -31,10 +31,13 @@ export default function ChannelsIndexPage() {
     },
   });
 
-  const boards =
-    boardsQuery.data?.status === 200
-      ? (boardsQuery.data.data.items ?? [])
-      : [];
+  const boards = useMemo(
+    () =>
+      boardsQuery.data?.status === 200
+        ? (boardsQuery.data.data.items ?? [])
+        : [],
+    [boardsQuery.data],
+  );
 
   useEffect(() => {
     if (redirected) return;

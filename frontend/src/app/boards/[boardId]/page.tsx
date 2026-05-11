@@ -2600,7 +2600,13 @@ export default function BoardDetailPage() {
         void loadComments(task.id);
       }
     },
-    [buildUrlWithTaskAndComment, loadComments, router, searchParams],
+    [
+      buildUrlWithTaskAndComment,
+      loadComments,
+      loadThreadMessages,
+      router,
+      searchParams,
+    ],
   );
 
   const selectedTaskDependencies = useMemo<DependencyBannerDependency[]>(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Bell, Hash, Rss } from "lucide-react";
+import { AlertTriangle, Hash, Rss } from "lucide-react";
 
 import type { ChannelRead } from "@/api/channels";
 import { cn } from "@/lib/utils";
@@ -63,14 +63,19 @@ export function ChannelList({
   isLoading = false,
 }: Props) {
   const alertChannels = channels.filter((c) => c.channel_type === "alert");
-  const discussionChannels = channels.filter((c) => c.channel_type === "discussion");
+  const discussionChannels = channels.filter(
+    (c) => c.channel_type === "discussion",
+  );
 
   if (isLoading) {
     return (
       <div className="p-4">
         <div className="space-y-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-8 animate-pulse rounded-lg bg-slate-200" />
+            <div
+              key={i}
+              className="h-8 animate-pulse rounded-lg bg-slate-200"
+            />
           ))}
         </div>
       </div>
