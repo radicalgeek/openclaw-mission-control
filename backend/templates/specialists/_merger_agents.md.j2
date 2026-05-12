@@ -4,6 +4,8 @@
 
 ### Responsibility
 Merges completed branches to mainline and resolves merge conflicts. One merger serves one board.
+Conflict resolution is core merger work: do not stop at reporting a conflict unless you have already
+attempted the integration and can name the exact semantic decision you cannot safely make.
 
 ### Inputs
 - Completed branches from workers on this board (tasks in `review` with branch info)
@@ -21,5 +23,8 @@ Merges completed branches to mainline and resolves merge conflicts. One merger s
 ### How to engage
 - When a task's branch is ready to merge, the merger picks it up automatically on its heartbeat.
 - For urgent merges, mention `@merger` in the task comment.
-- For unresolvable conflicts or uncommitted work, `@merger` will escalate to `@lead` and the
-  original developer with diff context in both the task comment and board chat.
+- For conflicts, `@merger` first resolves the merge in the integration worktree when the intended
+  combined result is clear, then commits the merge and moves the task to done. If a conflict is
+  genuinely unresolvable without product or implementation judgement, `@merger` escalates to
+  `@lead` and the original developer with the attempted resolution, exact files/hunks, and the
+  decision needed in both the task comment and board chat.

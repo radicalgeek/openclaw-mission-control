@@ -53,6 +53,8 @@ def _default_ctx() -> dict[str, object]:
 def test_default_worker_heartbeat_renders_without_role_template() -> None:
     result = _render("BOARD_HEARTBEAT.md.j2", _default_ctx())
     assert "Board Worker Loop" in result
+    assert "Treat `merge_blocker` messages that mention you" in result
+    assert "commit/push the fix" in result
 
 
 def test_default_worker_agents_renders_without_role_template() -> None:
@@ -101,6 +103,8 @@ def test_merger_heartbeat_closes_tasks_after_mainline_merge() -> None:
 
     assert "Check all tasks in `review` status" in result
     assert "Do not ignore a review task just because" in result
+    assert "Treat conflict resolution as your primary job" in result
+    assert "A Git conflict alone is not an escalation condition" in result
     assert '"status":"done"' in result
     assert "Move the task to `done` only after the code is in mainline" in result
     assert '"tags": ["chat", "merge_blocker"]' in result

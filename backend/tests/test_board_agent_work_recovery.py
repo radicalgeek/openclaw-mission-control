@@ -665,6 +665,8 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert "MERGE WATCH WAKE" in wake_calls[0]["message"]
             assert "inspect all tasks currently in `review`" in wake_calls[0]["message"]
             assert "custom fields are missing" in wake_calls[0]["message"]
+            assert "If Git reports conflicts, resolve them" in wake_calls[0]["message"]
+            assert "A Git conflict alone is not a blocker" in wake_calls[0]["message"]
             assert '{"status":"done","comment":"<merge SHA' in wake_calls[0]["message"]
             assert 'tags ["chat","merge_blocker"]' in wake_calls[0]["message"]
             assert "Do not use OpenClaw message/channel-send tools" in wake_calls[0]["message"]

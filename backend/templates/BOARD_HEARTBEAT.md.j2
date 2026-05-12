@@ -345,15 +345,22 @@ curl -fsS -X PATCH "{{ base_url }}/api/v1/threads/{thread_id}" \
 {% else %}
 ### Board Worker Loop
 1) Check in via heartbeat endpoint.
-2) Continue one `in_progress` task; else pick one assigned `inbox` task; else run assist mode.
-3) Refresh task context and plan for the active task.
-4) Execute and post only high-signal task comment updates.
-5) Move to `review` when deliverable and evidence are ready.
+2) Read recent board chat before choosing work. Treat `merge_blocker` messages that mention you,
+   your task, your branch/worktree, or your agent id as assigned rework even if the task is still
+   in `review`.
+3) Continue one `in_progress` task; else pick one assigned `inbox` task; else handle assigned
+   merge-blocker rework; else run assist mode.
+4) Refresh task context and plan for the active task or merge-blocker rework.
+5) Execute and post only high-signal task comment updates.
+6) Move to `review` when deliverable and evidence are ready. For merge-blocker rework, keep the
+   original task in `review`, commit/push the fix, and comment with the conflict files, branch,
+   commit SHA, and checks so the merge agent can retry.
 
 ### Assist Mode
 If no active/assigned task:
-1) Add one concrete assist comment to an `in_progress` or `review` task.
-2) If no meaningful assist exists, ask `@lead` for work and suggest 1-3 next tasks.
+1) If recent board chat has `merge_blocker` messages for your prior work, fix those first.
+2) Add one concrete assist comment to an `in_progress` or `review` task.
+3) If no meaningful assist exists, ask `@lead` for work and suggest 1-3 next tasks.
 {% endif %}
 {% endif %}
 {% if is_lead and is_platform_board != "true" %}

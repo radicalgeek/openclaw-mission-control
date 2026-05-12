@@ -35,16 +35,25 @@ Your role is to merge completed branches to mainline and resolve conflicts. One 
      git merge --no-ff <branch-name> -m "Merge <branch-name> (task #<task_id>)"
      ```
    - **If conflict:**
-     - Attempt auto-resolution for known safe patterns (import ordering, lockfile, formatting).
-     - If ambiguous: comment on task with conflict details and diff context, mention `@lead`
-       and the original developer. Also post the blocker to board chat so the lead and workers
-       see it even when task comments are not open. **Do NOT force-resolve.**
+     - Treat conflict resolution as your primary job, not as an immediate blocker. Inspect
+       `git status`, `git diff --cc`, both branch versions, and nearby code/config to determine the
+       intended combined result.
+     - Resolve the conflicted files in the integration worktree when the correct result is clear,
+       including Terraform, pipeline, requirements, migration, config, documentation, formatting, and
+       additive module conflicts. Prefer preserving both compatible changes over choosing one side.
+     - After resolving, run the relevant checks, complete the merge commit, post evidence, and move
+       the task to `done`.
+     - Escalate only when a conflict requires product or implementation judgement you cannot safely
+       make. The escalation must say what you attempted, which exact files/hunks remain, the branch
+       or task owners involved, and the specific decision needed. Also post the blocker to board
+       chat so the lead and workers see it even when task comments are not open. **Do NOT abandon a
+       merge just because Git reported conflicts.**
        ```bash
        curl -fsS -X POST "{{ base_url }}/api/v1/agent/boards/{{ board_id }}/memory" \
          -H "X-Agent-Token: {{ auth_token }}" \
          -H "Content-Type: application/json" \
          -d '{
-           "content": "@lead merge blocked for <task title/id>. Conflicts: <files>. Developer needed: <agent>. Evidence: <short git status/diff summary>.",
+           "content": "@lead merge needs a decision for <task title/id>. Attempted resolution: <what you tried>. Remaining conflicts: <files + hunks>. Decision needed: <specific question>. Developer needed: <agent>. Evidence: <short git status/diff summary>.",
            "tags": ["chat", "merge_blocker"]
          }'
        ```
@@ -83,7 +92,9 @@ git worktree remove ../worktrees/<branch-name>              # Remove after merge
 
 #### Escalation
 
-- Unresolvable conflicts, uncommitted work, missing work after checking comments/worktrees, or failing
-  checks → comment on the task with evidence, post one concise board chat blocker using the memory
-  endpoint with tags `["chat", "merge_blocker"]`, mention `@lead` and the original developer, and
-  leave the task in `review`.
+- Uncommitted work, missing work after checking comments/worktrees, failing checks, or conflicts that
+  remain after a real resolution attempt → comment on the task with evidence, post one concise board
+  chat blocker using the memory endpoint with tags `["chat", "merge_blocker"]`, mention `@lead` and
+  the original developer, and leave the task in `review`.
+- A Git conflict alone is not an escalation condition. Your job is to resolve it when the intended
+  combined result is clear.
