@@ -2733,6 +2733,11 @@ async def _apply_non_lead_agent_task_rules(
         and update.task.assigned_agent_id is not None
         and update.task.assigned_agent_id != update.actor.agent.id
         and "status" in update.updates
+        and not (
+            update.updates.get("status") == "done"
+            and update.task.status == "review"
+            and _is_merger_agent(update.actor.agent)
+        )
     ):
         raise _task_update_forbidden_error(
             code="task_assignee_mismatch",

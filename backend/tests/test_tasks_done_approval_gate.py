@@ -481,6 +481,47 @@ async def test_update_task_allows_merger_to_close_review_after_merge() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_task_allows_merger_to_close_review_assigned_to_lead() -> None:
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            board, task, merger = await _seed_board_task_and_agent(
+                session,
+                task_status="review",
+                require_approval_for_done=False,
+                only_lead_can_change_status=False,
+                role_template="merger",
+            )
+            lead = Agent(
+                id=uuid4(),
+                board_id=board.id,
+                gateway_id=board.gateway_id,
+                name="Lead Agent",
+                status="online",
+                is_board_lead=True,
+            )
+            task.assigned_agent_id = lead.id
+            session.add(lead)
+            session.add(task)
+            await session.commit()
+
+            updated = await tasks_api.update_task(
+                payload=TaskUpdate(
+                    status="done",
+                    comment="Merged to main: abc123. Checks: backend tests passed.",
+                ),
+                task=task,
+                session=session,
+                actor=ActorContext(actor_type="agent", agent=merger),
+            )
+
+            assert updated.status == "done"
+            assert updated.assigned_agent_id == merger.id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_update_task_rejects_merger_done_from_in_progress() -> None:
     engine = await _make_engine()
     try:
