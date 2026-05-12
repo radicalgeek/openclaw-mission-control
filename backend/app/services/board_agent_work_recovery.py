@@ -9,6 +9,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
+from app.core.agent_tokens import verify_agent_token
 from app.core.logging import get_logger
 from app.core.time import utcnow
 from app.models.activity_events import ActivityEvent
@@ -21,9 +22,12 @@ from app.services.openclaw.constants import OFFLINE_AFTER
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig, OpenClawGatewayError
 from app.services.openclaw.internal.agent_key import agent_key as _agent_key
+from app.services.openclaw.db_agent_state import mint_agent_token
+from app.services.openclaw.lifecycle_orchestrator import _read_workspace_auth_token
 from app.services.openclaw.provisioning import (
     GatewayAgentRegistration,
     OpenClawGatewayControlPlane,
+    OpenClawGatewayProvisioner,
     _agent_model_config,
     _agent_session_model,
     _agent_session_should_clear_model,
@@ -33,6 +37,7 @@ from app.services.openclaw.provisioning import (
     _heartbeat_config,
     _workspace_path,
 )
+from app.services.openclaw.provisioning_db import fetch_db_template_overrides
 
 logger = get_logger(__name__)
 
@@ -204,7 +209,12 @@ def _lead_wake_message(
         "tasks `done` before the code is merged to mainline. If the work is ready, wake or "
         "mention the merge agent with the task id, branch/commit/worktree evidence, and expected "
         "checks. If the merge agent reports that mainline contains the work but the task is "
-        "still in `review`, move it to `done` with a comment containing the merge SHA. If work "
+        "still in `review`, move it to `done` with PATCH "
+        f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}} and JSON "
+        '{"status":"done","comment":"<merge SHA, checks, and evidence>"}. '
+        "Read task comments with GET "
+        f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}}/comments; do not omit the "
+        "`/tasks/` path segment. If work "
         "is blocked, read recent board chat for merge_blocker messages, post a task comment "
         "naming the blocker, and send it back to the developer when rework is needed."
     )
@@ -308,16 +318,79 @@ async def _refresh_runtime_agent_registration(
     )
 
 
+async def _refresh_stale_agent_workspace_token(
+    *,
+    session: AsyncSession,
+    gateway: Gateway,
+    board: Board,
+    agent: Agent,
+) -> bool:
+    """Rewrite agent files only when the persisted workspace token cannot auth."""
+
+    if not agent.agent_token_hash:
+        return False
+    workspace_token = await _read_workspace_auth_token(
+        gateway=gateway,
+        agent=agent,
+        board=board,
+    )
+    if (
+        workspace_token
+        and agent.agent_token_hash
+        and verify_agent_token(workspace_token, agent.agent_token_hash)
+    ):
+        return False
+
+    raw_token = mint_agent_token(agent)
+    agent.updated_at = utcnow()
+    session.add(agent)
+    await session.flush()
+    db_templates = await fetch_db_template_overrides(
+        session,
+        board_id=board.id,
+        organization_id=gateway.organization_id,
+    )
+    await OpenClawGatewayProvisioner().apply_agent_lifecycle(
+        agent=agent,
+        gateway=gateway,
+        board=board,
+        auth_token=raw_token,
+        user=None,
+        action="update",
+        force_bootstrap=False,
+        reset_session=False,
+        wake=False,
+        deliver_wakeup=False,
+        db_templates=db_templates or None,
+        patch_heartbeat=True,
+    )
+    logger.warning(
+        "board_agent_work_recovery.workspace_token_refreshed agent_id=%s board_id=%s token_missing=%s",
+        agent.id,
+        board.id,
+        workspace_token is None,
+    )
+    return True
+
+
 async def _wake_session_with_lazy_registration(
     *,
+    session: AsyncSession,
     dispatch: GatewayDispatchService,
     gateway: Gateway,
     config: GatewayConfig,
+    board: Board,
     agent: Agent,
     message: str,
 ) -> OpenClawGatewayError | None:
-    """Wake an existing session, refreshing runtime registration only if missing."""
+    """Wake an existing session, refreshing stale runtime files only when needed."""
 
+    await _refresh_stale_agent_workspace_token(
+        session=session,
+        gateway=gateway,
+        board=board,
+        agent=agent,
+    )
     error = await dispatch.try_wake_agent_session(
         session_key=agent.openclaw_session_id or "",
         config=config,
@@ -375,9 +448,11 @@ async def wake_agent_for_task(
             reason=reason,
         )
         error = await _wake_session_with_lazy_registration(
+            session=session,
             dispatch=dispatch,
             gateway=gateway,
             config=config,
+            board=board,
             agent=agent,
             message=message,
         )
@@ -477,9 +552,11 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             review_count=int(board_stats["review_count"]),
         )
         error = await _wake_session_with_lazy_registration(
+            session=session,
             dispatch=dispatch,
             gateway=gateway,
             config=config,
+            board=board,
             agent=agent,
             message=message,
         )
@@ -587,9 +664,11 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             review_actions=review_actions,
         )
         error = await _wake_session_with_lazy_registration(
+            session=session,
             dispatch=dispatch,
             gateway=gateway,
             config=config,
+            board=board,
             agent=agent,
             message=message,
         )

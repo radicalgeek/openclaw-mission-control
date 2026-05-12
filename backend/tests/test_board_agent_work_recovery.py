@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.agent_tokens import hash_agent_token, verify_agent_token
 from app.core.time import utcnow
 from app.models.activity_events import ActivityEvent
 from app.models.agents import Agent
@@ -871,12 +872,90 @@ async def test_active_work_recovery_wakes_lead_for_new_review_escalation(
             assert f"Task {task_id}" in message
             assert "Deploy-time schema migrations" in message
             assert "a1ab90e is now in main via merge commit 3bbf180" in message
-            assert "move it to `done` with a comment containing the merge SHA" in message
+            assert f"PATCH /api/v1/agent/boards/{board_id}/tasks/{{task_id}}" in message
+            assert f"GET /api/v1/agent/boards/{board_id}/tasks/{{task_id}}/comments" in message
+            assert "do not omit the `/tasks/` path segment" in message
 
             reloaded_lead = (
                 await session.exec(select(Agent).where(col(Agent.id) == lead_id))
             ).one()
             assert reloaded_lead.checkin_deadline_at is not None
             assert reloaded_lead.checkin_deadline_at > now + timedelta(minutes=5)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_refresh_stale_workspace_token_rotates_and_rewrites_agent_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle_calls: list[dict[str, Any]] = []
+
+    async def _fake_read_workspace_auth_token(**kwargs: Any) -> str:
+        return "stale-token"
+
+    class _FakeProvisioner:
+        async def apply_agent_lifecycle(self, **kwargs: Any) -> None:
+            lifecycle_calls.append(kwargs)
+
+    async def _fake_fetch_db_template_overrides(*args: Any, **kwargs: Any) -> dict[str, str]:
+        return {}
+
+    monkeypatch.setattr(recovery, "_read_workspace_auth_token", _fake_read_workspace_auth_token)
+    monkeypatch.setattr(recovery, "OpenClawGatewayProvisioner", _FakeProvisioner)
+    monkeypatch.setattr(recovery, "fetch_db_template_overrides", _fake_fetch_db_template_overrides)
+
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            gateway = Gateway(
+                id=gateway_id,
+                organization_id=org_id,
+                name="gateway",
+                url="https://gateway.local",
+                workspace_root="/tmp/openclaw",
+            )
+            board = Board(
+                id=board_id,
+                organization_id=org_id,
+                name="board",
+                slug="board",
+                gateway_id=gateway_id,
+            )
+            agent = Agent(
+                id=agent_id,
+                name="Lead Agent",
+                board_id=board_id,
+                gateway_id=gateway_id,
+                status="online",
+                openclaw_session_id="agent:lead:main",
+                agent_token_hash=hash_agent_token("current-token"),
+            )
+            session.add(gateway)
+            session.add(board)
+            session.add(agent)
+            await session.commit()
+
+            refreshed = await recovery._refresh_stale_agent_workspace_token(
+                session=session,
+                gateway=gateway,
+                board=board,
+                agent=agent,
+            )
+
+            assert refreshed is True
+            assert len(lifecycle_calls) == 1
+            call = lifecycle_calls[0]
+            assert call["action"] == "update"
+            assert call["wake"] is False
+            assert call["reset_session"] is False
+            assert call["auth_token"] != "stale-token"
+            assert call["auth_token"] != "current-token"
+            assert verify_agent_token(call["auth_token"], agent.agent_token_hash or "")
     finally:
         await engine.dispose()
