@@ -787,3 +787,96 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert "Inbox tasks: 1" in (events[0].message or "")
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_active_work_recovery_wakes_lead_for_new_review_escalation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+            now = utcnow()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    context={"source_repo_url": "https://example.test/repo.git"},
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="Lead Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    openclaw_session_id="agent:lead:main",
+                    is_board_lead=True,
+                    last_seen_at=now,
+                    last_wake_sent_at=now - timedelta(minutes=1),
+                    checkin_deadline_at=now + timedelta(minutes=9),
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="Deploy-time schema migrations",
+                    status="review",
+                    updated_at=now,
+                ),
+            )
+            session.add(
+                ActivityEvent(
+                    event_type="task.comment",
+                    task_id=task_id,
+                    board_id=board_id,
+                    created_at=now,
+                    message=(
+                        "Merge agent resolved integration conflicts. Commit a1ab90e is now "
+                        "in main via merge commit 3bbf180. @lead verify CI before marking done."
+                    ),
+                )
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert len(wake_calls) == 1
+            message = wake_calls[0]["message"]
+            assert wake_calls[0]["session_key"] == "agent:lead:main"
+            assert "Lead review actions:" in message
+            assert f"Task {task_id}" in message
+            assert "Deploy-time schema migrations" in message
+            assert "a1ab90e is now in main via merge commit 3bbf180" in message
+            assert "move it to `done` with a comment containing the merge SHA" in message
+
+            reloaded_lead = (
+                await session.exec(select(Agent).where(col(Agent.id) == lead_id))
+            ).one()
+            assert reloaded_lead.checkin_deadline_at is not None
+            assert reloaded_lead.checkin_deadline_at > now + timedelta(minutes=5)
+    finally:
+        await engine.dispose()

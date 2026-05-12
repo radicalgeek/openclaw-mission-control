@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TypedDict
 
 from sqlmodel import col, select
@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
+from app.models.activity_events import ActivityEvent
 from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
@@ -45,6 +46,13 @@ class _MergeBoardStats(TypedDict):
 
 class _LeadBoardStats(_MergeBoardStats):
     inbox_count: int
+
+
+class _LeadReviewAction(TypedDict):
+    task_id: object
+    title: str
+    comment: str
+    created_at: datetime
 
 
 def _truncate_snippet(value: str | None, *, limit: int = 500) -> str:
@@ -146,7 +154,7 @@ def _merge_wake_message(
         "decision, notify the lead and original developer in the review task comment with the "
         "attempted resolution, exact files/hunks, and decision needed, and also post one concise "
         "board chat message via POST "
-        f"/api/v1/agent/boards/{board.id}/memory with tags [\"chat\",\"merge_blocker\"]. "
+        f'/api/v1/agent/boards/{board.id}/memory with tags ["chat","merge_blocker"]. '
         "Do not use OpenClaw message/channel-send tools for board chat. Leave the task in "
         "`review` for follow-up."
     )
@@ -160,6 +168,7 @@ def _lead_wake_message(
     inbox_count: int,
     active_count: int,
     review_count: int,
+    review_actions: list[_LeadReviewAction] | None = None,
 ) -> str:
     details = [
         "BOARD LEAD WATCH WAKE",
@@ -179,6 +188,14 @@ def _lead_wake_message(
                 f"CODE_WORKTREE_PATH: {_board_code_worktree_path(agent, board, gateway_workspace_root)}",
             ]
         )
+    if review_actions:
+        details.append("Lead review actions:")
+        for action in review_actions[:10]:
+            details.append(
+                "- "
+                f"Task {action['task_id']}: {action['title']} | "
+                f"latest escalation: {_truncate_snippet(action['comment'], limit=260)}"
+            )
     return (
         "\n".join(details)
         + "\n\nTake action now: inspect the board, assign ready inbox work, check in-progress "
@@ -191,6 +208,68 @@ def _lead_wake_message(
         "is blocked, read recent board chat for merge_blocker messages, post a task comment "
         "naming the blocker, and send it back to the developer when rework is needed."
     )
+
+
+def _comment_needs_lead_review_action(message: str | None) -> bool:
+    text = (message or "").lower()
+    if "@lead" not in text and "lead" not in text:
+        return False
+    action_terms = (
+        "verify",
+        "ci",
+        "checks",
+        "main",
+        "merge commit",
+        "merged",
+        "move to done",
+        "marking done",
+        "mark done",
+    )
+    return any(term in text for term in action_terms)
+
+
+async def _lead_review_actions_for_board(
+    session: AsyncSession,
+    *,
+    board_id: object,
+) -> list[_LeadReviewAction]:
+    review_tasks = (
+        await session.exec(
+            select(Task)
+            .where(col(Task.board_id) == board_id)
+            .where(col(Task.status) == "review")
+            .order_by(col(Task.updated_at).desc()),
+        )
+    ).all()
+    actions: list[_LeadReviewAction] = []
+    for task in review_tasks:
+        latest_comment = (
+            await session.exec(
+                select(ActivityEvent)
+                .where(col(ActivityEvent.task_id) == task.id)
+                .where(col(ActivityEvent.event_type) == "task.comment")
+                .order_by(col(ActivityEvent.created_at).desc()),
+            )
+        ).first()
+        if latest_comment is None or not _comment_needs_lead_review_action(latest_comment.message):
+            continue
+        actions.append(
+            {
+                "task_id": task.id,
+                "title": task.title,
+                "comment": latest_comment.message or "",
+                "created_at": latest_comment.created_at,
+            }
+        )
+    return actions
+
+
+def _has_new_lead_review_action(agent: Agent, actions: list[_LeadReviewAction]) -> bool:
+    if not actions:
+        return False
+    if agent.last_wake_sent_at is None:
+        return True
+    return any(action["created_at"] > agent.last_wake_sent_at for action in actions)
 
 
 def _is_missing_runtime_agent_error(error: OpenClawGatewayError) -> bool:
@@ -489,7 +568,11 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
 
     woken = 0
     for agent, board in rows:
-        if not _agent_needs_work_wake(agent):
+        review_actions = await _lead_review_actions_for_board(session, board_id=board.id)
+        if not _agent_needs_work_wake(agent) and not _has_new_lead_review_action(
+            agent,
+            review_actions,
+        ):
             continue
         board_stats = boards[board.id]
         dispatch = GatewayDispatchService(session)
@@ -501,6 +584,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             inbox_count=int(board_stats["inbox_count"]),
             active_count=int(board_stats["active_count"]),
             review_count=int(board_stats["review_count"]),
+            review_actions=review_actions,
         )
         error = await _wake_session_with_lazy_registration(
             dispatch=dispatch,
