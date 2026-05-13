@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid5
 
 from sqlmodel import col, select
 
 from app.core.logging import get_logger
+from app.core.config import settings
 from app.core.time import utcnow
 
 if TYPE_CHECKING:
@@ -25,6 +26,20 @@ logger = get_logger(__name__)
 _SPRINT_ALLOWED_START_STATUSES = frozenset({"draft", "queued"})
 _AGENT_MISSING_HINT = "no longer exists in configuration"
 _SPRINT_WAKE_IDEMPOTENCY_NAMESPACE = UUID("a3bca6bd-4d2c-4da2-881a-8717d8313466")
+
+
+def _has_stale_pending_review(reviews: list[object]) -> bool:
+    """Return true when a pending reviewer should be re-dispatched."""
+    retry_after = max(1, settings.sprint_review_pending_retry_minutes)
+    cutoff = utcnow() - timedelta(minutes=retry_after)
+    for review in reviews:
+        status = getattr(review, "status", None)
+        dispatched_at = getattr(review, "dispatched_at", None)
+        if status != "pending":
+            continue
+        if dispatched_at is None or dispatched_at <= cutoff:
+            return True
+    return False
 
 
 def _utc_iso(dt: datetime | None) -> str | None:
@@ -498,7 +513,8 @@ class SprintService:
             if reviews and not any(
                 review.status in {"changes_requested", "skipped"} for review in reviews
             ):
-                return
+                if not _has_stale_pending_review(list(reviews)):
+                    return
 
         await begin_sprint_review(session, sprint=sprint, board=board)
 

@@ -120,6 +120,8 @@ def _build_review_prompt(
         "- Submit your verdict with:",
         f"  POST /api/v1/agent/boards/{board.id}/sprints/{sprint.id}/review-update",
         '  body {"verdict":"approve|changes_requested","summary":"...","findings":[]}',
+        "- The review-update endpoint only accepts POST. Do not call it with GET; if a "
+        "previous attempt received 405 Method Not Allowed, retry immediately with POST.",
         "- Only use verdict=approve when your role has no blocking concerns.",
         "",
         "Sprint tickets under review:",

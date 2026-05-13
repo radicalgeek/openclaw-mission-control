@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -21,6 +22,7 @@ from app.api.deps import (
 )
 from app.api.sprints import router as sprints_router
 from app.core.auth import AuthContext
+from app.core.time import utcnow
 from app.db.session import get_session
 from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.boards import Board
@@ -246,6 +248,7 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         )
         assert all("Do not bundle unrelated remediation work" in prompt for prompt in prompts)
         assert all("/review-update" in prompt for prompt in prompts)
+        assert all("only accepts POST" in prompt for prompt in prompts)
     finally:
         await engine.dispose()
 
@@ -527,6 +530,70 @@ async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -
             assert security_review.findings is None
             assert security_review.created_ticket_ids is None
             assert security_review.resolved_at is None
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reviewing_sprint_re_dispatches_stale_pending_review() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                sprint_status="reviewing",
+            )
+            stale_dispatched_at = utcnow() - timedelta(minutes=45)
+            for role in ("qa", "security", "architecture"):
+                session.add(
+                    SprintReview(
+                        organization_id=board.organization_id,
+                        board_id=board.id,
+                        sprint_id=sprint.id,
+                        role=role,
+                        status="pending" if role == "qa" else "approved",
+                        agent_id=None if role == "qa" else reviewers[role].id,
+                        summary=None if role == "qa" else "approved",
+                        findings=None if role == "qa" else [],
+                        created_ticket_ids=None if role == "qa" else [],
+                        resolved_at=None if role == "qa" else utcnow(),
+                        dispatched_at=stale_dispatched_at,
+                    )
+                )
+            await session.commit()
+
+            from app.services.sprint_lifecycle import SprintService
+
+            captured, p1, p2 = _capture()
+            with (
+                p1,
+                p2,
+                patch(
+                    "app.services.sprint_lifecycle.settings."
+                    "sprint_review_pending_retry_minutes",
+                    20,
+                ),
+                patch("app.services.sprint_reviews.settings.org_qa_reviewer_agent_id", ""),
+                patch("app.services.sprint_reviews.settings.org_security_reviewer_agent_id", ""),
+                patch(
+                    "app.services.sprint_reviews.settings.org_architecture_reviewer_agent_id", ""
+                ),
+            ):
+                await SprintService.check_sprint_completion(session, board_id=board.id)
+
+            assert len(captured) == 1
+            assert captured[0]["session_key"] == standalone_agent_session_key(reviewers["qa"].id)
+            qa_review = (
+                await session.exec(
+                    select(SprintReview)
+                    .where(SprintReview.sprint_id == sprint.id)
+                    .where(SprintReview.role == "qa")
+                )
+            ).one()
+            assert qa_review.status == "pending"
+            assert qa_review.dispatched_at is not None
+            assert qa_review.dispatched_at > stale_dispatched_at
     finally:
         await engine.dispose()
 

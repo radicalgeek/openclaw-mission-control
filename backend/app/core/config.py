@@ -182,6 +182,13 @@ class Settings(BaseSettings):
             "ORG_ARCHITECTURE_REVIEWER_AGENT_ID", "org_architecture_reviewer_agent_id"
         ),
     )
+    sprint_review_pending_retry_minutes: int = Field(
+        default=20,
+        validation_alias=AliasChoices(
+            "SPRINT_REVIEW_PENDING_RETRY_MINUTES",
+            "sprint_review_pending_retry_minutes",
+        ),
+    )
     agent_model_routing: str = Field(
         default="",
         validation_alias=AliasChoices("AXIACRAFT_AGENT_MODEL_ROUTING", "agent_model_routing"),
