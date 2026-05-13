@@ -276,10 +276,12 @@ async def update_sprint(
     sprint = await _require_sprint(session, sprint_id, board)
 
     if sprint.status in {"completed", "cancelled"}:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Completed or cancelled sprints cannot be edited.",
-        )
+        updates = payload.model_dump(exclude_unset=True)
+        if set(updates) != {"name"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Completed or cancelled sprints can only be renamed.",
+            )
 
     if payload.name is not None:
         sprint.name = payload.name

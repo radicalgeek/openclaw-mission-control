@@ -5,6 +5,8 @@ import {
   AlertCircle,
   CheckCircle2,
   ClipboardCheck,
+  Check,
+  Pencil,
   Plus,
   X,
   Zap,
@@ -25,6 +27,7 @@ import {
   deleteSprint,
   addSprintTickets,
   removeSprintTicket,
+  updateSprint,
 } from "@/api/sprints";
 import { ApiError } from "@/api/mutator";
 import { TaskCard } from "@/components/molecules/TaskCard";
@@ -62,6 +65,10 @@ export function SprintDetail({
     null,
   );
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(sprint.name);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   // Add-ticket picker state
   const [showPicker, setShowPicker] = useState(false);
@@ -88,6 +95,12 @@ export function SprintDetail({
   useEffect(() => {
     void loadTickets();
   }, [loadTickets]);
+
+  useEffect(() => {
+    setDraftName(sprint.name);
+    setEditingName(false);
+    setRenameError(null);
+  }, [sprint.id, sprint.name]);
 
   useEffect(() => {
     if (sprint.status !== "reviewing" && sprint.status !== "completed") {
@@ -178,6 +191,30 @@ export function SprintDetail({
     [boardId, sprint.id, loadTickets, onRefresh],
   );
 
+  const handleRename = useCallback(async () => {
+    const nextName = draftName.trim();
+    if (!nextName || nextName === sprint.name || renameBusy) {
+      if (!nextName) setRenameError("Sprint name is required.");
+      else setEditingName(false);
+      return;
+    }
+    setRenameBusy(true);
+    setRenameError(null);
+    try {
+      await updateSprint(boardId, sprint.id, { name: nextName });
+      setEditingName(false);
+      onRefresh();
+    } catch (err) {
+      setRenameError(
+        err instanceof ApiError
+          ? (err.message ?? "Rename failed")
+          : "Rename failed",
+      );
+    } finally {
+      setRenameBusy(false);
+    }
+  }, [boardId, draftName, onRefresh, renameBusy, sprint.id, sprint.name]);
+
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -208,9 +245,61 @@ export function SprintDetail({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h2 className="truncate text-lg font-semibold text-slate-800">
-                {sprint.name}
-              </h2>
+              {editingName ? (
+                <form
+                  className="flex min-w-0 flex-1 items-center gap-1.5"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleRename();
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                    className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-lg font-semibold text-slate-800 outline-none focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--accent-soft)]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={renameBusy}
+                    title="Save sprint name"
+                    className="rounded-md p-1.5 text-success transition hover:bg-success-soft disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Cancel rename"
+                    className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                    onClick={() => {
+                      setDraftName(sprint.name);
+                      setEditingName(false);
+                      setRenameError(null);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <h2 className="truncate text-lg font-semibold text-slate-800">
+                    {sprint.name}
+                  </h2>
+                  {sprint.status !== "cancelled" && (
+                    <button
+                      type="button"
+                      title="Rename sprint"
+                      className="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      onClick={() => {
+                        setDraftName(sprint.name);
+                        setEditingName(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
               <span
                 className={cn(
                   "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0",
@@ -222,6 +311,9 @@ export function SprintDetail({
             </div>
             {sprint.goal && (
               <p className="mt-0.5 text-sm text-slate-500">{sprint.goal}</p>
+            )}
+            {renameError && (
+              <p className="mt-1 text-xs text-danger">{renameError}</p>
             )}
           </div>
 

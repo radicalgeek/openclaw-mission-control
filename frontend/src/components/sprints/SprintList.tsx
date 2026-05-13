@@ -62,7 +62,7 @@ export function SprintList({
   loading = false,
   onReorder,
 }: Props) {
-  const [showDone, setShowDone] = useState(false);
+  const [showDone, setShowDone] = useState(true);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
 
@@ -76,7 +76,8 @@ export function SprintList({
     .filter((s) => s.status === "completed" || s.status === "cancelled")
     .sort(
       (a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+        new Date(b.completed_at ?? b.updated_at).getTime() -
+        new Date(a.completed_at ?? a.updated_at).getTime(),
     );
   const selectedDone = done.some((s) => s.id === selectedSprintId);
   const doneExpanded =
@@ -280,6 +281,27 @@ export function SprintList({
           </div>
         )}
 
+        {/* ── Done ───────────────────────────────────────────────────────── */}
+        {done.length > 0 && (
+          <div>
+            <button
+              onClick={() => setShowDone((v) => !v)}
+              className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition"
+            >
+              {doneExpanded ? (
+                <ChevronDown className="h-3 w-3 shrink-0" />
+              ) : (
+                <ChevronRight className="h-3 w-3 shrink-0" />
+              )}
+              Done
+              <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-500">
+                {done.length}
+              </span>
+            </button>
+            {doneExpanded && done.map((s) => renderSprintRow(s, false))}
+          </div>
+        )}
+
         {/* ── Active ─────────────────────────────────────────────────────── */}
         {active.length > 0 && (
           <div>
@@ -307,27 +329,6 @@ export function SprintList({
                   : "",
               )}
             />
-          </div>
-        )}
-
-        {/* ── Done ───────────────────────────────────────────────────────── */}
-        {done.length > 0 && (
-          <div>
-            <button
-              onClick={() => setShowDone((v) => !v)}
-              className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition"
-            >
-              {doneExpanded ? (
-                <ChevronDown className="h-3 w-3 shrink-0" />
-              ) : (
-                <ChevronRight className="h-3 w-3 shrink-0" />
-              )}
-              Done
-              <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-normal text-slate-500">
-                {done.length}
-              </span>
-            </button>
-            {doneExpanded && done.map((s) => renderSprintRow(s, false))}
           </div>
         )}
       </div>
