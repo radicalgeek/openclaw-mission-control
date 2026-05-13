@@ -13,6 +13,9 @@ import {
 import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/clerk";
 import {
   Activity,
+  AlertCircle,
+  CheckCircle2,
+  ClipboardCheck,
   MessageSquare,
   Pause,
   Plus,
@@ -93,6 +96,13 @@ import {
   type ThreadMessageRead as ChannelMessageRead,
   type ThreadRead as ChannelThreadRead,
 } from "@/api/channels";
+import {
+  listSprints,
+  listSprintReviews,
+  type SprintRead,
+  type SprintReviewGateRead,
+  type SprintReviewRead,
+} from "@/api/sprints";
 import { WebhookEventCard } from "@/components/channels/WebhookEventCard";
 import {
   type listTagsApiV1TagsGetResponse,
@@ -539,6 +549,7 @@ const SSE_RECONNECT_BACKOFF = {
   maxMs: 5 * 60_000,
 } as const;
 const AGENT_STATUS_REFRESH_MS = 15_000;
+const REVIEW_GATE_REFRESH_MS = 20_000;
 
 const formatShortTimestamp = (value: string) => {
   const date = parseApiDatetime(value);
@@ -566,6 +577,41 @@ type ToastMessage = {
   id: number;
   message: string;
   tone: "error" | "success";
+};
+
+type BoardReviewGate = {
+  sprint: SprintRead;
+  gate: SprintReviewGateRead | null;
+};
+
+const sprintReviewRoleLabel = (role: SprintReviewRead["role"]): string => {
+  if (role === "qa") return "QA";
+  return role.charAt(0).toUpperCase() + role.slice(1);
+};
+
+const sprintReviewStatusLabel = (review: SprintReviewRead): string => {
+  if (
+    review.status === "pending" &&
+    review.dispatched_at &&
+    !review.resolved_at
+  ) {
+    return "Running";
+  }
+  if (review.status === "changes_requested") return "Changes requested";
+  return review.status.replace("_", " ");
+};
+
+const sprintReviewStatusClass = (review: SprintReviewRead): string => {
+  if (review.status === "approved") {
+    return "border-success-border bg-success-soft text-success";
+  }
+  if (review.status === "changes_requested") {
+    return "border-danger-border bg-danger-soft text-danger";
+  }
+  if (review.status === "skipped") {
+    return "border-neutral-border bg-neutral-soft text-neutral";
+  }
+  return "border-warning-border bg-warning-soft text-warning";
 };
 
 const formatActionError = (err: unknown, fallback: string) => {
@@ -942,6 +988,8 @@ export default function BoardDetailPage() {
   const [approvalsUpdatingId, setApprovalsUpdatingId] = useState<string | null>(
     null,
   );
+  const [reviewGate, setReviewGate] = useState<BoardReviewGate | null>(null);
+  const [isReviewGateLoading, setIsReviewGateLoading] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<BoardChatMessage[]>([]);
   const [isChatSending, setIsChatSending] = useState(false);
@@ -1383,6 +1431,44 @@ export default function BoardDetailPage() {
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+
+  const loadReviewGate = useCallback(async () => {
+    if (!isSignedIn || !boardId) return;
+    setIsReviewGateLoading(true);
+    try {
+      const sprintsResult = await listSprints(boardId, "reviewing,active");
+      const candidates = sprintsResult.data ?? [];
+      const sprint =
+        candidates.find((item) => item.status === "reviewing") ??
+        candidates.find((item) => item.status === "active") ??
+        null;
+      if (!sprint) {
+        setReviewGate(null);
+        return;
+      }
+
+      const reviewsResult = await listSprintReviews(boardId, sprint.id);
+      const gate = reviewsResult.data;
+      if (sprint.status === "active" && gate.reviews.length === 0) {
+        setReviewGate(null);
+        return;
+      }
+      setReviewGate({ sprint, gate });
+    } catch {
+      setReviewGate(null);
+    } finally {
+      setIsReviewGateLoading(false);
+    }
+  }, [boardId, isSignedIn]);
+
+  useEffect(() => {
+    if (!isPageActive) return;
+    void loadReviewGate();
+    const intervalId = window.setInterval(() => {
+      void loadReviewGate();
+    }, REVIEW_GATE_REFRESH_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isPageActive, loadReviewGate]);
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -3580,12 +3666,66 @@ export default function BoardDetailPage() {
                 ) : (
                   <>
                     {viewMode === "board" ? (
-                      <TaskBoard
-                        tasks={tasks}
-                        onTaskSelect={openComments}
-                        onTaskMove={canWrite ? handleTaskMove : undefined}
-                        readOnly={!canWrite}
-                      />
+                      <div className="space-y-4">
+                        {reviewGate ? (
+                          <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] px-4 py-3 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                {reviewGate.gate?.approved ? (
+                                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                                ) : reviewGate.gate?.status ===
+                                  "changes_requested" ? (
+                                  <AlertCircle className="h-4 w-4 shrink-0 text-danger" />
+                                ) : (
+                                  <ClipboardCheck className="h-4 w-4 shrink-0 text-warning" />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-[color:var(--text)]">
+                                    Sprint review gate ·{" "}
+                                    {reviewGate.sprint.name}
+                                  </p>
+                                  <p className="text-xs text-[color:var(--text-muted)]">
+                                    {reviewGate.gate?.approved
+                                      ? "Reviews passed"
+                                      : reviewGate.gate?.status ===
+                                          "changes_requested"
+                                        ? "Review agents requested changes"
+                                        : "Review agents are checking the sprint"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {isReviewGateLoading ? (
+                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-border bg-warning-soft px-2.5 py-1 text-[11px] font-semibold text-warning">
+                                    <RefreshCcw className="h-3 w-3 animate-spin" />
+                                    Refreshing
+                                  </span>
+                                ) : null}
+                                {(reviewGate.gate?.reviews ?? []).map(
+                                  (review) => (
+                                    <span
+                                      key={review.id}
+                                      className={cn(
+                                        "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
+                                        sprintReviewStatusClass(review),
+                                      )}
+                                    >
+                                      {sprintReviewRoleLabel(review.role)} ·{" "}
+                                      {sprintReviewStatusLabel(review)}
+                                    </span>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                        <TaskBoard
+                          tasks={tasks}
+                          onTaskSelect={openComments}
+                          onTaskMove={canWrite ? handleTaskMove : undefined}
+                          readOnly={!canWrite}
+                        />
+                      </div>
                     ) : (
                       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
                         <div className="border-b border-slate-200 px-5 py-4">
