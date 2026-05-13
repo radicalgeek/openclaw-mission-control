@@ -6,6 +6,7 @@ directly orchestrate gateway RPC calls.
 
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
 
 from app.models.agents import Agent
@@ -162,13 +163,25 @@ class GatewayDispatchService(OpenClawDBService):
                 session_key=session_key,
                 config=config,
             )
-        await ensure_session(
-            session_key,
-            config=config,
-            label=agent_name,
-            model=model,
-            clear_model_override=clear_model_override,
-        )
+        try:
+            await ensure_session(
+                session_key,
+                config=config,
+                label=agent_name,
+                model=model,
+                clear_model_override=clear_model_override,
+            )
+        except OpenClawGatewayError:
+            if not (reset_session or reset_stuck_session):
+                raise
+            await asyncio.sleep(0.25)
+            await ensure_session(
+                session_key,
+                config=config,
+                label=agent_name,
+                model=model,
+                clear_model_override=clear_model_override,
+            )
         await send_session_message_nonblocking(
             message,
             session_key=session_key,
