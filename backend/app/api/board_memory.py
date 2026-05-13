@@ -131,8 +131,9 @@ def _chat_targets(
     actor: ActorContext,
 ) -> dict[str, Agent]:
     targets: dict[str, Agent] = {}
+    is_broadcast = "all" in mentions
     for agent in agents:
-        if agent.is_board_lead:
+        if agent.is_board_lead or is_broadcast:
             targets[str(agent.id)] = agent
             continue
         if mentions and matches_agent_mention(agent, mentions):
@@ -206,11 +207,12 @@ async def _notify_chat_targets(
             f"POST {base_url}/api/v1/agent/boards/{board.id}/memory\n"
             'Body: {"content":"...","tags":["chat"]}'
         )
-        error = await dispatch.try_send_agent_message(
+        error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
             config=config,
             agent_name=agent.name,
             message=message,
+            reset_stuck_session=True,
         )
         if error is not None:
             continue

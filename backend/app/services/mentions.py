@@ -12,9 +12,14 @@ if TYPE_CHECKING:  # pragma: no cover
 MENTION_PATTERN = re.compile(r"@([A-Za-z][\w-]{0,31})")
 
 
+def _mention_key(value: str) -> str:
+    """Normalize names and handles so `Merge Agent` matches `@merge-agent`."""
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
 def extract_mentions(message: str) -> set[str]:
     """Extract normalized mention handles from a message body."""
-    return {match.group(1).lower() for match in MENTION_PATTERN.finditer(message)}
+    return {_mention_key(match.group(1)) for match in MENTION_PATTERN.finditer(message)}
 
 
 def matches_agent_mention(agent: Agent, mentions: set[str]) -> bool:
@@ -31,10 +36,10 @@ def matches_agent_mention(agent: Agent, mentions: set[str]) -> bool:
     if not name:
         return False
 
-    normalized = name.lower()
+    normalized = _mention_key(name)
     if normalized in mentions:
         return True
 
     # Mentions are single tokens; match on first name for display names with spaces.
-    first = normalized.split()[0]
+    first = normalized.split("-")[0]
     return first in mentions

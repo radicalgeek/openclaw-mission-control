@@ -25,6 +25,7 @@ from app.models.board_memory import BoardMemory
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
+from app.models.agents import Agent
 
 
 async def _make_engine() -> AsyncEngine:
@@ -241,3 +242,27 @@ async def test_board_memory_create_plain_text_default() -> None:
     data = resp.json()
     assert data["content_type"] == "text"
     assert data["app_metadata"] is None
+
+
+def test_board_chat_targets_match_hyphenated_agent_mentions_and_all() -> None:
+    """Board chat should wake mentioned agents using human-friendly handles."""
+    lead = Agent(id=uuid4(), name="Lead Agent", is_board_lead=True)
+    merger = Agent(id=uuid4(), name="Merge Agent")
+    developer = Agent(id=uuid4(), name="Developer Agent 2")
+    actor = ActorContext(actor_type="agent", agent=developer)
+
+    targets = board_memory_module._chat_targets(
+        agents=[lead, merger, developer],
+        mentions={"merge-agent"},
+        actor=actor,
+    )
+
+    assert set(targets) == {str(lead.id), str(merger.id)}
+
+    broadcast_targets = board_memory_module._chat_targets(
+        agents=[lead, merger, developer],
+        mentions={"all"},
+        actor=actor,
+    )
+
+    assert set(broadcast_targets) == {str(lead.id), str(merger.id)}
