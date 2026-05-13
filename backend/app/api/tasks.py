@@ -689,12 +689,12 @@ async def _send_lead_task_message(
     config: GatewayClientConfig,
     message: str,
 ) -> OpenClawGatewayError | None:
-    return await dispatch.try_send_agent_message(
+    return await dispatch.try_wake_agent_session(
         session_key=session_key,
         config=config,
         agent_name="Lead Agent",
         message=message,
-        deliver=False,
+        reset_stuck_session=True,
     )
 
 
