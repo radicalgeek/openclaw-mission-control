@@ -427,6 +427,17 @@ async def test_reviewer_consensus_completes_sprint_and_archives_done_tasks() -> 
                 session,
                 sprint_status="reviewing",
             )
+            remediation = (
+                await session.exec(
+                    select(Task)
+                    .join(SprintTicket, SprintTicket.task_id == Task.id)
+                    .where(SprintTicket.sprint_id == sprint.id)
+                )
+            ).one()
+            remediation.updated_at = utcnow()
+            remediation.done_at = utcnow()
+            session.add(remediation)
+            earlier = remediation.updated_at - timedelta(minutes=5)
             for role in ("qa", "security", "architecture"):
                 session.add(
                     SprintReview(
@@ -480,6 +491,17 @@ async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -
                 session,
                 sprint_status="reviewing",
             )
+            remediation = (
+                await session.exec(
+                    select(Task)
+                    .join(SprintTicket, SprintTicket.task_id == Task.id)
+                    .where(SprintTicket.sprint_id == sprint.id)
+                )
+            ).one()
+            remediation.updated_at = utcnow()
+            remediation.done_at = remediation.updated_at
+            session.add(remediation)
+            earlier = remediation.updated_at - timedelta(minutes=5)
             for role in ("qa", "security", "architecture"):
                 session.add(
                     SprintReview(
@@ -491,8 +513,8 @@ async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -
                         agent_id=reviewers.get(role).id if role in reviewers else None,
                         summary="stale summary",
                         findings=[{"title": "stale finding"}],
-                        created_ticket_ids=[],
-                        resolved_at=sprint.created_at,
+                        created_ticket_ids=[str(remediation.id)] if role == "security" else [],
+                        resolved_at=earlier,
                     )
                 )
             await session.commit()
@@ -594,6 +616,69 @@ async def test_reviewing_sprint_re_dispatches_stale_pending_review() -> None:
             assert qa_review.status == "pending"
             assert qa_review.dispatched_at is not None
             assert qa_review.dispatched_at > stale_dispatched_at
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reviewing_sprint_does_not_loop_change_request_without_new_remediation() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                sprint_status="reviewing",
+            )
+            remediation = (
+                await session.exec(
+                    select(Task)
+                    .join(SprintTicket, SprintTicket.task_id == Task.id)
+                    .where(SprintTicket.sprint_id == sprint.id)
+                )
+            ).one()
+            remediation.updated_at = utcnow() - timedelta(minutes=10)
+            remediation.done_at = remediation.updated_at
+            session.add(remediation)
+            session.add(
+                SprintReview(
+                    organization_id=board.organization_id,
+                    board_id=board.id,
+                    sprint_id=sprint.id,
+                    role="qa",
+                    status="changes_requested",
+                    agent_id=reviewers["qa"].id,
+                    summary="still blocked",
+                    findings=[{"title": "fix not merged"}],
+                    created_ticket_ids=[str(remediation.id)],
+                    resolved_at=utcnow(),
+                    dispatched_at=utcnow() - timedelta(minutes=20),
+                )
+            )
+            for role in ("security", "architecture"):
+                session.add(
+                    SprintReview(
+                        organization_id=board.organization_id,
+                        board_id=board.id,
+                        sprint_id=sprint.id,
+                        role=role,
+                        status="approved",
+                        agent_id=reviewers[role].id,
+                        summary="approved",
+                        findings=[],
+                        created_ticket_ids=[],
+                        resolved_at=utcnow(),
+                    )
+                )
+            await session.commit()
+
+            from app.services.sprint_lifecycle import SprintService
+
+            captured, p1, p2 = _capture()
+            with p1, p2:
+                await SprintService.check_sprint_completion(session, board_id=board.id)
+
+            assert captured == []
     finally:
         await engine.dispose()
 

@@ -42,6 +42,35 @@ def _has_stale_pending_review(reviews: list[object]) -> bool:
     return False
 
 
+async def _has_review_changes_ready_for_rerun(
+    session: AsyncSession,
+    reviews: list[object],
+) -> bool:
+    """Return true when change-request remediation changed after the verdict."""
+    from app.models.tasks import Task  # noqa: PLC0415
+
+    changed_since_verdict = False
+    for review in reviews:
+        if getattr(review, "status", None) != "changes_requested":
+            continue
+        created_ticket_ids = getattr(review, "created_ticket_ids", None)
+        if not isinstance(created_ticket_ids, list) or not created_ticket_ids:
+            return False
+        resolved_at = getattr(review, "resolved_at", None)
+        for raw_task_id in created_ticket_ids:
+            try:
+                task_id = UUID(str(raw_task_id))
+            except ValueError:
+                return False
+            task = await session.get(Task, task_id)
+            if task is None or task.status != "done":
+                return False
+            task_changed_at = task.done_at or task.updated_at
+            if resolved_at is None or task_changed_at > resolved_at:
+                changed_since_verdict = True
+    return changed_since_verdict
+
+
 def _utc_iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
@@ -510,7 +539,10 @@ class SprintService:
                     select(SprintReview).where(col(SprintReview.sprint_id) == sprint.id)
                 )
             ).all()
-            if reviews and not any(
+            if reviews and any(review.status == "changes_requested" for review in reviews):
+                if not await _has_review_changes_ready_for_rerun(session, list(reviews)):
+                    return
+            elif reviews and not any(
                 review.status in {"changes_requested", "skipped"} for review in reviews
             ):
                 if not _has_stale_pending_review(list(reviews)):
