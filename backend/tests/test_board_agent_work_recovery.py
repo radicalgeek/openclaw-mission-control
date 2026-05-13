@@ -730,6 +730,8 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert "MERGE WATCH WAKE" in wake_calls[0]["message"]
             assert "inspect all tasks currently in `review`" in wake_calls[0]["message"]
             assert "custom fields are missing" in wake_calls[0]["message"]
+            assert "read the current TOOLS.md" in wake_calls[0]["message"]
+            assert "current X-Agent-Token" in wake_calls[0]["message"]
             assert "If Git reports conflicts, resolve them" in wake_calls[0]["message"]
             assert "A Git conflict alone is not a blocker" in wake_calls[0]["message"]
             assert '{"status":"done","comment":"<merge SHA' in wake_calls[0]["message"]
@@ -828,6 +830,8 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert "BOARD LEAD WATCH WAKE" in wake_calls[0]["message"]
             assert "Inbox tasks: 1" in wake_calls[0]["message"]
             assert "Active assigned tasks: 1" in wake_calls[0]["message"]
+            assert "read the current TOOLS.md" in wake_calls[0]["message"]
+            assert "current X-Agent-Token" in wake_calls[0]["message"]
             assert "Do not mark review tasks `done` before the code is merged" in (
                 wake_calls[0]["message"]
             )

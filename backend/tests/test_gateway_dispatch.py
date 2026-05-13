@@ -146,7 +146,6 @@ async def test_wake_agent_session_does_not_reset_idle_session_when_requested(mon
                 {
                     "key": session_key,
                     "message": message,
-                    "timeoutMs": 0,
                 },
             )
         )
@@ -185,7 +184,6 @@ async def test_wake_agent_session_does_not_reset_idle_session_when_requested(mon
             {
                 "key": "agent:dev:main",
                 "message": "wake up",
-                "timeoutMs": 0,
             },
         ),
     ]

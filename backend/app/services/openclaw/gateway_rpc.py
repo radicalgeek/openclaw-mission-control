@@ -595,7 +595,6 @@ async def send_session_message_nonblocking(
     params: dict[str, Any] = {
         "key": session_key,
         "message": message,
-        "timeoutMs": 0,
     }
     if idempotency_key:
         params["idempotencyKey"] = idempotency_key

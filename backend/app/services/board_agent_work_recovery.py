@@ -144,8 +144,10 @@ def _merge_wake_message(
     return (
         "\n".join(details)
         + "\n\nTake action now: inspect all tasks currently in `review`, including task "
-        "comments and developer worktrees when branch custom fields are missing. Merge "
-        "committed changes into the merge worktree/mainline. If Git reports conflicts, resolve "
+        "comments and developer worktrees when branch custom fields are missing. Before calling "
+        "AxiaCraft APIs, read the current TOOLS.md and use its current X-Agent-Token; do not "
+        "reuse tokens copied from earlier session history. Merge committed changes into the "
+        "merge worktree/mainline. If Git reports conflicts, resolve "
         "them in the integration worktree when the intended combined result is clear; this is "
         "your core responsibility, including Terraform, pipeline, requirements, migration, "
         "config, documentation, formatting, and additive module conflicts. After resolving, run "
@@ -205,7 +207,9 @@ def _lead_wake_message(
         "\n".join(details)
         + "\n\nTake action now: inspect the board, assign ready inbox work, check in-progress "
         "developer tasks for progress comments or blockers, and review tasks in `review` for "
-        "quality, acceptance criteria, test evidence, and merge readiness. Do not mark review "
+        "quality, acceptance criteria, test evidence, and merge readiness. Before calling "
+        "AxiaCraft APIs, read the current TOOLS.md and use its current X-Agent-Token; do not "
+        "reuse tokens copied from earlier session history. Do not mark review "
         "tasks `done` before the code is merged to mainline. If the work is ready, wake or "
         "mention the merge agent with the task id, branch/commit/worktree evidence, and expected "
         "checks. If the merge agent reports that mainline contains the work but the task is "
