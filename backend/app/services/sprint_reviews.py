@@ -101,6 +101,12 @@ def _build_review_prompt(
         "- Do not request changes for work that is already represented by a backlog or future "
         "sprint ticket; record it as planned follow-up and approve unless it is a new "
         "regression introduced by this sprint.",
+        "- A gap is not unplanned just because this sprint touched adjacent deployment, runtime, "
+        "or production-readiness code. If an existing backlog or future sprint ticket already "
+        "covers the same or broader gap, cite that ticket as planned follow-up and do not block "
+        "unless the exact completed sprint acceptance criteria promised and failed that fix.",
+        "- Do not create a current-sprint remediation ticket for a gap that is already covered "
+        "by a backlog or future sprint ticket.",
         "- Only block the sprint for a current-sprint acceptance failure, a new unplanned "
         "critical/high issue, or delivered work that is demonstrably broken.",
         "- For blocking gaps, create one remediation ticket per distinct blocking finding.",
