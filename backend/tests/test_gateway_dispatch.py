@@ -190,6 +190,96 @@ async def test_wake_agent_session_does_not_reset_idle_session_when_requested(mon
 
 
 @pytest.mark.asyncio
+async def test_wake_agent_session_can_force_reset_before_wake(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    async def _openclaw_call(
+        method: str,
+        params: dict[str, object] | None = None,
+        *,
+        config: GatewayConfig,
+    ) -> object:
+        calls.append((method, params or {}))
+        return {}
+
+    async def _ensure_session(
+        session_key: str,
+        *,
+        config: GatewayConfig,
+        label: str,
+        model: str | None = None,
+        clear_model_override: bool = False,
+    ) -> object:
+        calls.append(
+            (
+                "sessions.patch",
+                {
+                    "key": session_key,
+                    "label": label,
+                    "model": model,
+                    "clear_model_override": clear_model_override,
+                },
+            )
+        )
+        return {}
+
+    async def _send_session_message_nonblocking(
+        message: str,
+        *,
+        session_key: str,
+        config: GatewayConfig,
+    ) -> object:
+        calls.append(
+            (
+                "sessions.send",
+                {
+                    "key": session_key,
+                    "message": message,
+                },
+            )
+        )
+        return {}
+
+    monkeypatch.setattr(gateway_dispatch, "openclaw_call", _openclaw_call)
+    monkeypatch.setattr(gateway_dispatch, "ensure_session", _ensure_session)
+    monkeypatch.setattr(
+        gateway_dispatch,
+        "send_session_message_nonblocking",
+        _send_session_message_nonblocking,
+    )
+
+    service = gateway_dispatch.GatewayDispatchService(session=object())
+    await service.wake_agent_session(
+        session_key="agent:lead:main",
+        config=GatewayConfig(url="ws://gateway.example/ws"),
+        agent_name="Lead Agent",
+        message="wake up",
+        reset_session=True,
+    )
+
+    assert calls == [
+        ("sessions.abort", {"key": "agent:lead:main"}),
+        ("sessions.reset", {"key": "agent:lead:main"}),
+        (
+            "sessions.patch",
+            {
+                "key": "agent:lead:main",
+                "label": "Lead Agent",
+                "model": None,
+                "clear_model_override": False,
+            },
+        ),
+        (
+            "sessions.send",
+            {
+                "key": "agent:lead:main",
+                "message": "wake up",
+            },
+        ),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_wake_agent_session_stops_when_failed_session_reset_is_unavailable(
     monkeypatch,
 ) -> None:

@@ -386,6 +386,7 @@ async def _wake_session_with_lazy_registration(
     board: Board,
     agent: Agent,
     message: str,
+    reset_session: bool = False,
 ) -> OpenClawGatewayError | None:
     """Wake an existing session, refreshing stale runtime files only when needed."""
 
@@ -402,6 +403,7 @@ async def _wake_session_with_lazy_registration(
         message=message,
         model=_agent_session_model(agent),
         clear_model_override=_agent_session_should_clear_model(agent),
+        reset_session=reset_session,
         reset_stuck_session=True,
     )
     if error is not None and _is_missing_runtime_agent_error(error):
@@ -413,6 +415,7 @@ async def _wake_session_with_lazy_registration(
             message=message,
             model=_agent_session_model(agent),
             clear_model_override=_agent_session_should_clear_model(agent),
+            reset_session=reset_session,
             reset_stuck_session=True,
         )
     return error
@@ -563,6 +566,7 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             board=board,
             agent=agent,
             message=message,
+            reset_session=True,
         )
         if error is not None:
             record_activity(
@@ -675,6 +679,7 @@ async def wake_board_leads_for_active_board_work(session: AsyncSession) -> int:
             board=board,
             agent=agent,
             message=message,
+            reset_session=True,
         )
         if error is not None:
             record_activity(

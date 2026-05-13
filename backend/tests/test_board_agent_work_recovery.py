@@ -727,6 +727,7 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert woken == 1
             assert len(wake_calls) == 1
             assert wake_calls[0]["session_key"] == "agent:merge:main"
+            assert wake_calls[0]["reset_session"] is True
             assert "MERGE WATCH WAKE" in wake_calls[0]["message"]
             assert "inspect all tasks currently in `review`" in wake_calls[0]["message"]
             assert "custom fields are missing" in wake_calls[0]["message"]
@@ -826,6 +827,7 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert woken == 1
             assert len(wake_calls) == 1
             assert wake_calls[0]["session_key"] == "agent:lead:main"
+            assert wake_calls[0]["reset_session"] is True
             assert wake_calls[0]["reset_stuck_session"] is True
             assert "BOARD LEAD WATCH WAKE" in wake_calls[0]["message"]
             assert "Inbox tasks: 1" in wake_calls[0]["message"]
@@ -936,6 +938,7 @@ async def test_active_work_recovery_wakes_lead_for_new_review_escalation(
             assert len(wake_calls) == 1
             message = wake_calls[0]["message"]
             assert wake_calls[0]["session_key"] == "agent:lead:main"
+            assert wake_calls[0]["reset_session"] is True
             assert "Lead review actions:" in message
             assert f"Task {task_id}" in message
             assert "Deploy-time schema migrations" in message
