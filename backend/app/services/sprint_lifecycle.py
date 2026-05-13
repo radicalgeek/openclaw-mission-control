@@ -591,7 +591,9 @@ class SprintService:
         allow_reviewing: bool = False,
     ) -> None:
         """Complete a sprint: archive done tickets, optionally auto-advance."""
+        from app.models.boards import Board as _Board  # noqa: PLC0415
         from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
+        from app.models.sprints import SprintReview  # noqa: PLC0415
         from app.models.sprints import SprintTicket
         from app.models.tasks import Task  # noqa: PLC0415
         from app.services.activity_log import record_activity  # noqa: PLC0415
@@ -620,6 +622,7 @@ class SprintService:
         tickets_done = 0
         completed_estimate = 0
         completed_actual = 0
+        sprint_task_ids = {ticket.task_id for ticket in tickets}
         for ticket in tickets:
             task = await session.get(Task, ticket.task_id)
             if task is not None and task.status == "done":
@@ -630,6 +633,31 @@ class SprintService:
                 tickets_done += 1
                 completed_estimate += task.estimate_minutes or 0
                 completed_actual += task.actual_minutes or 0
+
+        reviews = (
+            await session.exec(select(SprintReview).where(col(SprintReview.sprint_id) == sprint.id))
+        ).all()
+        review_created_task_ids: set[UUID] = set()
+        for review in reviews:
+            for raw_task_id in review.created_ticket_ids or []:
+                try:
+                    task_id = UUID(str(raw_task_id))
+                except ValueError:
+                    continue
+                review_created_task_ids.add(task_id)
+
+        review_tickets_archived = 0
+        for task_id in review_created_task_ids - sprint_task_ids:
+            task = await session.get(Task, task_id)
+            if task is None or task.board_id != board.id or task.status != "done":
+                continue
+            task.is_backlog = True
+            task.status = "archived"
+            task.updated_at = utcnow()
+            session.add(task)
+            review_tickets_archived += 1
+            completed_estimate += task.estimate_minutes or 0
+            completed_actual += task.actual_minutes or 0
 
         # Snapshot velocity fields
         sprint.completed_minutes = completed_estimate if completed_estimate > 0 else None
@@ -644,6 +672,9 @@ class SprintService:
         )
         await session.commit()
         await session.refresh(sprint)
+        fresh_board = await session.get(_Board, board.id)
+        if fresh_board is not None:
+            board = fresh_board
 
         await _dispatch_sprint_webhooks(
             session,
@@ -687,6 +718,14 @@ class SprintService:
                         next_sprint.id,
                     )
                 break
+            logger.info(
+                "sprint.completed board_id=%s sprint_id=%s review_tickets_archived=%s "
+                "auto_advance=%s",
+                board.id,
+                sprint.id,
+                review_tickets_archived,
+                board.auto_advance_sprint,
+            )
 
     @staticmethod
     async def cancel_sprint(

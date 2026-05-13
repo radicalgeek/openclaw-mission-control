@@ -12,7 +12,7 @@ import pytest
 from app.models.agents import Agent
 from app.models.boards import Board
 from app.models.gateways import Gateway
-from app.models.sprints import Sprint, SprintTicket
+from app.models.sprints import Sprint, SprintReview, SprintTicket
 from app.models.tasks import Task
 
 # ---------------------------------------------------------------------------
@@ -400,6 +400,7 @@ async def test_complete_sprint_archives_done_tickets_and_snapshots_velocity() ->
     session = _FakeSession()
     session.objects[task.id] = task
     session._push_result([ticket])  # sprint tickets
+    session._push_result([])  # sprint reviews
     session._push_result([])  # sprint webhooks
 
     await SprintService.complete_sprint(session, sprint=sprint, board=board)  # type: ignore[arg-type]
@@ -409,6 +410,49 @@ async def test_complete_sprint_archives_done_tickets_and_snapshots_velocity() ->
     assert sprint.actual_minutes == 70
     assert task.status == "archived"
     assert task.is_backlog is True
+
+
+@pytest.mark.asyncio
+async def test_complete_sprint_archives_done_review_created_tickets() -> None:
+    from app.services.sprint_lifecycle import SprintService
+
+    board = _board()
+    sprint = _sprint(board, status="reviewing")
+    sprint_task = _task(board, task_status="done", is_backlog=False)
+    sprint_ticket = _sprint_ticket(sprint, sprint_task)
+    remediation = _task(board, task_status="done", is_backlog=False)
+    remediation.estimate_minutes = 30
+    remediation.actual_minutes = 25
+    unrelated = _task(board, task_status="done", is_backlog=False)
+    review = SprintReview(
+        organization_id=board.organization_id,
+        board_id=board.id,
+        sprint_id=sprint.id,
+        role="qa",
+        status="approved",
+        created_ticket_ids=[str(remediation.id), str(unrelated.id)],
+    )
+
+    session = _FakeSession()
+    session.objects[sprint_task.id] = sprint_task
+    session.objects[remediation.id] = remediation
+    session.objects[unrelated.id] = unrelated
+    session._push_result([sprint_ticket])  # sprint tickets
+    session._push_result([review])  # review-created tickets
+    session._push_result([])  # sprint webhooks
+
+    await SprintService.complete_sprint(
+        session,
+        sprint=sprint,
+        board=board,
+        allow_reviewing=True,
+    )  # type: ignore[arg-type]
+
+    assert remediation.status == "archived"
+    assert remediation.is_backlog is True
+    assert unrelated.status == "archived"
+    assert sprint.completed_minutes == 30
+    assert sprint.actual_minutes == 25
 
 
 @pytest.mark.asyncio
@@ -464,6 +508,7 @@ async def test_complete_sprint_auto_advances_next_loaded_draft_sprint(monkeypatc
     session.objects[done_task.id] = done_task
     session.objects[draft_task.id] = draft_task
     session._push_result([done_ticket])  # completed sprint tickets
+    session._push_result([])  # sprint reviews
     session._push_result([])  # sprint webhooks
     session._push_result([empty_next, draft_next])  # next loaded sprints
     session._push_result([])  # empty queued sprint has no tickets
@@ -509,6 +554,7 @@ async def test_complete_sprint_auto_advance_skips_sprints_with_only_archived_wor
     session.objects[stale_task.id] = stale_task
     session.objects[ready_task.id] = ready_task
     session._push_result([done_ticket])  # completed sprint tickets
+    session._push_result([])  # sprint reviews
     session._push_result([])  # sprint webhooks
     session._push_result([stale_next, ready_next])  # next loaded sprints
     session._push_result([stale_ticket])  # stale sprint has no open work
