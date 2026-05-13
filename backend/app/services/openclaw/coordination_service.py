@@ -34,6 +34,7 @@ from app.services.openclaw.exceptions import (
     map_gateway_error_to_http_exception,
 )
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+from app.services.openclaw.gateway_dispatch import reset_session_for_wake
 from app.services.openclaw.gateway_resolver import gateway_client_config
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
@@ -65,8 +66,11 @@ class AbstractGatewayMessagingService(OpenClawDBService, ABC):
         agent_name: str,
         message: str,
         deliver: bool,
+        reset_session: bool = False,
     ) -> None:
         async def _do_send() -> bool:
+            if reset_session:
+                await reset_session_for_wake(session_key=session_key, config=config)
             await GatewayDispatchService(self.session).send_agent_message(
                 session_key=session_key,
                 config=config,

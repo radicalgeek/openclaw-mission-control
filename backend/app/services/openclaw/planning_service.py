@@ -379,6 +379,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         prompt: str,
         log_prefix: str,
         correlation_id: str | None = None,
+        reset_session: bool = False,
     ) -> str | None:
         """Dispatch a one-shot message to an org-wide standalone agent.
 
@@ -400,6 +401,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             correlation_id=correlation_id,
             log_prefix=log_prefix,
             standalone_agent=agent,
+            reset_session=reset_session,
         )
 
     async def _dispatch_to_session(
@@ -412,6 +414,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         correlation_id: str | None,
         log_prefix: str,
         standalone_agent: Agent | None = None,
+        reset_session: bool = False,
     ) -> str:
         trace_id = GatewayDispatchService.resolve_trace_id(correlation_id, prefix=log_prefix)
         gateway, config = await GatewayDispatchService(
@@ -425,6 +428,7 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
                 agent_name=agent_name,
                 message=prompt,
                 deliver=True,
+                reset_session=reset_session,
             )
 
         try:

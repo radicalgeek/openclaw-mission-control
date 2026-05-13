@@ -183,7 +183,7 @@ class Settings(BaseSettings):
         ),
     )
     sprint_review_pending_retry_minutes: int = Field(
-        default=20,
+        default=5,
         validation_alias=AliasChoices(
             "SPRINT_REVIEW_PENDING_RETRY_MINUTES",
             "sprint_review_pending_retry_minutes",

@@ -249,6 +249,7 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         assert all("Do not bundle unrelated remediation work" in prompt for prompt in prompts)
         assert all("/review-update" in prompt for prompt in prompts)
         assert all("only accepts POST" in prompt for prompt in prompts)
+        assert all(call["reset_session"] is True for call in captured)
     finally:
         await engine.dispose()
 
@@ -594,7 +595,7 @@ async def test_reviewing_sprint_re_dispatches_stale_pending_review() -> None:
                 patch(
                     "app.services.sprint_lifecycle.settings."
                     "sprint_review_pending_retry_minutes",
-                    20,
+                    5,
                 ),
                 patch("app.services.sprint_reviews.settings.org_qa_reviewer_agent_id", ""),
                 patch("app.services.sprint_reviews.settings.org_security_reviewer_agent_id", ""),

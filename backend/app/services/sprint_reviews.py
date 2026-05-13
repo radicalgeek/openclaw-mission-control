@@ -348,6 +348,7 @@ async def begin_sprint_review(
             prompt=prompt,
             log_prefix=f"sprint.review.{role}",
             correlation_id=f"sprint.review.{role}:{sprint.id}",
+            reset_session=True,
         )
         if session_key is None:
             review.status = "skipped"
