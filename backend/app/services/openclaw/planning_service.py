@@ -18,6 +18,7 @@ from app.services.openclaw.exceptions import GatewayOperation, map_gateway_error
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.internal.session_keys import standalone_agent_session_key
 from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
 from app.services.openclaw.provisioning_db import (
     LeadAgentOptions,
@@ -36,6 +37,25 @@ _AGENT_MISSING_HINT = "no longer exists in configuration"
 
 class PlanningMessagingService(AbstractGatewayMessagingService):
     """Gateway message dispatch helpers for planning session routes."""
+
+    def _ensure_standalone_session_key(self, agent: Agent) -> str:
+        """Repair stale standalone session keys before dispatch.
+
+        Older rows can point at the gateway-main session after runtime
+        recreation. Dispatching to that key succeeds but wakes the wrong agent,
+        so role-template agents must use their deterministic standalone key.
+        """
+        desired = standalone_agent_session_key(agent.id)
+        if agent.openclaw_session_id and agent.openclaw_session_id != desired:
+            self.logger.warning(
+                "planning.org_agent.repair_session_key agent_id=%s old_session=%s new_session=%s",
+                agent.id,
+                agent.openclaw_session_id,
+                desired,
+            )
+            agent.openclaw_session_id = desired
+            self.session.add(agent)
+        return agent.openclaw_session_id or desired
 
     async def _resolve_org_agent(
         self,
@@ -62,8 +82,10 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             ).all()
             for agent in agents:
                 profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
-                if profile.get("role_template") == role_template and agent.openclaw_session_id:
-                    return agent
+                if profile.get("role_template") == role_template:
+                    self._ensure_standalone_session_key(agent)
+                    if agent.openclaw_session_id:
+                        return agent
 
         if not agent_id_setting:
             return None
@@ -79,7 +101,20 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
         # in the for-loop above; reassigning it to an Optional[Agent] would
         # confuse mypy's flow narrowing.
         fallback_agent = await Agent.objects.by_id(agent_uuid).first(self.session)
-        if fallback_agent is None or not fallback_agent.openclaw_session_id:
+        if fallback_agent is None:
+            return None
+        profile = (
+            fallback_agent.identity_profile
+            if isinstance(fallback_agent.identity_profile, dict)
+            else {}
+        )
+        if (
+            fallback_agent.agent_type == AGENT_TYPE_STANDALONE
+            and role_template
+            and profile.get("role_template") == role_template
+        ):
+            self._ensure_standalone_session_key(fallback_agent)
+        elif not fallback_agent.openclaw_session_id:
             return None
         return fallback_agent
 

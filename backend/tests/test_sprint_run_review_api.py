@@ -28,6 +28,7 @@ from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.sprints import Sprint, SprintReview, SprintTicket
 from app.models.tasks import Task
+from app.services.openclaw.internal.session_keys import standalone_agent_session_key
 from app.models.users import User
 
 
@@ -204,7 +205,11 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         # 3 dispatches, one per reviewer
         sessions_dispatched = [c["session_key"] for c in captured]
         assert sorted(sessions_dispatched) == sorted(
-            ["qa-session", "security-session", "architecture-session"]
+            [
+                standalone_agent_session_key(reviewers["qa"].id),
+                standalone_agent_session_key(reviewers["security"].id),
+                standalone_agent_session_key(reviewers["architecture"].id),
+            ]
         )
         async with sm() as session:
             refreshed = await session.get(Sprint, sprint.id)
@@ -231,6 +236,49 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         )
         assert all("Do not bundle unrelated remediation work" in prompt for prompt in prompts)
         assert all("/review-update" in prompt for prompt in prompts)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_review_repairs_stale_reviewer_session_key_before_dispatch() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                with_qa=False,
+                with_architecture=False,
+            )
+            security = reviewers["security"]
+            security.openclaw_session_id = f"agent:mc-gateway-{board.gateway_id}:main"
+            session.add(security)
+            await session.commit()
+        app = _build_app(sm, user=user)
+        captured, p1, p2 = _capture()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            with (
+                p1,
+                p2,
+                patch("app.api.sprints.settings.org_qa_reviewer_agent_id", ""),
+                patch(
+                    "app.api.sprints.settings.org_security_reviewer_agent_id",
+                    str(reviewers["security"].id),
+                ),
+                patch("app.api.sprints.settings.org_architecture_reviewer_agent_id", ""),
+            ):
+                resp = await c.post(
+                    f"/api/v1/boards/{board.id}/sprints/{sprint.id}/run-review",
+                )
+        assert resp.status_code == 200, resp.text
+        assert [call["session_key"] for call in captured] == [
+            standalone_agent_session_key(reviewers["security"].id)
+        ]
+        async with sm() as session:
+            repaired = await session.get(Agent, reviewers["security"].id)
+            assert repaired is not None
+            assert repaired.openclaw_session_id == standalone_agent_session_key(repaired.id)
     finally:
         await engine.dispose()
 
@@ -451,7 +499,9 @@ async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -
                 await SprintService.check_sprint_completion(session, board_id=board.id)
 
             assert len(captured) == 1
-            assert captured[0]["session_key"] == "security-session"
+            assert captured[0]["session_key"] == standalone_agent_session_key(
+                reviewers["security"].id
+            )
             review_rows = (
                 await session.exec(select(SprintReview).where(SprintReview.sprint_id == sprint.id))
             ).all()
