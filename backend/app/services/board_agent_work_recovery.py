@@ -156,7 +156,9 @@ def _merge_wake_message(
         "them in the integration worktree when the intended combined result is clear; this is "
         "your core responsibility, including Terraform, pipeline, requirements, migration, "
         "config, documentation, formatting, and additive module conflicts. After resolving, run "
-        "the relevant checks, then "
+        "the relevant checks, then push the updated mainline branch to origin. Include the pushed "
+        "remote branch and SHA in the task comment. If push fails, leave the task in `review` and "
+        "post the exact error for the lead. After a successful push, "
         "move successfully merged tasks to `done` with PATCH "
         f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}} and JSON "
         '{"status":"done","comment":"<merge SHA, branch/worktree, checks, and evidence>"}. '

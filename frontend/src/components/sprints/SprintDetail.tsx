@@ -1,13 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, X, Zap, CheckCircle2, ClipboardCheck } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ClipboardCheck,
+  Plus,
+  X,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type SprintRead,
+  type SprintReviewGateRead,
   type TaskRead,
   type TagRef,
   listSprintTickets,
+  listSprintReviews,
   listBacklog,
   startSprint,
   completeSprint,
@@ -49,6 +58,10 @@ export function SprintDetail({
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reviewGate, setReviewGate] = useState<SprintReviewGateRead | null>(
+    null,
+  );
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   // Add-ticket picker state
   const [showPicker, setShowPicker] = useState(false);
@@ -75,6 +88,18 @@ export function SprintDetail({
   useEffect(() => {
     void loadTickets();
   }, [loadTickets]);
+
+  useEffect(() => {
+    if (sprint.status !== "reviewing" && sprint.status !== "completed") {
+      setReviewGate(null);
+      return;
+    }
+    setReviewLoading(true);
+    void listSprintReviews(boardId, sprint.id)
+      .then((res) => setReviewGate(res.data))
+      .catch(() => setReviewGate(null))
+      .finally(() => setReviewLoading(false));
+  }, [boardId, sprint.id, sprint.status]);
 
   const loadBacklog = useCallback(async () => {
     setPickerLoading(true);
@@ -171,6 +196,10 @@ export function SprintDetail({
     sprint.status === "draft" ||
     sprint.status === "queued" ||
     sprint.status === "active";
+  const reviewSummaryVisible =
+    sprint.status === "reviewing" ||
+    sprint.status === "completed" ||
+    reviewGate !== null;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -312,6 +341,60 @@ export function SprintDetail({
             )}
           </div>
         )}
+
+        {reviewSummaryVisible && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {sprint.status === "completed" && reviewGate?.approved ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <span className="font-semibold text-slate-700">
+                    Sprint complete
+                  </span>
+                  <span className="rounded-full bg-success-soft px-2 py-0.5 font-semibold text-success">
+                    Reviews passed
+                  </span>
+                </>
+              ) : sprint.status === "reviewing" ? (
+                <>
+                  <ClipboardCheck className="h-4 w-4 text-warning" />
+                  <span className="font-semibold text-slate-700">
+                    Reviews in progress
+                  </span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4 text-slate-400" />
+                  <span className="font-semibold text-slate-700">
+                    Review status unavailable
+                  </span>
+                </>
+              )}
+              {reviewLoading && (
+                <span className="text-slate-400">Loading...</span>
+              )}
+            </div>
+            {reviewGate && reviewGate.reviews.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {reviewGate.reviews.map((review) => (
+                  <span
+                    key={review.id}
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
+                      review.status === "approved"
+                        ? "border-success-border bg-success-soft text-success"
+                        : review.status === "changes_requested"
+                          ? "border-danger-border bg-danger-soft text-danger"
+                          : "border-warning-border bg-warning-soft text-warning",
+                    )}
+                  >
+                    {review.role}: {review.status.replace("_", " ")}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Add-ticket picker ── */}
@@ -428,6 +511,8 @@ export function SprintDetail({
 
         <div className="space-y-2">
           {tickets.map((ticket) => {
+            const displayStatus =
+              ticket.status === "archived" ? "done" : ticket.status;
             const dueDate = ticket.due_at
               ? new Date(ticket.due_at).toLocaleDateString("en-GB", {
                   day: "numeric",
@@ -443,7 +528,7 @@ export function SprintDetail({
                 <TaskCard
                   title={ticket.title}
                   status={
-                    ticket.status as "inbox" | "in_progress" | "review" | "done"
+                    displayStatus as "inbox" | "in_progress" | "review" | "done"
                   }
                   priority={ticket.priority}
                   due={dueDate}

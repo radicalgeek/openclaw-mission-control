@@ -568,17 +568,26 @@ class SprintService:
             tickets_completed=tickets_done,
         )
 
-        # Auto-advance to next queued sprint if flow mode enabled
+        # Auto-advance to the next loaded sprint if flow mode is enabled.
         if board.auto_advance_sprint:
-            next_sprint = (
+            next_sprints = (
                 await session.exec(
                     select(_Sprint)
                     .where(col(_Sprint.board_id) == board.id)
-                    .where(col(_Sprint.status) == "queued")
+                    .where(col(_Sprint.status).in_(["queued", "draft"]))
                     .order_by(col(_Sprint.position).asc())
                 )
-            ).first()
-            if next_sprint is not None:
+            ).all()
+            for next_sprint in next_sprints:
+                next_ticket = (
+                    await session.exec(
+                        select(SprintTicket)
+                        .where(col(SprintTicket.sprint_id) == next_sprint.id)
+                        .limit(1)
+                    )
+                ).first()
+                if next_ticket is None:
+                    continue
                 try:
                     await SprintService.start_sprint(session, sprint=next_sprint, board=board)
                 except Exception:
@@ -587,6 +596,7 @@ class SprintService:
                         board.id,
                         next_sprint.id,
                     )
+                break
 
     @staticmethod
     async def cancel_sprint(

@@ -179,6 +179,36 @@ export type RunSprintReviewResponse = {
   skipped_reviewers: { role: string; reason: string }[];
 };
 
+export type SprintReviewRole = "qa" | "security" | "architecture";
+export type SprintReviewStatus =
+  | "pending"
+  | "approved"
+  | "changes_requested"
+  | "skipped";
+
+export type SprintReviewRead = {
+  id: string;
+  board_id: string;
+  sprint_id: string;
+  role: SprintReviewRole;
+  status: SprintReviewStatus;
+  agent_id: string | null;
+  summary: string | null;
+  findings: Record<string, unknown>[] | null;
+  created_ticket_ids: string[] | null;
+  dispatched_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SprintReviewGateRead = {
+  sprint_id: string;
+  status: string;
+  approved: boolean;
+  reviews: SprintReviewRead[];
+};
+
 export const runSprintReview = (
   boardId: string,
   sprintId: string,
@@ -186,6 +216,15 @@ export const runSprintReview = (
   customFetch<ApiResponse<RunSprintReviewResponse>>(
     `${sprintsBase(boardId)}/${sprintId}/run-review`,
     { method: "POST" },
+  );
+
+export const listSprintReviews = (
+  boardId: string,
+  sprintId: string,
+): Promise<ApiResponse<SprintReviewGateRead>> =>
+  customFetch<ApiResponse<SprintReviewGateRead>>(
+    `${sprintsBase(boardId)}/${sprintId}/reviews`,
+    { method: "GET" },
   );
 
 export const cancelSprint = (

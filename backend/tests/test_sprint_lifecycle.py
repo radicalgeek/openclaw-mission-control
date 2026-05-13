@@ -379,6 +379,97 @@ async def test_cancel_sprint_sets_status_cancelled() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tests: complete_sprint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_complete_sprint_archives_done_tickets_and_snapshots_velocity() -> None:
+    from app.services.sprint_lifecycle import SprintService
+
+    board = _board()
+    sprint = _sprint(board, status="active")
+    task = _task(board, task_status="done", is_backlog=False)
+    task.estimate_minutes = 90
+    task.actual_minutes = 70
+    ticket = _sprint_ticket(sprint, task)
+
+    session = _FakeSession()
+    session.objects[task.id] = task
+    session._push_result([ticket])  # sprint tickets
+    session._push_result([])  # sprint webhooks
+
+    await SprintService.complete_sprint(session, sprint=sprint, board=board)  # type: ignore[arg-type]
+
+    assert sprint.status == "completed"
+    assert sprint.completed_minutes == 90
+    assert sprint.actual_minutes == 70
+    assert task.status == "archived"
+    assert task.is_backlog is True
+
+
+@pytest.mark.asyncio
+async def test_sprint_ticket_counts_treats_archived_tasks_as_done() -> None:
+    from app.api.sprints import _sprint_ticket_counts
+
+    board = _board()
+    sprint = _sprint(board, status="completed")
+    archived_task = _task(board, task_status="archived", is_backlog=True)
+    active_task = _task(board, task_status="in_progress", is_backlog=False)
+    archived_ticket = _sprint_ticket(sprint, archived_task)
+    active_ticket = _sprint_ticket(sprint, active_task)
+
+    session = _FakeSession()
+    session.objects[archived_task.id] = archived_task
+    session.objects[active_task.id] = active_task
+    session._push_result([archived_ticket, active_ticket])
+
+    total, done = await _sprint_ticket_counts(session, sprint.id)  # type: ignore[arg-type]
+
+    assert total == 2
+    assert done == 1
+
+
+@pytest.mark.asyncio
+async def test_complete_sprint_auto_advances_next_loaded_draft_sprint(monkeypatch: Any) -> None:
+    from app.services.sprint_lifecycle import SprintService
+
+    board = _board(auto_advance=True)
+    sprint = _sprint(board, status="active")
+    done_task = _task(board, task_status="done", is_backlog=False)
+    done_ticket = _sprint_ticket(sprint, done_task)
+    empty_next = _sprint(board, status="queued")
+    empty_next.position = 1
+    draft_next = _sprint(board, status="draft")
+    draft_next.position = 2
+    draft_task = _task(board, task_status="backlog", is_backlog=True)
+    draft_ticket = _sprint_ticket(draft_next, draft_task)
+    started: list[UUID] = []
+
+    async def _start_sprint(
+        _session: _FakeSession,
+        *,
+        sprint: Sprint,
+        board: Board,
+    ) -> None:
+        started.append(sprint.id)
+
+    monkeypatch.setattr(SprintService, "start_sprint", _start_sprint)
+
+    session = _FakeSession()
+    session.objects[done_task.id] = done_task
+    session._push_result([done_ticket])  # completed sprint tickets
+    session._push_result([])  # sprint webhooks
+    session._push_result([empty_next, draft_next])  # next loaded sprints
+    session._push_result([])  # empty queued sprint has no tickets
+    session._push_result([draft_ticket])  # draft sprint is ready to start
+
+    await SprintService.complete_sprint(session, sprint=sprint, board=board)  # type: ignore[arg-type]
+
+    assert started == [draft_next.id]
+
+
+# ---------------------------------------------------------------------------
 # Tests: check_sprint_completion
 # ---------------------------------------------------------------------------
 

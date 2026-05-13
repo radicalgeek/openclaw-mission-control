@@ -302,6 +302,9 @@ export default function EditBoardPage() {
   const [onlyLeadCanChangeStatus, setOnlyLeadCanChangeStatus] = useState<
     boolean | undefined
   >(undefined);
+  const [autoAdvanceSprint, setAutoAdvanceSprint] = useState<
+    boolean | undefined
+  >(undefined);
   const [isPlatform, setIsPlatform] = useState<boolean | undefined>(undefined);
   const [maxAgents, setMaxAgents] = useState<number | undefined>(undefined);
   const [successMetrics, setSuccessMetrics] = useState<string | undefined>(
@@ -433,8 +436,13 @@ export default function EditBoardPage() {
       },
       onError: (err) => {
         const errorMessage = err.message || "Something went wrong.";
-        if (err.status === 409 && errorMessage.toLowerCase().includes("platform")) {
-          setError("Only one project can be designated as the platform project. Please unset the current platform project first.");
+        if (
+          err.status === 409 &&
+          errorMessage.toLowerCase().includes("platform")
+        ) {
+          setError(
+            "Only one project can be designated as the platform project. Please unset the current platform project first.",
+          );
         } else {
           setError(errorMessage);
         }
@@ -523,8 +531,12 @@ export default function EditBoardPage() {
     false;
   const resolvedOnlyLeadCanChangeStatus =
     onlyLeadCanChangeStatus ?? baseBoard?.only_lead_can_change_status ?? false;
+  const resolvedAutoAdvanceSprint =
+    autoAdvanceSprint ?? baseBoard?.auto_advance_sprint ?? false;
   const resolvedIsPlatform =
-    isPlatform ?? (baseBoard as BoardRead & { is_platform?: boolean })?.is_platform ?? false;
+    isPlatform ??
+    (baseBoard as BoardRead & { is_platform?: boolean })?.is_platform ??
+    false;
   const resolvedMaxAgents = maxAgents ?? baseBoard?.max_agents ?? 1;
   const resolvedSuccessMetrics =
     successMetrics ??
@@ -608,7 +620,10 @@ export default function EditBoardPage() {
       updated.block_status_changes_with_pending_approval ?? false,
     );
     setOnlyLeadCanChangeStatus(updated.only_lead_can_change_status ?? false);
-    setIsPlatform((updated as BoardRead & { is_platform?: boolean }).is_platform ?? false);
+    setAutoAdvanceSprint(updated.auto_advance_sprint ?? false);
+    setIsPlatform(
+      (updated as BoardRead & { is_platform?: boolean }).is_platform ?? false,
+    );
     setMaxAgents(updated.max_agents ?? 1);
     setSuccessMetrics(
       updated.success_metrics
@@ -677,6 +692,7 @@ export default function EditBoardPage() {
       block_status_changes_with_pending_approval:
         resolvedBlockStatusChangesWithPendingApproval,
       only_lead_can_change_status: resolvedOnlyLeadCanChangeStatus,
+      auto_advance_sprint: resolvedAutoAdvanceSprint,
       is_platform: resolvedIsPlatform,
       max_agents: resolvedMaxAgents,
       success_metrics: resolvedBoardType === "general" ? null : parsedMetrics,
@@ -1150,11 +1166,43 @@ export default function EditBoardPage() {
                 <button
                   type="button"
                   role="switch"
+                  aria-checked={resolvedAutoAdvanceSprint}
+                  aria-label="Auto progress sprints"
+                  onClick={() =>
+                    setAutoAdvanceSprint(!resolvedAutoAdvanceSprint)
+                  }
+                  disabled={isLoading}
+                  className={`mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+                    resolvedAutoAdvanceSprint
+                      ? "border-emerald-600 bg-emerald-600"
+                      : "border-slate-300 bg-slate-200"
+                  } ${isLoading ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition ${
+                      resolvedAutoAdvanceSprint
+                        ? "translate-x-5"
+                        : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium text-slate-900">
+                    Auto progress sprints
+                  </span>
+                  <span className="block text-xs text-slate-600">
+                    After sprint reviews pass, push the finished sprint into
+                    history and start the next loaded sprint when one is ready.
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3">
+                <button
+                  type="button"
+                  role="switch"
                   aria-checked={resolvedIsPlatform}
                   aria-label="Platform project"
-                  onClick={() =>
-                    setIsPlatform(!resolvedIsPlatform)
-                  }
+                  onClick={() => setIsPlatform(!resolvedIsPlatform)}
                   disabled={isLoading}
                   className={`mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
                     resolvedIsPlatform
@@ -1164,9 +1212,7 @@ export default function EditBoardPage() {
                 >
                   <span
                     className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition ${
-                      resolvedIsPlatform
-                        ? "translate-x-5"
-                        : "translate-x-0.5"
+                      resolvedIsPlatform ? "translate-x-5" : "translate-x-0.5"
                     }`}
                   />
                 </button>
@@ -1176,7 +1222,9 @@ export default function EditBoardPage() {
                     Platform project
                   </span>
                   <span className="block text-xs text-slate-600">
-                    Designate this as the organization&apos;s platform/infrastructure project. Only one project can be the platform project. Adds a cross-project Support channel.
+                    Designate this as the organization&apos;s
+                    platform/infrastructure project. Only one project can be the
+                    platform project. Adds a cross-project Support channel.
                   </span>
                 </span>
               </div>
@@ -1319,9 +1367,13 @@ export default function EditBoardPage() {
           {boardId ? (
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-slate-900">Templates</h2>
+                <h2 className="text-base font-semibold text-slate-900">
+                  Templates
+                </h2>
                 <p className="text-xs text-slate-600">
-                  Customise the Jinja2 workspace templates applied to agents on this project. Project overrides take precedence over org-wide defaults and built-in templates.
+                  Customise the Jinja2 workspace templates applied to agents on
+                  this project. Project overrides take precedence over org-wide
+                  defaults and built-in templates.
                 </p>
               </div>
               <BoardTemplateEditor boardId={boardId} />

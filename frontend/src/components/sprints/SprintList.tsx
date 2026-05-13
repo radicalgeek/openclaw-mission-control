@@ -21,6 +21,7 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-neutral-soft text-neutral border border-neutral-border",
   queued: "bg-warning-soft text-warning border border-warning-border",
   active: "bg-success-soft text-success border border-success-border",
+  reviewing: "bg-warning-soft text-warning border border-warning-border",
   completed: "bg-info-soft text-info border border-info-border",
   cancelled: "bg-danger-soft text-danger border border-danger-border",
 };
@@ -40,7 +41,12 @@ function StatusBadge({ status }: { status: string }) {
 
 function SectionLabel({ label, color }: { label: string; color: string }) {
   return (
-    <p className={cn("px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider", color)}>
+    <p
+      className={cn(
+        "px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider",
+        color,
+      )}
+    >
       {label}
     </p>
   );
@@ -60,13 +66,21 @@ export function SprintList({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
 
-  const active = sprints.filter((s) => s.status === "active");
+  const active = sprints.filter(
+    (s) => s.status === "active" || s.status === "reviewing",
+  );
   const upcoming = sprints
     .filter((s) => s.status === "draft" || s.status === "queued")
     .sort((a, b) => a.position - b.position);
   const done = sprints
     .filter((s) => s.status === "completed" || s.status === "cancelled")
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    );
+  const selectedDone = done.some((s) => s.id === selectedSprintId);
+  const doneExpanded =
+    showDone || selectedDone || (active.length === 0 && done.length > 0);
 
   // ── Drag-and-drop for upcoming ──────────────────────────────────────────────
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -103,7 +117,11 @@ export function SprintList({
       newOrder =
         idx === -1
           ? [...withoutDragged, dragId]
-          : [...withoutDragged.slice(0, idx), dragId, ...withoutDragged.slice(idx)];
+          : [
+              ...withoutDragged.slice(0, idx),
+              dragId,
+              ...withoutDragged.slice(idx),
+            ];
     }
 
     setDragId(null);
@@ -133,8 +151,12 @@ export function SprintList({
         )}
         <div
           draggable={draggable}
-          onDragStart={draggable ? (e) => handleDragStart(e, sprint.id) : undefined}
-          onDragOver={draggable ? (e) => handleDragOver(e, sprint.id) : undefined}
+          onDragStart={
+            draggable ? (e) => handleDragStart(e, sprint.id) : undefined
+          }
+          onDragOver={
+            draggable ? (e) => handleDragOver(e, sprint.id) : undefined
+          }
           onDrop={draggable ? (e) => handleDrop(e, sprint.id) : undefined}
           onDragEnd={draggable ? handleDragEnd : undefined}
           className={cn(
@@ -147,7 +169,9 @@ export function SprintList({
             className={cn(
               "w-full py-3 pr-3 text-left transition",
               draggable ? "pl-7" : "pl-3",
-              isSelected ? "bg-[color:var(--accent-soft)]" : "hover:bg-slate-50",
+              isSelected
+                ? "bg-[color:var(--accent-soft)]"
+                : "hover:bg-slate-50",
             )}
           >
             {draggable && (
@@ -163,7 +187,9 @@ export function SprintList({
               <span
                 className={cn(
                   "truncate text-sm font-medium leading-snug",
-                  isSelected ? "text-[color:var(--accent-text-on-soft)]" : "text-slate-700",
+                  isSelected
+                    ? "text-[color:var(--accent-text-on-soft)]"
+                    : "text-slate-700",
                 )}
               >
                 {sprint.name}
@@ -183,7 +209,9 @@ export function SprintList({
                   <div
                     className={cn(
                       "h-full rounded-full transition-all",
-                      sprint.status === "completed" ? "bg-info" : "bg-[color:var(--accent)]",
+                      sprint.status === "completed"
+                        ? "bg-info"
+                        : "bg-[color:var(--accent)]",
                     )}
                     style={{ width: `${pct}%` }}
                   />
@@ -192,7 +220,9 @@ export function SprintList({
             )}
 
             {sprint.goal && (
-              <p className="mt-1 truncate text-[10px] text-slate-400">{sprint.goal}</p>
+              <p className="mt-1 truncate text-[10px] text-slate-400">
+                {sprint.goal}
+              </p>
             )}
           </button>
         </div>
@@ -222,7 +252,9 @@ export function SprintList({
         onClick={onSelectBacklog}
         className={cn(
           "w-full border-b border-slate-100 px-3 py-2.5 text-left text-sm font-medium transition",
-          showingBacklog ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]" : "text-slate-700 hover:bg-slate-50",
+          showingBacklog
+            ? "bg-[color:var(--accent-soft)] text-[color:var(--accent-text-on-soft)]"
+            : "text-slate-700 hover:bg-slate-50",
         )}
       >
         📋 Backlog
@@ -230,7 +262,9 @@ export function SprintList({
 
       <div className="flex-1 overflow-y-auto">
         {loading && (
-          <p className="px-4 py-6 text-center text-xs text-slate-400">Loading…</p>
+          <p className="px-4 py-6 text-center text-xs text-slate-400">
+            Loading…
+          </p>
         )}
 
         {!loading && sprints.length === 0 && (
@@ -268,7 +302,9 @@ export function SprintList({
               onDrop={(e) => handleDrop(e, null)}
               className={cn(
                 "h-3 transition",
-                dropBeforeId === "__end__" && dragId ? "border-t-2 border-[color:var(--accent)]" : "",
+                dropBeforeId === "__end__" && dragId
+                  ? "border-t-2 border-[color:var(--accent)]"
+                  : "",
               )}
             />
           </div>
@@ -281,7 +317,7 @@ export function SprintList({
               onClick={() => setShowDone((v) => !v)}
               className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400 hover:text-slate-600 transition"
             >
-              {showDone ? (
+              {doneExpanded ? (
                 <ChevronDown className="h-3 w-3 shrink-0" />
               ) : (
                 <ChevronRight className="h-3 w-3 shrink-0" />
@@ -291,7 +327,7 @@ export function SprintList({
                 {done.length}
               </span>
             </button>
-            {showDone && done.map((s) => renderSprintRow(s, false))}
+            {doneExpanded && done.map((s) => renderSprintRow(s, false))}
           </div>
         )}
       </div>

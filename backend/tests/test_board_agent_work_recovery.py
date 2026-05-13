@@ -734,6 +734,8 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
             assert "read the current TOOLS.md" in wake_calls[0]["message"]
             assert "current X-Agent-Token" in wake_calls[0]["message"]
             assert "If Git reports conflicts, resolve them" in wake_calls[0]["message"]
+            assert "push the updated mainline branch to origin" in wake_calls[0]["message"]
+            assert "pushed remote branch and SHA" in wake_calls[0]["message"]
             assert "A Git conflict alone is not a blocker" in wake_calls[0]["message"]
             assert '{"status":"done","comment":"<merge SHA' in wake_calls[0]["message"]
             assert 'tags ["chat","merge_blocker"]' in wake_calls[0]["message"]

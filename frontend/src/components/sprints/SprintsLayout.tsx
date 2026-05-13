@@ -15,6 +15,7 @@ import {
   createSprint,
   updateSprint,
   listOrgTags,
+  updateBoardSettings,
 } from "@/api/sprints";
 import { BoardSelectorSidebar } from "@/components/boards/BoardSelectorSidebar";
 import { SprintList } from "./SprintList";
@@ -58,6 +59,8 @@ export function SprintsLayout({ boardId }: Props) {
   const [newGoal, setNewGoal] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [autoAdvanceBusy, setAutoAdvanceBusy] = useState(false);
+  const [autoAdvanceError, setAutoAdvanceError] = useState<string | null>(null);
 
   const loadSprints = useCallback(async () => {
     setLoading(true);
@@ -131,6 +134,24 @@ export function SprintsLayout({ boardId }: Props) {
     },
     [boardId],
   );
+
+  const handleToggleAutoAdvance = useCallback(async () => {
+    if (!currentBoard || autoAdvanceBusy) return;
+    setAutoAdvanceBusy(true);
+    setAutoAdvanceError(null);
+    try {
+      await updateBoardSettings(boardId, {
+        auto_advance_sprint: !currentBoard.auto_advance_sprint,
+      });
+      await boardsQuery.refetch();
+    } catch (err) {
+      setAutoAdvanceError(
+        err instanceof ApiError ? (err.message ?? "Failed") : "Failed",
+      );
+    } finally {
+      setAutoAdvanceBusy(false);
+    }
+  }, [autoAdvanceBusy, boardId, boardsQuery, currentBoard]);
 
   const selectedSprintId = view.type === "sprint" ? view.sprint.id : null;
 
@@ -215,12 +236,35 @@ export function SprintsLayout({ boardId }: Props) {
 
         {/* Board name breadcrumb */}
         {currentBoard && (
-          <div className="flex items-center gap-2 border-b border-slate-100 bg-white px-6 py-2.5">
-            <span className="text-xs text-slate-400">Project</span>
-            <span className="text-xs text-slate-300">/</span>
-            <span className="text-xs font-medium text-slate-700">
-              {currentBoard.name}
-            </span>
+          <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-white px-6 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-xs text-slate-400">Project</span>
+              <span className="text-xs text-slate-300">/</span>
+              <span className="truncate text-xs font-medium text-slate-700">
+                {currentBoard.name}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {autoAdvanceError && (
+                <span className="text-xs text-danger">{autoAdvanceError}</span>
+              )}
+              <button
+                type="button"
+                disabled={autoAdvanceBusy}
+                onClick={() => void handleToggleAutoAdvance()}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                title="Automatically start the next ready sprint after reviews pass"
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    currentBoard.auto_advance_sprint
+                      ? "bg-success"
+                      : "bg-slate-300"
+                  }`}
+                />
+                Auto progress sprints
+              </button>
+            </div>
           </div>
         )}
 
