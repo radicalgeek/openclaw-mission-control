@@ -579,14 +579,18 @@ class SprintService:
                 )
             ).all()
             for next_sprint in next_sprints:
-                next_ticket = (
+                next_tickets = (
                     await session.exec(
-                        select(SprintTicket)
-                        .where(col(SprintTicket.sprint_id) == next_sprint.id)
-                        .limit(1)
+                        select(SprintTicket).where(col(SprintTicket.sprint_id) == next_sprint.id)
                     )
-                ).first()
-                if next_ticket is None:
+                ).all()
+                has_open_work = False
+                for next_ticket in next_tickets:
+                    next_task = await session.get(Task, next_ticket.task_id)
+                    if next_task is not None and next_task.status not in {"done", "archived"}:
+                        has_open_work = True
+                        break
+                if not has_open_work:
                     continue
                 try:
                     await SprintService.start_sprint(session, sprint=next_sprint, board=board)

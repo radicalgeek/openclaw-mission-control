@@ -420,6 +420,7 @@ async def test_sprint_ticket_counts_treats_archived_tasks_as_done() -> None:
     active_ticket = _sprint_ticket(sprint, active_task)
 
     session = _FakeSession()
+    session.objects[sprint.id] = sprint
     session.objects[archived_task.id] = archived_task
     session.objects[active_task.id] = active_task
     session._push_result([archived_ticket, active_ticket])
@@ -458,6 +459,7 @@ async def test_complete_sprint_auto_advances_next_loaded_draft_sprint(monkeypatc
 
     session = _FakeSession()
     session.objects[done_task.id] = done_task
+    session.objects[draft_task.id] = draft_task
     session._push_result([done_ticket])  # completed sprint tickets
     session._push_result([])  # sprint webhooks
     session._push_result([empty_next, draft_next])  # next loaded sprints
@@ -467,6 +469,51 @@ async def test_complete_sprint_auto_advances_next_loaded_draft_sprint(monkeypatc
     await SprintService.complete_sprint(session, sprint=sprint, board=board)  # type: ignore[arg-type]
 
     assert started == [draft_next.id]
+
+
+@pytest.mark.asyncio
+async def test_complete_sprint_auto_advance_skips_sprints_with_only_archived_work(
+    monkeypatch: Any,
+) -> None:
+    from app.services.sprint_lifecycle import SprintService
+
+    board = _board(auto_advance=True)
+    sprint = _sprint(board, status="active")
+    done_task = _task(board, task_status="done", is_backlog=False)
+    done_ticket = _sprint_ticket(sprint, done_task)
+    stale_next = _sprint(board, status="draft")
+    stale_next.position = 1
+    stale_task = _task(board, task_status="archived", is_backlog=True)
+    stale_ticket = _sprint_ticket(stale_next, stale_task)
+    ready_next = _sprint(board, status="draft")
+    ready_next.position = 2
+    ready_task = _task(board, task_status="backlog", is_backlog=True)
+    ready_ticket = _sprint_ticket(ready_next, ready_task)
+    started: list[UUID] = []
+
+    async def _start_sprint(
+        _session: _FakeSession,
+        *,
+        sprint: Sprint,
+        board: Board,
+    ) -> None:
+        started.append(sprint.id)
+
+    monkeypatch.setattr(SprintService, "start_sprint", _start_sprint)
+
+    session = _FakeSession()
+    session.objects[done_task.id] = done_task
+    session.objects[stale_task.id] = stale_task
+    session.objects[ready_task.id] = ready_task
+    session._push_result([done_ticket])  # completed sprint tickets
+    session._push_result([])  # sprint webhooks
+    session._push_result([stale_next, ready_next])  # next loaded sprints
+    session._push_result([stale_ticket])  # stale sprint has no open work
+    session._push_result([ready_ticket])  # ready sprint has backlog work
+
+    await SprintService.complete_sprint(session, sprint=sprint, board=board)  # type: ignore[arg-type]
+
+    assert started == [ready_next.id]
 
 
 # ---------------------------------------------------------------------------

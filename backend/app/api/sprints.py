@@ -97,6 +97,7 @@ async def _sprint_ticket_counts(
     sprint_id: UUID,
 ) -> tuple[int, int]:
     """Return (total_tickets, completed_tickets) for a sprint."""
+    sprint = await session.get(Sprint, sprint_id)
     tickets = (
         await session.exec(select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint_id))
     ).all()
@@ -104,7 +105,10 @@ async def _sprint_ticket_counts(
     done = 0
     for ticket in tickets:
         task = await session.get(Task, ticket.task_id)
-        if task is not None and task.status in {"done", "archived"}:
+        completed_statuses = {"done"}
+        if sprint is not None and sprint.status in {"completed", "cancelled"}:
+            completed_statuses.add("archived")
+        if task is not None and task.status in completed_statuses:
             done += 1
     return total, done
 
