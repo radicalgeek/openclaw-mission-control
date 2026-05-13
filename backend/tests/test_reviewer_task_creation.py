@@ -12,12 +12,15 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.api import agent as agent_api
 from app.api.agent import _guard_task_access, _require_task_creation_permission
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
 from app.models.agent_board_access import AgentBoardAccess
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.schemas.agents import STANDALONE_ROLE_TEMPLATES
+from app.schemas.tasks import TaskCreate
 
 
 def _make_board(board_id: object = None) -> SimpleNamespace:
@@ -215,6 +218,88 @@ async def test_standalone_read_grant_cannot_write_task_updates() -> None:
             with pytest.raises(HTTPException) as exc_info:
                 await _guard_task_access(session, ctx, task, write=True)  # type: ignore[arg-type]
             assert exc_info.value.status_code == 403
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reviewer_created_inbox_task_notifies_board_lead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    org_id = uuid4()
+    board_id = uuid4()
+    gateway_id = uuid4()
+    reviewer_id = uuid4()
+    notified: list[str] = []
+
+    async def fake_notify_lead_on_task_create(
+        *,
+        session: object,
+        board: Board,
+        task: object,
+    ) -> None:
+        _ = session
+        assert board.id == board_id
+        notified.append(str(getattr(task, "id")))
+
+    monkeypatch.setattr(
+        agent_api.tasks_api,
+        "_notify_lead_on_task_create",
+        fake_notify_lead_on_task_create,
+    )
+
+    try:
+        async with session_maker() as session:
+            org = Organization(id=org_id, name="org")
+            gateway = Gateway(
+                id=gateway_id,
+                organization_id=org_id,
+                name="gw",
+                url="https://gateway.example",
+                workspace_root="/tmp/ws",
+            )
+            board = Board(
+                id=board_id,
+                organization_id=org_id,
+                gateway_id=gateway_id,
+                name="board",
+                slug="board",
+            )
+            reviewer = Agent(
+                id=reviewer_id,
+                name="QA Reviewer",
+                organization_id=org_id,
+                gateway_id=gateway_id,
+                agent_type=AGENT_TYPE_STANDALONE,
+                identity_profile={"role_template": "quality_reviewer"},
+            )
+            session.add_all(
+                [
+                    org,
+                    gateway,
+                    board,
+                    reviewer,
+                    AgentBoardAccess(
+                        agent_id=reviewer_id,
+                        board_id=board_id,
+                        access_level="write",
+                    ),
+                ]
+            )
+            await session.commit()
+
+            ctx = SimpleNamespace(agent=reviewer)
+            created = await agent_api.create_task(
+                payload=TaskCreate(title="Fix reviewed issue", status="inbox"),
+                board=board,
+                session=session,
+                agent_ctx=ctx,  # type: ignore[arg-type]
+            )
+
+            assert created.title == "Fix reviewed issue"
+            assert notified == [str(created.id)]
     finally:
         await engine.dispose()
 

@@ -1055,6 +1055,18 @@ async def create_task(
         board_id=task.board_id,
     )
     await session.commit()
+    if (
+        task.status == "inbox"
+        and task.assigned_agent_id is None
+        and agent_ctx.agent.agent_type == AGENT_TYPE_STANDALONE
+        and _profile.get("role_template")
+        in {"quality_reviewer", "security_reviewer", "architecture_reviewer"}
+    ):
+        await tasks_api._notify_lead_on_task_create(
+            session=session,
+            board=board,
+            task=task,
+        )
     if task.assigned_agent_id:
         assigned_agent = await Agent.objects.by_id(task.assigned_agent_id).first(
             session,
