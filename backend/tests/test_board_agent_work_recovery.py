@@ -834,9 +834,11 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert "Active assigned tasks: 1" in wake_calls[0]["message"]
             assert "read the current TOOLS.md" in wake_calls[0]["message"]
             assert "current X-Agent-Token" in wake_calls[0]["message"]
+            assert "Do not ask the operator whether to proceed" in wake_calls[0]["message"]
             assert "Do not mark review tasks `done` before the code is merged" in (
                 wake_calls[0]["message"]
             )
+            assert "accept the merge evidence" in wake_calls[0]["message"]
             assert "wake or mention the merge agent" in wake_calls[0]["message"]
             assert "read recent board chat for merge_blocker messages" in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH:" in wake_calls[0]["message"]
