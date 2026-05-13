@@ -503,6 +503,38 @@ class SprintService:
         await begin_sprint_review(session, sprint=sprint, board=board)
 
     @staticmethod
+    async def reconcile_review_ready_sprints(
+        session: AsyncSession,
+        *,
+        limit: int = 50,
+    ) -> int:
+        """Start review gates for active all-done sprints whose transition event was missed."""
+        from app.models.sprints import Sprint as _Sprint  # noqa: PLC0415
+
+        sprints = (
+            await session.exec(
+                select(_Sprint)
+                .where(col(_Sprint.status).in_(["active", "reviewing"]))
+                .order_by(col(_Sprint.updated_at).desc())
+                .limit(limit)
+            )
+        ).all()
+
+        checked_board_ids: set[UUID] = set()
+        before_status_by_board_id: dict[UUID, str] = {}
+        reconciled = 0
+        for sprint in sprints:
+            if sprint.board_id in checked_board_ids:
+                continue
+            checked_board_ids.add(sprint.board_id)
+            before_status_by_board_id[sprint.board_id] = sprint.status
+            await SprintService.check_sprint_completion(session, board_id=sprint.board_id)
+            if before_status_by_board_id[sprint.board_id] == "active" and sprint.status == "reviewing":
+                reconciled += 1
+
+        return reconciled
+
+    @staticmethod
     async def complete_sprint(
         session: AsyncSession,
         *,

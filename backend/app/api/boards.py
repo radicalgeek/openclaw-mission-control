@@ -552,6 +552,15 @@ async def get_board_snapshot(
     session: AsyncSession = SESSION_DEP,
 ) -> BoardSnapshot:
     """Get a board snapshot view model."""
+    try:
+        from app.services.sprint_lifecycle import SprintService  # noqa: PLC0415
+
+        await SprintService.check_sprint_completion(session, board_id=board.id)
+    except Exception:
+        logger.exception(
+            "board.snapshot_sprint_review_reconcile_failed",
+            extra={"board_id": str(board.id)},
+        )
     return await build_board_snapshot(session, board)
 
 

@@ -559,3 +559,37 @@ async def test_check_sprint_completion_not_all_done() -> None:
 
     # Sprint should NOT have been completed
     assert sprint.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_review_ready_sprints_checks_each_active_board_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Periodic reconciliation should revisit active/reviewing sprints without duplicates."""
+    from app.services.sprint_lifecycle import SprintService
+
+    board_one = _board()
+    board_two = _board()
+    sprint_one = _sprint(board_one, status="active")
+    sprint_one_newer = _sprint(board_one, status="active")
+    sprint_two = _sprint(board_two, status="active")
+
+    session = _FakeSession()
+    session._push_result([sprint_one, sprint_one_newer, sprint_two])
+    checked: list[UUID] = []
+
+    async def fake_check_sprint_completion(_session: object, *, board_id: UUID) -> None:
+        checked.append(board_id)
+        if board_id == sprint_one.board_id:
+            sprint_one.status = "reviewing"
+
+    monkeypatch.setattr(
+        SprintService,
+        "check_sprint_completion",
+        fake_check_sprint_completion,
+    )
+
+    reconciled = await SprintService.reconcile_review_ready_sprints(session)  # type: ignore[arg-type]
+
+    assert checked == [board_one.id, board_two.id]
+    assert reconciled == 1

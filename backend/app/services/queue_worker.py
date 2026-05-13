@@ -25,6 +25,7 @@ from app.services.openclaw.org_agent_reconcile_queue import (
 )
 from app.services.openclaw.org_agent_reconcile_worker import process_org_agent_reconcile_task
 from app.services.queue import QueuedTask, dequeue_task
+from app.services.sprint_lifecycle import SprintService
 from app.services.telemetry.usage_poll_queue import TASK_TYPE as USAGE_POLL_TASK_TYPE
 from app.services.telemetry.usage_poll_queue import requeue_usage_poll_task
 from app.services.telemetry.usage_poll_worker import process_usage_poll_task
@@ -37,7 +38,9 @@ from app.services.webhooks.queue import TASK_TYPE as WEBHOOK_TASK_TYPE
 logger = get_logger(__name__)
 _WORKER_BLOCK_TIMEOUT_SECONDS = 5.0
 _ACTIVE_WORK_RECOVERY_INTERVAL_SECONDS = 60.0
+_SPRINT_REVIEW_RECONCILE_INTERVAL_SECONDS = 60.0
 _last_active_work_recovery_monotonic = 0.0
+_last_sprint_review_reconcile_monotonic = 0.0
 
 
 @dataclass(frozen=True)
@@ -105,11 +108,33 @@ async def _pulse_active_work_recovery() -> None:
         logger.exception("queue.worker.active_work_recovery_failed")
 
 
+async def _pulse_sprint_review_reconcile() -> None:
+    """Start sprint review gates if a done-ticket transition missed the hook."""
+    global _last_sprint_review_reconcile_monotonic
+
+    now = time.monotonic()
+    if now - _last_sprint_review_reconcile_monotonic < _SPRINT_REVIEW_RECONCILE_INTERVAL_SECONDS:
+        return
+    _last_sprint_review_reconcile_monotonic = now
+
+    try:
+        async with async_session_maker() as session:
+            reconciled = await SprintService.reconcile_review_ready_sprints(session)
+            if reconciled:
+                logger.info(
+                    "queue.worker.sprint_review_reconcile_done",
+                    extra={"count": reconciled},
+                )
+    except Exception:
+        logger.exception("queue.worker.sprint_review_reconcile_failed")
+
+
 async def flush_queue(*, block: bool = False, block_timeout: float = 0) -> int:
     """Consume one queue batch and dispatch by task type."""
     processed = 0
     while True:
         await _pulse_active_work_recovery()
+        await _pulse_sprint_review_reconcile()
         try:
             task = dequeue_task(
                 settings.rq_queue_name,
