@@ -153,8 +153,10 @@ def _actor_display_name(actor: ActorContext) -> str:
     return "User"
 
 
-def _should_reset_chat_target_session(agent: Agent) -> bool:
-    """Use a fresh turn for explicit chat wakes when the target is not currently alive."""
+def _should_reset_chat_target_session(agent: Agent, *, mentioned: bool = False) -> bool:
+    """Use a fresh turn for direct mentions or inactive chat targets."""
+    if mentioned:
+        return True
     return (agent.status or "").lower() in {"failed", "offline"}
 
 
@@ -223,7 +225,7 @@ async def _notify_chat_targets(
             config=config,
             agent_name=agent.name,
             message=message,
-            reset_session=_should_reset_chat_target_session(agent),
+            reset_session=_should_reset_chat_target_session(agent, mentioned=mentioned),
             reset_stuck_session=True,
         )
         if error is not None:

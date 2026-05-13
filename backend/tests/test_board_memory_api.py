@@ -276,5 +276,9 @@ def test_board_chat_resets_offline_or_failed_target_sessions() -> None:
 
     assert board_memory_module._should_reset_chat_target_session(offline) is True
     assert board_memory_module._should_reset_chat_target_session(failed) is True
+    assert (
+        board_memory_module._should_reset_chat_target_session(online, mentioned=True)
+        is True
+    )
     assert board_memory_module._should_reset_chat_target_session(online) is False
     assert board_memory_module._should_reset_chat_target_session(updating) is False
