@@ -838,6 +838,46 @@ async def test_control_plane_upsert_agent_existing_agent_updates_only(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_control_plane_upsert_agent_uses_gateway_config_lock(monkeypatch):
+    calls: list[str] = []
+
+    class _Redis:
+        def set(self, key: str, value: str, *, nx: bool, ex: int) -> bool:
+            calls.append(f"lock:{key}:{nx}:{ex}:{value.startswith('upsert:board-agent-a')}")
+            return True
+
+        def eval(self, script: str, keys: int, key: str, value: str) -> int:
+            _ = script, keys, key, value
+            calls.append("unlock")
+            return 1
+
+    async def _fake_openclaw_call(method, params=None, config=None):
+        _ = params, config
+        calls.append(method)
+        if method == "agents.update":
+            return {"ok": True}
+        raise AssertionError(f"Unexpected method: {method}")
+
+    monkeypatch.setattr(agent_provisioning, "_redis_client", lambda: _Redis())
+    monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
+    cp = agent_provisioning.OpenClawGatewayControlPlane(
+        agent_provisioning.GatewayClientConfig(url="ws://gateway.example/ws", token=None),
+    )
+
+    await cp.upsert_agent(
+        agent_provisioning.GatewayAgentRegistration(
+            agent_id="board-agent-a",
+            name="Board Agent A",
+            workspace_path="/tmp/workspace-board-agent-a",
+            heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
+        ),
+    )
+
+    assert calls[0].startswith("lock:axiacraft:openclaw:config-lock:")
+    assert calls[1:] == ["agents.update", "unlock"]
+
+
+@pytest.mark.asyncio
 async def test_control_plane_upsert_agent_missing_creates_then_updates(monkeypatch):
     """Update-first with fallback: when the agent is missing on the gateway,
     `agents.update` returns "not found" and we fall back to `agents.create`,

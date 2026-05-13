@@ -8,13 +8,15 @@ DB-backed workflows (template sync, lead-agent record creation) live in
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
+import hashlib
 import json
 import posixpath
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
@@ -25,6 +27,7 @@ from app.models.agents import AGENT_TYPE_BOARD_WORKER, AGENT_TYPE_STANDALONE, Ag
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.organizations import Organization
+from app.services.queue import _redis_client
 from app.services import souls_directory
 from app.services.openclaw.constants import (
     BOARD_SHARED_TEMPLATE_MAP,
@@ -134,6 +137,15 @@ def _is_unsupported_file_error(exc: OpenClawGatewayError) -> bool:
 # saves ~2 failed RPC calls per provisioning cycle (skills/…, tools/…).
 # In-process only — clears on restart, which is the safe default.
 _GATEWAY_REJECTED_FILES: dict[str, set[str]] = {}
+_GATEWAY_CONFIG_LOCK_TTL_SECONDS = 300
+_GATEWAY_CONFIG_LOCK_WAIT_SECONDS = 180.0
+_GATEWAY_CONFIG_LOCK_POLL_SECONDS = 0.25
+_RELEASE_GATEWAY_CONFIG_LOCK_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
 
 
 def _mark_file_rejected(gateway_id: str, file_name: str) -> None:
@@ -838,6 +850,70 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
     def __init__(self, config: GatewayClientConfig) -> None:
         self._config = config
 
+    def _config_lock_key(self) -> str:
+        digest = hashlib.sha256(self._config.url.encode("utf-8")).hexdigest()[:32]
+        return f"axiacraft:openclaw:config-lock:{digest}"
+
+    @asynccontextmanager
+    async def _gateway_config_lock(self, *, operation: str) -> AsyncIterator[None]:
+        """Serialize gateway config mutations across backend/worker processes.
+
+        OpenClaw stores agent registrations and heartbeat entries in one
+        ``agents.list`` array. A lifecycle update performs read-modify-write
+        config operations, so two writers racing can temporarily remove an
+        agent that the other writer just registered. That shows up as
+        ``Agent "... " no longer exists in configuration`` and strands board
+        agents in updating/online-but-idle loops.
+        """
+
+        lock_key = self._config_lock_key()
+        current_task = asyncio.current_task()
+        owner = f"{operation}:{current_task.get_name() if current_task else 'unknown'}"
+        try:
+            client = _redis_client()
+        except Exception:
+            logger.warning("gateway.config_lock.redis_unavailable", exc_info=True)
+            yield
+            return
+
+        deadline = asyncio.get_running_loop().time() + _GATEWAY_CONFIG_LOCK_WAIT_SECONDS
+        acquired = False
+        try:
+            while True:
+                try:
+                    acquired = bool(
+                        await asyncio.to_thread(
+                            client.set,
+                            lock_key,
+                            owner,
+                            nx=True,
+                            ex=_GATEWAY_CONFIG_LOCK_TTL_SECONDS,
+                        )
+                    )
+                except Exception:
+                    logger.warning("gateway.config_lock.acquire_failed", exc_info=True)
+                    yield
+                    return
+                if acquired:
+                    break
+                if asyncio.get_running_loop().time() >= deadline:
+                    msg = f"timed out waiting for OpenClaw config lock ({operation})"
+                    raise OpenClawGatewayError(msg)
+                await asyncio.sleep(_GATEWAY_CONFIG_LOCK_POLL_SECONDS)
+            yield
+        finally:
+            if acquired:
+                try:
+                    await asyncio.to_thread(
+                        client.eval,
+                        _RELEASE_GATEWAY_CONFIG_LOCK_LUA,
+                        1,
+                        lock_key,
+                        owner,
+                    )
+                except Exception:
+                    logger.warning("gateway.config_lock.release_failed", exc_info=True)
+
     async def health(self) -> object:
         return await openclaw_call("health", config=self._config)
 
@@ -874,39 +950,7 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         # every reconcile of an existing agent. The `agent not found` fallback
         # to `agents.create` covers fresh provisions and the rare case where
         # openclaw lost its config (gateway worker rebuild without state).
-        try:
-            await openclaw_call(
-                "agents.update",
-                {
-                    "agentId": registration.agent_id,
-                    "name": registration.name,
-                    "workspace": registration.workspace_path,
-                },
-                config=self._config,
-            )
-            return
-        except OpenClawGatewayError as exc:
-            if not _is_missing_agent_error(exc):
-                raise
-
-        # Agent missing on the gateway side — fall back to create.
-        await openclaw_call(
-            "agents.create",
-            {
-                "name": registration.agent_id,
-                "workspace": registration.workspace_path,
-            },
-            config=self._config,
-        )
-
-        # Gateway hot-reload has a ~500ms debounce after agents.create writes to
-        # disk. A follow-up call arriving before the reload completes can return
-        # "agent not found". Wait for the reload window, then issue agents.update
-        # so the agent's heartbeat / workspace metadata are captured.
-        await asyncio.sleep(0.75)
-        _update_retries = 5
-        _update_delay = 0.5
-        for _attempt in range(_update_retries):
+        async with self._gateway_config_lock(operation=f"upsert:{registration.agent_id}"):
             try:
                 await openclaw_call(
                     "agents.update",
@@ -917,13 +961,46 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
                     },
                     config=self._config,
                 )
-                break
+                return
             except OpenClawGatewayError as exc:
-                if _is_missing_agent_error(exc) and _attempt < _update_retries - 1:
-                    await asyncio.sleep(_update_delay)
-                    _update_delay = min(_update_delay * 2, 4.0)
-                    continue
-                raise
+                if not _is_missing_agent_error(exc):
+                    raise
+
+            # Agent missing on the gateway side — fall back to create.
+            await openclaw_call(
+                "agents.create",
+                {
+                    "name": registration.agent_id,
+                    "workspace": registration.workspace_path,
+                },
+                config=self._config,
+            )
+
+            # Gateway hot-reload has a ~500ms debounce after agents.create writes to
+            # disk. A follow-up call arriving before the reload completes can return
+            # "agent not found". Wait for the reload window, then issue agents.update
+            # so the agent's heartbeat / workspace metadata are captured.
+            await asyncio.sleep(0.75)
+            _update_retries = 5
+            _update_delay = 0.5
+            for _attempt in range(_update_retries):
+                try:
+                    await openclaw_call(
+                        "agents.update",
+                        {
+                            "agentId": registration.agent_id,
+                            "name": registration.name,
+                            "workspace": registration.workspace_path,
+                        },
+                        config=self._config,
+                    )
+                    break
+                except OpenClawGatewayError as exc:
+                    if _is_missing_agent_error(exc) and _attempt < _update_retries - 1:
+                        await asyncio.sleep(_update_delay)
+                        _update_delay = min(_update_delay * 2, 4.0)
+                        continue
+                    raise
 
     async def delete_agent(self, agent_id: str, *, delete_files: bool = True) -> None:
         await openclaw_call(
@@ -990,39 +1067,41 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         self,
         entries: list[tuple[str, str, dict[str, Any], dict[str, object] | str | None]],
     ) -> None:
-        base_hash, raw_list, config_data = await _gateway_config_agent_list(self._config)
-        entry_by_id = _heartbeat_entry_map(entries)
-        new_list = _updated_agent_list(raw_list, entry_by_id)
+        operation = "heartbeat:" + ",".join(agent_id for agent_id, *_rest in entries)
+        async with self._gateway_config_lock(operation=operation):
+            base_hash, raw_list, config_data = await _gateway_config_agent_list(self._config)
+            entry_by_id = _heartbeat_entry_map(entries)
+            new_list = _updated_agent_list(raw_list, entry_by_id)
 
-        tools_patch = _tools_exec_host_patch(config_data)
+            tools_patch = _tools_exec_host_patch(config_data)
 
-        # NOTE: we deliberately do NOT emit a `channels` patch here, even though
-        # `_channel_heartbeat_visibility_patch` exists. openclaw treats
-        # `channels` as a non-hot-reloadable path and schedules a full gateway
-        # restart whenever it changes (close code 1012 on every WS connection).
-        # When this ran on every per-agent reconcile, the openclaw config file
-        # was rewritten on each restart — losing the heartbeat-visibility
-        # defaults — so the next reconcile detected them missing again and
-        # emitted another channels patch, restarting the gateway again.
-        # Result: divergent retry loop, agents never finished provisioning.
-        # Channel heartbeat defaults are an ergonomic concern that belongs in
-        # gateway templates/sync (a one-shot bootstrap), not the per-agent
-        # path. See `_channel_heartbeat_visibility_patch`; templates/sync can
-        # call it at gateway-create time without restart-cascade risk.
+            # NOTE: we deliberately do NOT emit a `channels` patch here, even though
+            # `_channel_heartbeat_visibility_patch` exists. openclaw treats
+            # `channels` as a non-hot-reloadable path and schedules a full gateway
+            # restart whenever it changes (close code 1012 on every WS connection).
+            # When this ran on every per-agent reconcile, the openclaw config file
+            # was rewritten on each restart — losing the heartbeat-visibility
+            # defaults — so the next reconcile detected them missing again and
+            # emitted another channels patch, restarting the gateway again.
+            # Result: divergent retry loop, agents never finished provisioning.
+            # Channel heartbeat defaults are an ergonomic concern that belongs in
+            # gateway templates/sync (a one-shot bootstrap), not the per-agent
+            # path. See `_channel_heartbeat_visibility_patch`; templates/sync can
+            # call it at gateway-create time without restart-cascade risk.
 
-        # Skip config.patch entirely when nothing changed — avoids an unnecessary
-        # gateway SIGUSR1 restart that rotates agent tokens and breaks active sessions.
-        if new_list == raw_list and tools_patch is None:
-            logger.debug("patch_agent_heartbeats: no changes detected, skipping config.patch")
-            return
+            # Skip config.patch entirely when nothing changed — avoids an unnecessary
+            # gateway SIGUSR1 restart that rotates agent tokens and breaks active sessions.
+            if new_list == raw_list and tools_patch is None:
+                logger.debug("patch_agent_heartbeats: no changes detected, skipping config.patch")
+                return
 
-        patch: dict[str, Any] = {"agents": {"list": new_list}}
-        if tools_patch is not None:
-            patch["tools"] = tools_patch
-        params = {"raw": json.dumps(patch)}
-        if base_hash:
-            params["baseHash"] = base_hash
-        await openclaw_call("config.patch", params, config=self._config)
+            patch: dict[str, Any] = {"agents": {"list": new_list}}
+            if tools_patch is not None:
+                patch["tools"] = tools_patch
+            params = {"raw": json.dumps(patch)}
+            if base_hash:
+                params["baseHash"] = base_hash
+            await openclaw_call("config.patch", params, config=self._config)
 
 
 async def _gateway_config_agent_list(
