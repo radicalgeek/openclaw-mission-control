@@ -837,6 +837,15 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert "read the current TOOLS.md" in wake_calls[0]["message"]
             assert "current X-Agent-Token" in wake_calls[0]["message"]
             assert "Do not ask the operator whether to proceed" in wake_calls[0]["message"]
+            assert (
+                "make assignment decisions now when inbox work is ready" in wake_calls[0]["message"]
+            )
+            assert f"/api/v1/agent/boards/{board_id}/tasks/{{task_id}}" in wake_calls[0]["message"]
+            assert "`sessions.resolve`" in wake_calls[0]["message"]
+            assert (
+                "Assignment via AxiaCraft wakes the worker automatically"
+                in wake_calls[0]["message"]
+            )
             assert "Do not mark review tasks `done` before the code is merged" in (
                 wake_calls[0]["message"]
             )

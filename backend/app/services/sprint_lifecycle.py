@@ -162,6 +162,12 @@ def _build_sprint_started_lead_message(
         f"non-lead developer agents with PATCH {task_update_path} using "
         '{"assigned_agent_id":"<developer_agent_id>"}.\n'
         f"5. Verify assignment by re-reading GET {task_list_path}.\n\n"
+        "Do not use OpenClaw direct-message tools, session labels, or "
+        "`sessions.resolve` to reach developers for this assignment cycle. "
+        "Do not refer to workers as `dev-1`, `dev-2`, `dev-agent-1`, or "
+        "`dev-agent-2`; those are not registered session labels. Assign by "
+        "`assigned_agent_id` only. AxiaCraft wakes the assigned worker "
+        "automatically after the PATCH succeeds.\n\n"
         "Use the Board ID and Sprint ID exactly as written above. Do not rewrite, "
         "shorten, or substitute any UUID.\n\n"
         "Do not create new tickets for this sprint-start event. Wake developers "
