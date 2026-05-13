@@ -16,6 +16,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   MessageSquare,
   Pause,
   Plus,
@@ -582,6 +583,7 @@ type ToastMessage = {
 type BoardReviewGate = {
   sprint: SprintRead;
   gate: SprintReviewGateRead | null;
+  readiness: "waiting" | "running";
 };
 
 const sprintReviewRoleLabel = (role: SprintReviewRead["role"]): string => {
@@ -1450,10 +1452,17 @@ export default function BoardDetailPage() {
       const reviewsResult = await listSprintReviews(boardId, sprint.id);
       const gate = reviewsResult.data;
       if (sprint.status === "active" && gate.reviews.length === 0) {
-        setReviewGate(null);
+        if (
+          sprint.ticket_count > 0 &&
+          sprint.tickets_done_count >= sprint.ticket_count
+        ) {
+          setReviewGate({ sprint, gate, readiness: "waiting" });
+        } else {
+          setReviewGate(null);
+        }
         return;
       }
-      setReviewGate({ sprint, gate });
+      setReviewGate({ sprint, gate, readiness: "running" });
     } catch {
       setReviewGate(null);
     } finally {
@@ -3671,7 +3680,9 @@ export default function BoardDetailPage() {
                           <div className="rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] px-4 py-3 shadow-sm">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div className="flex min-w-0 items-center gap-2">
-                                {reviewGate.gate?.approved ? (
+                                {reviewGate.readiness === "waiting" ? (
+                                  <Clock className="h-4 w-4 shrink-0 text-warning" />
+                                ) : reviewGate.gate?.approved ? (
                                   <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
                                 ) : reviewGate.gate?.status ===
                                   "changes_requested" ? (
@@ -3685,12 +3696,14 @@ export default function BoardDetailPage() {
                                     {reviewGate.sprint.name}
                                   </p>
                                   <p className="text-xs text-[color:var(--text-muted)]">
-                                    {reviewGate.gate?.approved
-                                      ? "Reviews passed"
-                                      : reviewGate.gate?.status ===
-                                          "changes_requested"
-                                        ? "Review agents requested changes"
-                                        : "Review agents are checking the sprint"}
+                                    {reviewGate.readiness === "waiting"
+                                      ? "All sprint tickets are done; waiting for review agents to be dispatched"
+                                      : reviewGate.gate?.approved
+                                        ? "Reviews passed"
+                                        : reviewGate.gate?.status ===
+                                            "changes_requested"
+                                          ? "Review agents requested changes"
+                                          : "Review agents are checking the sprint"}
                                   </p>
                                 </div>
                               </div>
@@ -3715,6 +3728,11 @@ export default function BoardDetailPage() {
                                     </span>
                                   ),
                                 )}
+                                {reviewGate.readiness === "waiting" ? (
+                                  <span className="rounded-full border border-warning-border bg-warning-soft px-2.5 py-1 text-[11px] font-semibold text-warning">
+                                    Ready for review
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                           </div>
