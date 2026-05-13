@@ -18,6 +18,7 @@ from app.services.openclaw.exceptions import GatewayOperation, map_gateway_error
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.db_agent_state import mint_agent_token
 from app.services.openclaw.internal.session_keys import standalone_agent_session_key
 from app.services.openclaw.lifecycle_orchestrator import AgentLifecycleOrchestrator
 from app.services.openclaw.provisioning_db import (
@@ -140,12 +141,16 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             agent.id,
             agent.openclaw_session_id,
         )
+        raw_token = mint_agent_token(agent)
+        self.session.add(agent)
+        await self.session.flush()
         await AgentLifecycleOrchestrator(self.session).run_lifecycle(
             gateway=gateway,
             agent_id=agent.id,
             board=None,
             user=None,
             action="update",
+            auth_token=raw_token,
             force_bootstrap=False,
             reset_session=False,
             wake=True,
