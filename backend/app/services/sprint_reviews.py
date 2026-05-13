@@ -92,6 +92,12 @@ def _build_review_prompt(
         "- Review the sprint work against your specialist scope.",
         "- Consider backlog and future sprint tickets before creating new work.",
         "- If a gap is already planned, mention the existing ticket instead of duplicating it.",
+        "- Treat newer task comments, done remediation tickets, and merged-fix evidence as "
+        "superseding older blocker reports; do not block on a stale issue that later sprint "
+        "evidence says was fixed.",
+        "- If the only concern is that a completed remediation needs re-checking, perform that "
+        "check from the available board/code evidence; do not request changes just to ask another "
+        "agent to verify it.",
         "- Do not request changes for work that is already represented by a backlog or future "
         "sprint ticket; record it as planned follow-up and approve unless it is a new "
         "regression introduced by this sprint.",

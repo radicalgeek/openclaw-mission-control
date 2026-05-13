@@ -231,6 +231,8 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
             "Only block the sprint for a current-sprint acceptance failure" in prompt
             for prompt in prompts
         )
+        assert all("newer task comments, done remediation tickets" in prompt for prompt in prompts)
+        assert all("do not block on a stale issue" in prompt for prompt in prompts)
         assert all(
             "one remediation ticket per distinct blocking finding" in prompt for prompt in prompts
         )
