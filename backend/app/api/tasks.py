@@ -722,6 +722,8 @@ def _assignment_notification_message(*, board: Board, task: Task, agent: Agent) 
         f"Task: {task.title}",
         f"Task ID: {task.id}",
         f"Status: {task.status}",
+        f"Update endpoint: PATCH {settings.base_url}/api/v1/agent/boards/{board.id}/tasks/{task.id}",
+        f"Comments endpoint: GET {settings.base_url}/api/v1/agent/boards/{board.id}/tasks/{task.id}/comments",
     ]
     if description:
         details.append(f"Description: {description}")
@@ -1026,7 +1028,10 @@ async def _notify_lead_on_task_create(
     message = (
         "NEW TASK ADDED\n"
         + "\n".join(details)
-        + "\n\nTake action: triage, assign, or plan next steps."
+        + "\n\nTake action: triage, assign, or plan next steps. "
+        "Copy the exact endpoint above; do not reconstruct the board id or task id from memory. "
+        "If this is unassigned inbox work, assign it with JSON "
+        '{"assigned_agent_id":"<developer_agent_id>"}.'
     )
     error = await _send_lead_task_message(
         dispatch=dispatch,
@@ -1079,13 +1084,18 @@ async def _notify_lead_on_task_unassigned(
         f"Task: {task.title}",
         f"Task ID: {task.id}",
         f"Status: {task.status}",
+        f"Update endpoint: PATCH {settings.base_url}/api/v1/agent/boards/{board.id}/tasks/{task.id}",
+        f"Comments endpoint: GET {settings.base_url}/api/v1/agent/boards/{board.id}/tasks/{task.id}/comments",
     ]
     if description:
         details.append(f"Description: {description}")
     message = (
         "TASK BACK IN INBOX\n"
         + "\n".join(details)
-        + "\n\nTake action: assign a new owner or adjust the plan."
+        + "\n\nTake action: assign a new owner or adjust the plan. "
+        "Copy the exact endpoint above; do not reconstruct the board id or task id from memory. "
+        "Assign with JSON "
+        '{"assigned_agent_id":"<developer_agent_id>"}.'
     )
     error = await _send_lead_task_message(
         dispatch=dispatch,
