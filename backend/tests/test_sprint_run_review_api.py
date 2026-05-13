@@ -218,6 +218,10 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         prompts = [call["message"] for call in captured]
         assert all("Backlog tickets already planned:" in prompt for prompt in prompts)
         assert all("Future sprint tickets already planned:" in prompt for prompt in prompts)
+        assert all(
+            "one remediation ticket per distinct blocking finding" in prompt for prompt in prompts
+        )
+        assert all("Do not bundle unrelated remediation work" in prompt for prompt in prompts)
         assert all("/review-update" in prompt for prompt in prompts)
     finally:
         await engine.dispose()
@@ -393,5 +397,100 @@ async def test_reviewer_consensus_completes_sprint_and_archives_done_tasks() -> 
             ).first()
             assert task is not None
             assert task.status == "archived"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                sprint_status="reviewing",
+            )
+            for role in ("qa", "security", "architecture"):
+                session.add(
+                    SprintReview(
+                        organization_id=board.organization_id,
+                        board_id=board.id,
+                        sprint_id=sprint.id,
+                        role=role,
+                        status="changes_requested" if role == "security" else "approved",
+                        agent_id=reviewers.get(role).id if role in reviewers else None,
+                        created_ticket_ids=[],
+                    )
+                )
+            await session.commit()
+
+            from app.services.sprint_lifecycle import SprintService
+
+            captured, p1, p2 = _capture()
+            with (
+                p1,
+                p2,
+                patch("app.services.sprint_reviews.settings.org_qa_reviewer_agent_id", ""),
+                patch("app.services.sprint_reviews.settings.org_security_reviewer_agent_id", ""),
+                patch(
+                    "app.services.sprint_reviews.settings.org_architecture_reviewer_agent_id", ""
+                ),
+            ):
+                await SprintService.check_sprint_completion(session, board_id=board.id)
+
+            assert len(captured) == 1
+            assert captured[0]["session_key"] == "security-session"
+            review_rows = (
+                await session.exec(select(SprintReview).where(SprintReview.sprint_id == sprint.id))
+            ).all()
+            statuses = {review.role: review.status for review in review_rows}
+            assert statuses == {
+                "architecture": "approved",
+                "qa": "approved",
+                "security": "pending",
+            }
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reviewer_created_remediation_is_attached_to_reviewing_sprint() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            _user, board, sprint, reviewers = await _seed_with_sprint_and_reviewers(
+                session,
+                sprint_status="reviewing",
+            )
+            remediation = Task(
+                id=uuid4(),
+                board_id=board.id,
+                title="Fix release gate",
+                status="inbox",
+            )
+            session.add(remediation)
+            await session.flush()
+
+            from app.api.agent import _attach_reviewer_remediation_to_reviewing_sprint
+
+            await _attach_reviewer_remediation_to_reviewing_sprint(
+                session,
+                board=board,
+                task=remediation,
+                agent=reviewers["qa"],
+            )
+            await session.commit()
+
+            await session.refresh(remediation)
+            assert remediation.sprint_id == sprint.id
+            links = (
+                await session.exec(
+                    select(SprintTicket).where(SprintTicket.task_id == remediation.id)
+                )
+            ).all()
+            assert len(links) == 1
+            assert links[0].sprint_id == sprint.id
     finally:
         await engine.dispose()

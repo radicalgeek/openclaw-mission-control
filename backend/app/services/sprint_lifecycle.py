@@ -454,7 +454,8 @@ class SprintService:
             await session.exec(
                 select(_Sprint)
                 .where(col(_Sprint.board_id) == board_id)
-                .where(col(_Sprint.status) == "active")
+                .where(col(_Sprint.status).in_(["active", "reviewing"]))
+                .order_by(col(_Sprint.updated_at).desc())
             )
         ).first()
 
@@ -473,12 +474,25 @@ class SprintService:
             if task is None or task.status != "done":
                 return  # Still work to do
 
-        # All tickets are done — enter the review gate.
+        # All tickets are done — enter or re-enter the review gate.
         board = await session.get(_Board, board_id)
         if board is None:
             return
 
         from app.services.sprint_reviews import begin_sprint_review  # noqa: PLC0415
+
+        if sprint.status == "reviewing":
+            from app.models.sprints import SprintReview  # noqa: PLC0415
+
+            reviews = (
+                await session.exec(
+                    select(SprintReview).where(col(SprintReview.sprint_id) == sprint.id)
+                )
+            ).all()
+            if reviews and not any(
+                review.status in {"changes_requested", "skipped"} for review in reviews
+            ):
+                return
 
         await begin_sprint_review(session, sprint=sprint, board=board)
 

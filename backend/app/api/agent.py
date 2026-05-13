@@ -19,6 +19,7 @@ from app.api import plans as plans_api
 from app.api import tasks as tasks_api
 from app.api.deps import ActorContext, agent_has_board_access, get_board_or_404, get_task_or_404
 from app.core.agent_auth import AgentAuthContext, get_agent_auth_context
+from app.core.time import utcnow
 from app.db.pagination import paginate
 from app.db.session import get_session
 from app.models.agents import AGENT_TYPE_STANDALONE, Agent
@@ -26,7 +27,7 @@ from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.boards import Board
 from app.models.gateways import Gateway
 from app.models.plans import Plan
-from app.models.sprints import Sprint
+from app.models.sprints import Sprint, SprintTicket
 from app.models.tags import Tag
 from app.models.task_dependencies import TaskDependency
 from app.models.tasks import Task
@@ -286,6 +287,57 @@ def _require_task_creation_permission(
         status_code=http_status.HTTP_403_FORBIDDEN,
         detail="Agent lacks task creation permission",
     )
+
+
+async def _attach_reviewer_remediation_to_reviewing_sprint(
+    session: AsyncSession,
+    *,
+    board: Board,
+    task: Task,
+    agent: Agent,
+) -> None:
+    """Link reviewer-created remediation to the sprint currently under review."""
+    profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+    if agent.agent_type != AGENT_TYPE_STANDALONE or profile.get("role_template") not in {
+        "quality_reviewer",
+        "security_reviewer",
+        "architecture_reviewer",
+    }:
+        return
+
+    sprint = (
+        await session.exec(
+            select(Sprint)
+            .where(col(Sprint.board_id) == board.id)
+            .where(col(Sprint.status) == "reviewing")
+        )
+    ).first()
+    if sprint is None:
+        return
+
+    existing_link = (
+        await session.exec(select(SprintTicket).where(col(SprintTicket.task_id) == task.id))
+    ).first()
+    if existing_link is not None:
+        return
+
+    last_link = (
+        await session.exec(
+            select(SprintTicket)
+            .where(col(SprintTicket.sprint_id) == sprint.id)
+            .order_by(col(SprintTicket.position).desc())
+        )
+    ).first()
+    session.add(
+        SprintTicket(
+            sprint_id=sprint.id,
+            task_id=task.id,
+            position=(last_link.position + 1) if last_link else 0,
+        )
+    )
+    task.sprint_id = sprint.id
+    task.updated_at = utcnow()
+    session.add(task)
 
 
 async def _guard_task_access(
@@ -967,6 +1019,12 @@ async def create_task(
     session.add(task)
     # Ensure the task exists in the DB before inserting dependency rows.
     await session.flush()
+    await _attach_reviewer_remediation_to_reviewing_sprint(
+        session,
+        board=board,
+        task=task,
+        agent=agent_ctx.agent,
+    )
     await tasks_api._set_task_custom_field_values_for_create(
         session,
         board_id=board.id,
