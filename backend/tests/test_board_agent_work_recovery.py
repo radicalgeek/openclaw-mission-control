@@ -840,6 +840,7 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             )
             assert "accept the merge evidence" in wake_calls[0]["message"]
             assert "wake or mention the merge agent" in wake_calls[0]["message"]
+            assert "do not block solely because the lead workspace" in wake_calls[0]["message"]
             assert "read recent board chat for merge_blocker messages" in wake_calls[0]["message"]
             assert "CODE_WORKTREE_PATH:" in wake_calls[0]["message"]
 

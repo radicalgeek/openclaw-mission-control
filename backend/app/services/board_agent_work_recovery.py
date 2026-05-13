@@ -220,6 +220,9 @@ def _lead_wake_message(
         "CI visibility limitation in the task comment, and move it to `done` with PATCH "
         f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}} and JSON "
         '{"status":"done","comment":"<merge SHA, checks, and evidence>"}. '
+        "A task comment stating that a commit is now in main via a merge commit is sufficient "
+        "merge evidence; do not block solely because the lead workspace or local git remote "
+        "does not contain that merge SHA. "
         "Read task comments with GET "
         f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}}/comments; do not omit the "
         "`/tasks/` path segment. If work "
