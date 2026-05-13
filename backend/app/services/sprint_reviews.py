@@ -92,6 +92,11 @@ def _build_review_prompt(
         "- Review the sprint work against your specialist scope.",
         "- Consider backlog and future sprint tickets before creating new work.",
         "- If a gap is already planned, mention the existing ticket instead of duplicating it.",
+        "- Do not request changes for work that is already represented by a backlog or future "
+        "sprint ticket; record it as planned follow-up and approve unless it is a new "
+        "regression introduced by this sprint.",
+        "- Only block the sprint for a current-sprint acceptance failure, a new unplanned "
+        "critical/high issue, or delivered work that is demonstrably broken.",
         "- For blocking gaps, create one remediation ticket per distinct blocking finding.",
         "- Do not bundle unrelated remediation work into a single catch-all ticket.",
         "- Put only tightly related acceptance criteria in the same remediation ticket.",
@@ -306,6 +311,11 @@ async def begin_sprint_review(
             dispatched.append(role)
             continue
         review.status = "pending"
+        review.agent_id = None
+        review.summary = None
+        review.findings = None
+        review.created_ticket_ids = None
+        review.resolved_at = None
         review.dispatched_at = now
         review.updated_at = now
         session.add(review)

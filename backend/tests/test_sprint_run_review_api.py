@@ -219,6 +219,14 @@ async def test_run_review_dispatches_to_all_three_reviewers_when_configured() ->
         assert all("Backlog tickets already planned:" in prompt for prompt in prompts)
         assert all("Future sprint tickets already planned:" in prompt for prompt in prompts)
         assert all(
+            "Do not request changes for work that is already represented" in prompt
+            for prompt in prompts
+        )
+        assert all(
+            "Only block the sprint for a current-sprint acceptance failure" in prompt
+            for prompt in prompts
+        )
+        assert all(
             "one remediation ticket per distinct blocking finding" in prompt for prompt in prompts
         )
         assert all("Do not bundle unrelated remediation work" in prompt for prompt in prompts)
@@ -420,7 +428,10 @@ async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -
                         role=role,
                         status="changes_requested" if role == "security" else "approved",
                         agent_id=reviewers.get(role).id if role in reviewers else None,
+                        summary="stale summary",
+                        findings=[{"title": "stale finding"}],
                         created_ticket_ids=[],
+                        resolved_at=sprint.created_at,
                     )
                 )
             await session.commit()
@@ -450,6 +461,12 @@ async def test_reviewing_sprint_re_dispatches_after_change_requests_are_done() -
                 "qa": "approved",
                 "security": "pending",
             }
+            security_review = next(review for review in review_rows if review.role == "security")
+            assert security_review.agent_id is None
+            assert security_review.summary is None
+            assert security_review.findings is None
+            assert security_review.created_ticket_ids is None
+            assert security_review.resolved_at is None
     finally:
         await engine.dispose()
 
