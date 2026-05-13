@@ -210,9 +210,13 @@ async def _notify_chat_targets(
             f"Board: {board.name}\n"
             f"From: {actor_name}\n\n"
             f"{snippet}\n\n"
-            "Reply via board chat:\n"
+            "IMPORTANT: board chat is AxiaCraft memory, not an OpenClaw message channel. "
+            "Do not use the OpenClaw message/channel tool to reply.\n"
+            "Reply by making an HTTP POST with your AxiaCraft agent token:\n"
             f"POST {base_url}/api/v1/agent/boards/{board.id}/memory\n"
-            'Body: {"content":"...","tags":["chat"]}'
+            'Body: {"content":"...","tags":["chat"]}\n'
+            "If you cannot complete the requested action, still post the blocker to board chat "
+            "with the same endpoint."
         )
         error = await dispatch.try_wake_agent_session(
             session_key=agent.openclaw_session_id,
