@@ -946,8 +946,12 @@ async def test_active_work_recovery_wakes_lead_for_new_review_escalation(
             assert f"Task {task_id}" in message
             assert "Deploy-time schema migrations" in message
             assert "a1ab90e is now in main via merge commit 3bbf180" in message
-            assert f"PATCH /api/v1/agent/boards/{board_id}/tasks/{{task_id}}" in message
-            assert f"GET /api/v1/agent/boards/{board_id}/tasks/{{task_id}}/comments" in message
+            task_path = f"/api/v1/agent/boards/{board_id}/tasks/{task_id}"
+            assert "exact update endpoint: PATCH" in message
+            assert "exact comments endpoint: GET" in message
+            assert task_path in message
+            assert f"{task_path}/comments" in message
+            assert "do not reconstruct them from memory" in message
             assert "do not omit the `/tasks/` path segment" in message
 
             reloaded_lead = (

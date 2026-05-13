@@ -67,6 +67,11 @@ def _truncate_snippet(value: str | None, *, limit: int = 500) -> str:
     return text[: limit - 1].rstrip() + "..."
 
 
+def _agent_api_url(path: str) -> str:
+    base_url = settings.base_url.rstrip("/")
+    return f"{base_url}{path}" if base_url else path
+
+
 def build_task_wake_message(
     *,
     board: Board,
@@ -198,11 +203,14 @@ def _lead_wake_message(
     if review_actions:
         details.append("Lead review actions:")
         for action in review_actions[:10]:
+            task_path = f"/api/v1/agent/boards/{board.id}/tasks/{action['task_id']}"
             details.append(
                 "- "
                 f"Task {action['task_id']}: {action['title']} | "
                 f"latest escalation: {_truncate_snippet(action['comment'], limit=260)}"
             )
+            details.append(f"  exact comments endpoint: GET {_agent_api_url(task_path)}/comments")
+            details.append(f"  exact update endpoint: PATCH {_agent_api_url(task_path)}")
     return (
         "\n".join(details)
         + "\n\nTake action now: inspect the board, assign ready inbox work, check in-progress "
@@ -217,13 +225,14 @@ def _lead_wake_message(
         "mainline contains the work but the task is still in `review`, run or inspect any "
         "available checks from the lead workspace. If checks cannot be run or queried from this "
         "runtime and there is no concrete failing evidence, accept the merge evidence, note the "
-        "CI visibility limitation in the task comment, and move it to `done` with PATCH "
-        f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}} and JSON "
+        "CI visibility limitation in the task comment, and move it to `done` with the exact "
+        "per-task PATCH endpoint listed above. Copy the listed board id and task id exactly; do "
+        "not reconstruct them from memory. Use JSON "
         '{"status":"done","comment":"<merge SHA, checks, and evidence>"}. '
         "A task comment stating that a commit is now in main via a merge commit is sufficient "
         "merge evidence; do not block solely because the lead workspace or local git remote "
         "does not contain that merge SHA. "
-        "Read task comments with GET "
+        "Read task comments with the exact per-task comments endpoint listed above, or with GET "
         f"/api/v1/agent/boards/{board.id}/tasks/{{task_id}}/comments; do not omit the "
         "`/tasks/` path segment. If work "
         "is blocked, read recent board chat for merge_blocker messages, post a task comment "
