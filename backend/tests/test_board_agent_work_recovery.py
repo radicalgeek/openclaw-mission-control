@@ -252,6 +252,70 @@ async def test_active_work_recovery_respects_pending_checkin_deadline(
 
 
 @pytest.mark.asyncio
+async def test_active_work_recovery_wakes_after_checkin_deadline_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            agent_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            now = utcnow()
+            session.add(
+                Agent(
+                    id=agent_id,
+                    name="worker",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="online",
+                    openclaw_session_id="agent:worker:main",
+                    last_seen_at=now,
+                    checkin_deadline_at=now - timedelta(minutes=1),
+                ),
+            )
+            session.add(
+                Task(
+                    board_id=board_id,
+                    title="Do the work",
+                    status="in_progress",
+                    assigned_agent_id=agent_id,
+                    in_progress_at=now - timedelta(minutes=30),
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert len(wake_calls) == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_active_work_recovery_refreshes_runtime_agent_then_retries_if_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

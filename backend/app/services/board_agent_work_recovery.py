@@ -484,8 +484,8 @@ async def wake_agent_for_task(
 
 def _agent_needs_work_wake(agent: Agent) -> bool:
     now = utcnow()
-    if agent.checkin_deadline_at is not None and agent.checkin_deadline_at > now:
-        return False
+    if agent.checkin_deadline_at is not None:
+        return agent.checkin_deadline_at <= now
     if agent.status != "online":
         return True
     if agent.last_seen_at is None:
