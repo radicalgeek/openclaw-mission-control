@@ -266,3 +266,15 @@ def test_board_chat_targets_match_hyphenated_agent_mentions_and_all() -> None:
     )
 
     assert set(broadcast_targets) == {str(lead.id), str(merger.id)}
+
+
+def test_board_chat_resets_offline_or_failed_target_sessions() -> None:
+    offline = Agent(id=uuid4(), name="Lead Agent", status="offline")
+    failed = Agent(id=uuid4(), name="Merge Agent", status="failed")
+    online = Agent(id=uuid4(), name="Developer Agent", status="online")
+    updating = Agent(id=uuid4(), name="Developer Agent 2", status="updating")
+
+    assert board_memory_module._should_reset_chat_target_session(offline) is True
+    assert board_memory_module._should_reset_chat_target_session(failed) is True
+    assert board_memory_module._should_reset_chat_target_session(online) is False
+    assert board_memory_module._should_reset_chat_target_session(updating) is False

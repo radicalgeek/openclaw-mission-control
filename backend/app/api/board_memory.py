@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from app.models.boards import Board
 
 router = APIRouter(prefix="/boards/{board_id}/memory", tags=["board-memory"])
+logger = logging.getLogger(__name__)
 MAX_SNIPPET_LENGTH = 8000
 STREAM_POLL_SECONDS = 2
 IS_CHAT_QUERY = Query(default=None)
@@ -151,6 +153,11 @@ def _actor_display_name(actor: ActorContext) -> str:
     return "User"
 
 
+def _should_reset_chat_target_session(agent: Agent) -> bool:
+    """Use a fresh turn for explicit chat wakes when the target is not currently alive."""
+    return (agent.status or "").lower() in {"failed", "offline"}
+
+
 async def _notify_chat_targets(
     *,
     session: AsyncSession,
@@ -212,9 +219,19 @@ async def _notify_chat_targets(
             config=config,
             agent_name=agent.name,
             message=message,
+            reset_session=_should_reset_chat_target_session(agent),
             reset_stuck_session=True,
         )
         if error is not None:
+            logger.warning(
+                "board_memory.chat_wake_failed board_id=%s memory_id=%s agent_id=%s agent_name=%s session_key=%s error=%s",
+                board.id,
+                memory.id,
+                agent.id,
+                agent.name,
+                agent.openclaw_session_id,
+                error,
+            )
             continue
 
 
