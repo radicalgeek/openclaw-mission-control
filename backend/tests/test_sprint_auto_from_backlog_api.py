@@ -9,7 +9,7 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.deps import (
@@ -72,7 +72,7 @@ def _build_app(session_maker: async_sessionmaker[AsyncSession], *, user: User) -
     return app
 
 
-async def _seed(session: AsyncSession) -> tuple[User, Board]:
+async def _seed(session: AsyncSession, *, auto_advance_sprint: bool = False) -> tuple[User, Board]:
     org_id = uuid4()
     gw_id = uuid4()
     board_id = uuid4()
@@ -94,6 +94,7 @@ async def _seed(session: AsyncSession) -> tuple[User, Board]:
                 gateway_id=gw_id,
                 name="b",
                 slug=f"b-{uuid4()}",
+                auto_advance_sprint=auto_advance_sprint,
             ),
             user,
         ],
@@ -309,6 +310,118 @@ async def test_auto_from_backlog_with_start_true_runs_lifecycle() -> None:
             assert t is not None
             assert t.status == "inbox"
             assert t.is_backlog is False
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_auto_advance_board_starts_loaded_sprint_and_strips_draft_name() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board = await _seed(session, auto_advance_sprint=True)
+            session.add(
+                Task(
+                    board_id=board.id,
+                    title="Estimated task",
+                    status="backlog",
+                    is_backlog=True,
+                    priority_score=70,
+                    estimate_minutes=60,
+                ),
+            )
+            await session.commit()
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/sprints/auto-from-backlog",
+                json={"name": "Draft Sprint 1", "take": "all"},
+            )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["sprint"]["name"] == "Sprint 1"
+        assert body["sprint"]["status"] == "active"
+        assert body["sprint"]["position"] == 0
+        assert body["sprint"]["committed_minutes"] == 60
+
+        async with sm() as session:
+            task = (await session.exec(select(Task).where(Task.board_id == board.id))).first()
+            assert task is not None
+            assert task.status == "inbox"
+            assert task.is_backlog is False
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_create_sprint_on_auto_advance_board_creates_ordered_queued_sprints() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board = await _seed(session, auto_advance_sprint=True)
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            first = await c.post(
+                f"/api/v1/boards/{board.id}/sprints",
+                json={"name": "Draft Sprint 1", "goal": "First"},
+            )
+            second = await c.post(
+                f"/api/v1/boards/{board.id}/sprints",
+                json={"name": "Draft Sprint 2", "goal": "Second"},
+            )
+        assert first.status_code == 201, first.text
+        assert second.status_code == 201, second.text
+        assert first.json()["name"] == "Sprint 1"
+        assert first.json()["status"] == "queued"
+        assert first.json()["position"] == 0
+        assert second.json()["name"] == "Sprint 2"
+        assert second.json()["status"] == "queued"
+        assert second.json()["position"] == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_adding_tickets_starts_first_loaded_sprint_on_auto_advance_board() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board = await _seed(session, auto_advance_sprint=True)
+            task = Task(
+                board_id=board.id,
+                title="Planned task",
+                status="backlog",
+                is_backlog=True,
+                priority_score=80,
+                estimate_minutes=30,
+            )
+            session.add(task)
+            await session.commit()
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            sprint_resp = await c.post(
+                f"/api/v1/boards/{board.id}/sprints",
+                json={"name": "Draft Sprint 1"},
+            )
+            sprint_id = sprint_resp.json()["id"]
+            add_resp = await c.post(
+                f"/api/v1/boards/{board.id}/sprints/{sprint_id}/tickets",
+                json={"task_ids": [str(task.id)]},
+            )
+        assert sprint_resp.status_code == 201, sprint_resp.text
+        assert add_resp.status_code == 200, add_resp.text
+
+        async with sm() as session:
+            sprint = await session.get(Sprint, UUID(sprint_id))
+            assert sprint is not None
+            assert sprint.status == "active"
+            planned_task = await session.get(Task, task.id)
+            assert planned_task is not None
+            assert planned_task.status == "inbox"
+            assert planned_task.is_backlog is False
     finally:
         await engine.dispose()
 

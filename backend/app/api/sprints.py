@@ -113,6 +113,69 @@ async def _sprint_ticket_counts(
     return total, done
 
 
+def _normalise_planned_sprint_name(name: str, fallback_position: int) -> str:
+    """Keep planner-created sprint names operator-friendly."""
+    cleaned = " ".join(name.strip().split())
+    if cleaned.lower().startswith("draft "):
+        cleaned = cleaned[6:].strip()
+    return cleaned or f"Sprint {fallback_position + 1}"
+
+
+async def _next_sprint_position(session: "AsyncSession", *, board_id: UUID) -> int:
+    last = (
+        await session.exec(
+            select(Sprint)
+            .where(col(Sprint.board_id) == board_id)
+            .order_by(col(Sprint.position).desc(), col(Sprint.created_at).desc())
+        )
+    ).first()
+    return (last.position + 1) if last is not None else 0
+
+
+async def _has_active_sprint(session: "AsyncSession", *, board_id: UUID) -> bool:
+    active = (
+        await session.exec(
+            select(Sprint)
+            .where(col(Sprint.board_id) == board_id)
+            .where(col(Sprint.status).in_(["active", "reviewing"]))
+        )
+    ).first()
+    return active is not None
+
+
+async def _maybe_start_next_loaded_sprint(
+    session: "AsyncSession",
+    *,
+    board: Board,
+) -> Sprint | None:
+    """When auto-progress is enabled, load the first planned sprint onto the board."""
+    if not board.auto_advance_sprint or await _has_active_sprint(session, board_id=board.id):
+        return None
+
+    candidates = (
+        await session.exec(
+            select(Sprint)
+            .where(col(Sprint.board_id) == board.id)
+            .where(col(Sprint.status).in_(["draft", "queued"]))
+            .order_by(col(Sprint.position).asc(), col(Sprint.created_at).asc())
+        )
+    ).all()
+    for sprint in candidates:
+        ticket = (
+            await session.exec(
+                select(SprintTicket).where(col(SprintTicket.sprint_id) == sprint.id)
+            )
+        ).first()
+        if ticket is None:
+            continue
+
+        from app.services.sprint_lifecycle import SprintService  # noqa: PLC0415
+
+        await SprintService.start_sprint(session, sprint=sprint, board=board)
+        return sprint
+    return None
+
+
 def _sprint_to_read(
     sprint: Sprint,
     ticket_count: int = 0,
@@ -227,23 +290,25 @@ async def create_sprint(
     session: "AsyncSession" = SESSION_DEP,
     actor: ActorContext = ACTOR_DEP,
 ) -> SprintRead:
-    """Create a new sprint in draft status."""
-    slug = generate_slug(payload.name)
+    """Create a new planned sprint."""
+    position = await _next_sprint_position(session, board_id=board.id)
+    name = _normalise_planned_sprint_name(payload.name, position)
+    slug = generate_slug(name)
     sprint = Sprint(
         organization_id=board.organization_id,
         board_id=board.id,
-        name=payload.name,
+        name=name,
         slug=slug,
         goal=payload.goal,
-        status="draft",
-        position=0,
+        status="queued" if board.auto_advance_sprint else "draft",
+        position=position,
         created_by_user_id=actor.user.id if actor.user else None,
     )
     session.add(sprint)
     record_activity(
         session,
         event_type="sprint_created",
-        message=f"Sprint created: {payload.name}",
+        message=f"Sprint created: {name}",
         board_id=board.id,
     )
     await session.commit()
@@ -360,7 +425,7 @@ async def auto_sprint_from_backlog(
     session: "AsyncSession" = SESSION_DEP,
     actor: ActorContext = ACTOR_DEP,
 ) -> _AutoFromBacklogResponse:
-    """Create a draft sprint and attach the highest-priority backlog tasks.
+    """Create a planned sprint and attach the highest-priority backlog tasks.
 
     Tasks are sorted by ``priority_score`` desc then ``created_at`` asc so the
     most urgent items land first. Setting ``start=true`` immediately runs the
@@ -408,14 +473,16 @@ async def auto_sprint_from_backlog(
         )
     selected = backlog if take is None else backlog[:take]
 
+    position = await _next_sprint_position(session, board_id=board.id)
+    sprint_name = _normalise_planned_sprint_name(payload.name, position)
     sprint = Sprint(
         organization_id=board.organization_id,
         board_id=board.id,
-        name=payload.name,
-        slug=generate_slug(payload.name),
+        name=sprint_name,
+        slug=generate_slug(sprint_name),
         goal=payload.goal,
-        status="draft",
-        position=0,
+        status="queued" if board.auto_advance_sprint else "draft",
+        position=position,
         created_by_user_id=actor.user.id if actor.user else None,
     )
     session.add(sprint)
@@ -431,7 +498,7 @@ async def auto_sprint_from_backlog(
     record_activity(
         session,
         event_type="sprint_auto_from_backlog",
-        message=f"Auto-built sprint '{payload.name}' from {len(selected)} backlog tasks",
+        message=f"Auto-built sprint '{sprint_name}' from {len(selected)} backlog tasks",
         board_id=board.id,
     )
     await session.commit()
@@ -442,6 +509,10 @@ async def auto_sprint_from_backlog(
 
         await SprintService.start_sprint(session, sprint=sprint, board=board)
         await session.refresh(sprint)
+    else:
+        started = await _maybe_start_next_loaded_sprint(session, board=board)
+        if started is not None and started.id == sprint.id:
+            await session.refresh(sprint)
 
     total, done = await _sprint_ticket_counts(session, sprint.id)
     return _AutoFromBacklogResponse(
@@ -627,6 +698,8 @@ async def add_sprint_tickets(
         next_position += 1
 
     await session.commit()
+    if added:
+        await _maybe_start_next_loaded_sprint(session, board=board)
     return added
 
 
@@ -832,18 +905,20 @@ def _build_planning_prompt(board: Board) -> str:
         [
             f"BACKLOG SPRINT PLANNING REQUEST for board '{board.name}'.",
             "This board has auto-organise backlog enabled. New backlog tickets have been "
-            "created or updated, so ensure they are planned into a draft sprint once they "
+            "created or updated, so ensure they are planned into upcoming sprints once they "
             "have estimate_minutes and priority_score values.",
             "",
             "Workflow:",
             "1. Read the board backlog with /api/v1/agent/boards/<board_id>/tasks?is_backlog=true.",
             "2. Select estimated, unassigned backlog tickets using priority_score, dependencies, "
             "recent sprint velocity, and workstream balance.",
-            "3. Reuse an existing empty draft sprint when one exists; otherwise create a draft sprint.",
+            "3. Reuse an existing empty upcoming sprint when one exists; otherwise create the next numbered sprint.",
             "4. Add selected tickets with POST /api/v1/agent/boards/<board_id>/sprints/<sprint_id>/tickets.",
             "5. Verify the selected tickets are attached and post the sprint plan rationale to board memory.",
             "",
-            "Do not start the sprint. The lead or auto-advance sprint policy handles sprint start.",
+            "Do not use the word Draft in sprint names. Use names like Sprint 1, Sprint 2, or a short goal-focused name.",
+            "Do not manually start the sprint. AxiaCraft starts the first loaded sprint automatically "
+            "when auto-progress is enabled; otherwise the lead starts it.",
             "If tickets still need estimates or priorities, notify @estimator or @priority-agent "
             "and return after a fresh read records that planning is waiting on those fields.",
         ]
@@ -1183,7 +1258,7 @@ async def organise_backlog(
     """Dispatch estimate + prioritise agents over the backlog, and optionally build a sprint.
 
     Idempotent for agent dispatch (skips tasks with existing data unless ``force=true``).
-    With ``include_sprint=true``, a draft sprint is created from the current backlog sorted by
+    With ``include_sprint=true``, a planned sprint is created from the current backlog sorted by
     ``priority_score`` desc. The sprint name is auto-generated if not supplied.
     """
     (
@@ -1219,24 +1294,19 @@ async def organise_backlog(
         backlog_tasks = list((await session.exec(backlog_stmt)).all())
 
         if backlog_tasks:
-            # Auto-name: Sprint N+1 based on total sprint count for this board.
-            if sprint_name:
-                auto_name = sprint_name
-            else:
-                existing_count = len(
-                    (
-                        await session.exec(select(Sprint).where(col(Sprint.board_id) == board.id))
-                    ).all()
-                )
-                auto_name = f"Sprint {existing_count + 1}"
+            position = await _next_sprint_position(session, board_id=board.id)
+            auto_name = _normalise_planned_sprint_name(
+                sprint_name or f"Sprint {position + 1}",
+                position,
+            )
 
             sprint = Sprint(
                 organization_id=board.organization_id,
                 board_id=board.id,
                 name=auto_name,
                 slug=generate_slug(auto_name),
-                status="draft",
-                position=0,
+                status="queued" if board.auto_advance_sprint else "draft",
+                position=position,
                 created_by_user_id=actor.user.id if actor.user else None,
             )
             session.add(sprint)
@@ -1264,6 +1334,8 @@ async def organise_backlog(
         board_id=board.id,
     )
     await session.commit()
+    if sprint_id is not None:
+        await _maybe_start_next_loaded_sprint(session, board=board)
 
     reason: str | None = None
     if not est_dispatched and not pri_dispatched and not planner_dispatched and not sprint_id:
