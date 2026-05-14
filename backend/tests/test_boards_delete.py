@@ -67,7 +67,9 @@ class _FakeSession:
 
 
 @pytest.mark.asyncio
-async def test_delete_board_cleans_org_board_access_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_delete_board_cleans_org_board_access_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Deleting a board should clear org-board access rows before commit."""
 
     async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
@@ -92,7 +94,11 @@ async def test_delete_board_cleans_org_board_access_rows(monkeypatch: pytest.Mon
         board=board,
     )
 
-    deleted_table_names = [statement.table.name for statement in session.executed]
+    deleted_table_names = [
+        statement.table.name
+        for statement in session.executed
+        if statement.__class__.__name__ == "Delete"
+    ]
     assert "activity_events" in deleted_table_names
     assert "organization_board_access" in deleted_table_names
     assert "organization_invite_board_access" in deleted_table_names
@@ -129,17 +135,68 @@ async def test_delete_board_cleans_tag_assignments_before_tasks(
         board=board,
     )
 
-    deleted_table_names = [statement.table.name for statement in session.executed]
+    deleted_table_names = [
+        statement.table.name
+        for statement in session.executed
+        if statement.__class__.__name__ == "Delete"
+    ]
     assert "tag_assignments" in deleted_table_names
     assert "task_custom_field_values" in deleted_table_names
-    assert deleted_table_names.index("tag_assignments") < deleted_table_names.index("tasks")
-    assert deleted_table_names.index("task_custom_field_values") < deleted_table_names.index(
+    assert deleted_table_names.index("tag_assignments") < deleted_table_names.index(
         "tasks"
     )
+    assert deleted_table_names.index(
+        "task_custom_field_values"
+    ) < deleted_table_names.index("tasks")
 
 
 @pytest.mark.asyncio
-async def test_delete_board_ignores_missing_gateway_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_delete_board_cleans_sprint_and_plan_links_around_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deleting a board should remove sprint links and tasks before plans/sprints."""
+
+    async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(
+        "app.services.channel_lifecycle.on_board_deleted",
+        _noop_on_board_deleted,
+    )
+
+    session: Any = _FakeSession(exec_results=[[], [uuid4()], [uuid4()], [], []])
+    board = Board(
+        id=uuid4(),
+        organization_id=uuid4(),
+        name="Demo Board",
+        slug="demo-board",
+        gateway_id=None,
+    )
+
+    await boards.delete_board(
+        session=session,
+        board=board,
+    )
+
+    deleted_table_names = [
+        statement.table.name
+        for statement in session.executed
+        if statement.__class__.__name__ == "Delete"
+    ]
+    assert deleted_table_names.index("sprint_tickets") < deleted_table_names.index(
+        "tasks"
+    )
+    assert deleted_table_names.index("sprint_reviews") < deleted_table_names.index(
+        "tasks"
+    )
+    assert deleted_table_names.index("tasks") < deleted_table_names.index("plans")
+    assert deleted_table_names.index("tasks") < deleted_table_names.index("sprints")
+
+
+@pytest.mark.asyncio
+async def test_delete_board_ignores_missing_gateway_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Deleting a board should continue when gateway reports agent not found."""
 
     async def _noop_on_board_deleted(*_args: object, **_kwargs: object) -> None:
@@ -159,7 +216,9 @@ async def test_delete_board_ignores_missing_gateway_agent(monkeypatch: pytest.Mo
         gateway_id=uuid4(),
     )
     agent = SimpleNamespace(id=uuid4(), board_id=board.id)
-    gateway = SimpleNamespace(url="ws://gateway.example/ws", token=None, workspace_root="/tmp")
+    gateway = SimpleNamespace(
+        url="ws://gateway.example/ws", token=None, workspace_root="/tmp"
+    )
     called = {"delete_agent_lifecycle": 0}
 
     async def _fake_all(_session: object) -> list[object]:
