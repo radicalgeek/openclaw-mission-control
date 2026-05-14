@@ -177,6 +177,30 @@ async def _create_plan_backlog_tasks(
     return created_ids
 
 
+async def _auto_organise_plan_backlog(
+    session: AsyncSession,
+    *,
+    board: Board,
+    plan: Plan,
+    created_ids: list[UUID],
+) -> None:
+    """Wake backlog organisation after plan decomposition creates tickets."""
+    if not created_ids or not board.auto_organise_backlog:
+        return
+
+    try:
+        from app.api.sprints import _dispatch_organise_agents  # noqa: PLC0415
+
+        await _dispatch_organise_agents(session, board=board)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "plan.auto_organise.failed board_id=%s plan_id=%s err=%s",
+            board.id,
+            plan.id,
+            exc,
+        )
+
+
 # ---------------------------------------------------------------------------
 # List plans
 # ---------------------------------------------------------------------------
@@ -555,6 +579,7 @@ async def agent_update_plan(
             }
             for t in payload.tickets
         ]
+        created_ids: list[UUID] = []
         existing_for_plan = await session.exec(
             select(Task).where(col(Task.plan_id) == plan.id),
         )
@@ -581,6 +606,13 @@ async def agent_update_plan(
     plan.messages = messages
     plan.updated_at = utcnow()
     session.add(plan)
+    await session.commit()
+    await _auto_organise_plan_backlog(
+        session,
+        board=board,
+        plan=plan,
+        created_ids=created_ids if has_ticket_decomposition else [],
+    )
     await session.commit()
     return OkResponse()
 
@@ -783,6 +815,13 @@ async def commit_plan_tickets(
         event_type="plan_tickets_committed",
         message=f"Committed {len(created_ids)} backlog tickets from plan: {plan.title}",
         board_id=board.id,
+    )
+    await session.commit()
+    await _auto_organise_plan_backlog(
+        session,
+        board=board,
+        plan=plan,
+        created_ids=created_ids,
     )
     await session.commit()
 

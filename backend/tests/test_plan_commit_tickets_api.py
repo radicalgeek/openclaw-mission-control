@@ -71,6 +71,7 @@ async def _seed(
     session: AsyncSession,
     *,
     decomposed_tickets: list[dict[str, object]] | None = None,
+    auto_organise_backlog: bool = False,
 ) -> tuple[User, Board, Plan]:
     org_id = uuid4()
     gw_id = uuid4()
@@ -89,7 +90,12 @@ async def _seed(
                 workspace_root="/tmp/ws",
             ),
             Board(
-                id=board_id, organization_id=org_id, gateway_id=gw_id, name="b", slug=f"b-{uuid4()}"
+                id=board_id,
+                organization_id=org_id,
+                gateway_id=gw_id,
+                name="b",
+                slug=f"b-{uuid4()}",
+                auto_organise_backlog=auto_organise_backlog,
             ),
             user,
             Plan(
@@ -293,6 +299,42 @@ async def test_commit_tickets_advances_plan_status_to_active() -> None:
 
 
 @pytest.mark.asyncio
+async def test_commit_tickets_auto_organises_when_board_setting_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    calls: list[tuple[UUID, UUID, int]] = []
+
+    async def fake_auto_organise(
+        session: AsyncSession,
+        *,
+        board: Board,
+        plan: Plan,
+        created_ids: list[UUID],
+    ) -> None:
+        calls.append((board.id, plan.id, len(created_ids)))
+
+    monkeypatch.setattr(plans_api, "_auto_organise_plan_backlog", fake_auto_organise)
+    try:
+        async with sm() as session:
+            user, board, plan = await _seed(
+                session,
+                decomposed_tickets=[{"title": "T1", "priority": "low"}],
+                auto_organise_backlog=True,
+            )
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/plans/{plan.id}/commit-tickets",
+            )
+        assert resp.status_code == 201
+        assert calls == [(board.id, plan.id, 1)]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_agent_update_with_tickets_commits_backlog_when_none_exist() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -329,6 +371,53 @@ async def test_agent_update_with_tickets_commits_backlog_when_none_exist() -> No
         assert tasks[0].status == "backlog"
         assert tasks[0].is_backlog is True
         assert tasks[0].auto_reason == "committed_from_agent_update"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_update_with_tickets_auto_organises_when_board_setting_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    calls: list[tuple[UUID, UUID, int]] = []
+
+    async def fake_auto_organise(
+        session: AsyncSession,
+        *,
+        board: Board,
+        plan: Plan,
+        created_ids: list[UUID],
+    ) -> None:
+        calls.append((board.id, plan.id, len(created_ids)))
+
+    monkeypatch.setattr(plans_api, "_auto_organise_plan_backlog", fake_auto_organise)
+    try:
+        async with sm() as session:
+            _user, board, plan = await _seed(
+                session,
+                decomposed_tickets=None,
+                auto_organise_backlog=True,
+            )
+
+            await plans_api.agent_update_plan(
+                plan.id,
+                payload=PlanAgentUpdateRequest(
+                    reply="Decomposed into 1 ticket",
+                    tickets=[
+                        DecomposedTicket(
+                            title="[API] Add auth guard",
+                            description="## Context\nGuard the production API.",
+                            priority="high",
+                        ),
+                    ],
+                ),
+                board=board,
+                session=session,
+            )
+
+        assert calls == [(board.id, plan.id, 1)]
     finally:
         await engine.dispose()
 
