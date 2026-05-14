@@ -9,12 +9,18 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 import app.services.openclaw.org_agent_reconciler as org_agent_reconciler
 from app.core.config import settings
 from app.core.time import utcnow
-from app.models.agents import Agent
+from app.models.agents import AGENT_TYPE_STANDALONE, Agent
+from app.models.gateways import Gateway
+from app.models.organizations import Organization
 from app.services.openclaw.constants import OFFLINE_AFTER
+from app.services.openclaw.internal.session_keys import standalone_agent_session_key
 from app.services.openclaw.lifecycle_queue import QueuedAgentLifecycleReconcile
 
 
@@ -63,6 +69,61 @@ def _stale_agent(
         wake_attempts=wake_attempts,
         lifecycle_generation=12,
     )
+
+
+@pytest.mark.asyncio
+async def test_reconcile_repairs_existing_standalone_agent_identity() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        org = Organization(name="OAG")
+        session.add(org)
+        await session.flush()
+        gateway = Gateway(
+            organization_id=org.id,
+            name="Primary Gateway",
+            url="https://gateway.example",
+            workspace_root="/workspace",
+        )
+        session.add(gateway)
+        await session.flush()
+        agent = Agent(
+            name="Primary Gateway Gateway Agent",
+            gateway_id=gateway.id,
+            board_id=None,
+            agent_type=AGENT_TYPE_STANDALONE,
+            status="offline",
+            openclaw_session_id=None,
+            identity_profile={
+                "role": "Gateway Agent",
+                "role_template": "quality_reviewer",
+                "communication_style": "chatty",
+                "emoji": ":robot_face:",
+            },
+        )
+        session.add(agent)
+        await session.commit()
+
+        outcome = await org_agent_reconciler.reconcile_org_standalone_agents(
+            session,
+            organization_id=org.id,
+        )
+
+        repaired = (await session.exec(select(Agent).where(Agent.id == agent.id))).one()
+
+    assert outcome["quality_reviewer"] == "repaired"
+    assert repaired.name == "Quality Reviewer"
+    assert repaired.openclaw_session_id == standalone_agent_session_key(repaired.id)
+    assert repaired.identity_profile == {
+        "role": "Quality Reviewer",
+        "role_template": "quality_reviewer",
+        "communication_style": "direct, concise, practical",
+        "emoji": ":white_check_mark:",
+    }
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

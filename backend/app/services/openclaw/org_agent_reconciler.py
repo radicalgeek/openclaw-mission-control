@@ -72,11 +72,15 @@ def _build_identity_profile(role_template: str) -> dict[str, str]:
     }
 
 
-async def _get_existing_role_templates(
+def _display_name_for_role(role_template: str) -> str:
+    return _ROLE_DISPLAY_NAMES.get(role_template, role_template.replace("_", " ").title())
+
+
+async def _get_existing_role_template_agents(
     session: Any,
     gateway_id: UUID,
-) -> set[str]:
-    """Return the set of role_template values already provisioned for a gateway."""
+) -> dict[str, Agent]:
+    """Return existing standalone agents keyed by role_template."""
     agents = (
         await session.exec(
             select(Agent)
@@ -84,14 +88,54 @@ async def _get_existing_role_templates(
             .where(col(Agent.agent_type) == AGENT_TYPE_STANDALONE),
         )
     ).all()
-    result: set[str] = set()
+    result: dict[str, Agent] = {}
     for agent in agents:
         profile = agent.identity_profile
         if isinstance(profile, dict):
             rt = profile.get("role_template")
             if rt:
-                result.add(str(rt))
+                result.setdefault(str(rt), agent)
     return result
+
+
+async def _repair_standalone_agent_if_needed(
+    *,
+    session: Any,
+    agent: Agent,
+    role_template: str,
+) -> bool:
+    """Repair durable standalone-agent identity fields that drifted."""
+    desired_name = _display_name_for_role(role_template)
+    desired_profile = _build_identity_profile(role_template)
+    desired_session_key = standalone_agent_session_key(agent.id)
+    current_profile = agent.identity_profile if isinstance(agent.identity_profile, dict) else {}
+
+    changed = False
+    if agent.name != desired_name:
+        agent.name = desired_name
+        changed = True
+    if agent.openclaw_session_id != desired_session_key:
+        agent.openclaw_session_id = desired_session_key
+        changed = True
+
+    repaired_profile = dict(current_profile)
+    for key, value in desired_profile.items():
+        if repaired_profile.get(key) != value:
+            repaired_profile[key] = value
+            changed = True
+    if changed:
+        agent.identity_profile = repaired_profile
+        agent.updated_at = utcnow()
+        session.add(agent)
+        await session.commit()
+        await session.refresh(agent)
+        logger.info(
+            "org_agent_reconciler.agent_repaired agent_id=%s role_template=%s name=%s",
+            agent.id,
+            role_template,
+            desired_name,
+        )
+    return changed
 
 
 async def _provision_standalone_agent(
@@ -107,7 +151,7 @@ async def _provision_standalone_agent(
     """
     from app.core.time import utcnow
 
-    display_name = _ROLE_DISPLAY_NAMES.get(role_template, role_template.replace("_", " ").title())
+    display_name = _display_name_for_role(role_template)
     now = utcnow()
 
     agent = Agent(
@@ -190,17 +234,23 @@ async def reconcile_org_standalone_agents(
             outcomes[template] = "no_gateway"
         return outcomes
 
-    existing = await _get_existing_role_templates(session, gateway.id)
+    existing = await _get_existing_role_template_agents(session, gateway.id)
     logger.info(
         "org_agent_reconciler.reconcile_start org_id=%s gateway_id=%s existing=%s",
         organization_id,
         gateway.id,
-        sorted(existing),
+        sorted(existing.keys()),
     )
 
     for role_template in sorted(STANDALONE_ROLE_TEMPLATES):
-        if role_template in existing:
-            outcomes[role_template] = "exists"
+        existing_agent = existing.get(role_template)
+        if existing_agent is not None:
+            repaired = await _repair_standalone_agent_if_needed(
+                session=session,
+                agent=existing_agent,
+                role_template=role_template,
+            )
+            outcomes[role_template] = "repaired" if repaired else "exists"
             continue
         try:
             agent = await _provision_standalone_agent(
