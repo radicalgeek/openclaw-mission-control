@@ -321,13 +321,20 @@ async def test_start_sprint_registers_runtime_agents_and_wakes_lead(monkeypatch:
     assert "Sprint started on board Test Board" in sent[0]["message"]
     assert f"Board ID: {board.id}" in sent[0]["message"]
     assert f"Sprint ID: {sprint.id}" in sent[0]["message"]
-    assert "Assign all unassigned sprint inbox tickets" in sent[0]["message"]
+    assert "Assign every unassigned sprint inbox ticket" in sent[0]["message"]
+    assert "mandatory assignment loop" in sent[0]["message"]
     assert f"GET /api/v1/agent/agents?board_id={board.id}" in sent[0]["message"]
     assert (
         f"GET /api/v1/agent/boards/{board.id}/tasks?status=inbox&is_backlog=false"
         in sent[0]["message"]
     )
     assert f"PATCH /api/v1/agent/boards/{board.id}/tasks/<task_id>" in sent[0]["message"]
+    assert "Assignment is an AxiaCraft API write, not a chat/message operation" in (
+        sent[0]["message"]
+    )
+    assert "Action send requires a target" in sent[0]["message"]
+    assert "Channel is required" in sent[0]["message"]
+    assert "zero unassigned sprint inbox tickets" in sent[0]["message"]
     assert "Do not rewrite, shorten, or substitute any UUID." in sent[0]["message"]
     assert "/api/v1/agent/boards/<board_id>/agents" in sent[0]["message"]
     assert "Do not use OpenClaw direct-message tools" in sent[0]["message"]

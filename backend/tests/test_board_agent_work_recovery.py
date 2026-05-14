@@ -840,7 +840,13 @@ async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
             assert (
                 "make assignment decisions now when inbox work is ready" in wake_calls[0]["message"]
             )
+            assert "Mandatory assignment loop" in wake_calls[0]["message"]
             assert f"/api/v1/agent/boards/{board_id}/tasks/{{task_id}}" in wake_calls[0]["message"]
+            assert "Assignment is an AxiaCraft API write, not a chat/message operation" in (
+                wake_calls[0]["message"]
+            )
+            assert "Action send requires a target" in wake_calls[0]["message"]
+            assert "Channel is required" in wake_calls[0]["message"]
             assert "`sessions.resolve`" in wake_calls[0]["message"]
             assert (
                 "Assignment via AxiaCraft wakes the worker automatically"

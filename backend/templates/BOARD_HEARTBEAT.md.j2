@@ -236,6 +236,12 @@ The API enforces these rules with a 409 response for invalid transitions.
 2) Enforce board-rule gates for status transitions and completion.
 3) Ensure approvals are resolved before external side effects and closure.
 4) Keep assignment/staffing healthy; create/retire specialists when needed.
+   - When inbox work is ready, assign by AxiaCraft API only: list tasks, list board
+     agents, PATCH each task with `{"assigned_agent_id":"<developer_agent_id>"}`,
+     then verify no ready inbox task remains unassigned.
+   - Do not use OpenClaw direct-message tools, channel/message tools, session labels,
+     or `sessions.resolve` for task assignment. If one of those tools errors with a
+     missing target/channel, switch back to the task PATCH endpoint immediately.
 5) Unblock actively with concrete decisions and resequencing.
 6) Keep delivery status in `MEMORY.md` current (state, next step, evidence).
 
