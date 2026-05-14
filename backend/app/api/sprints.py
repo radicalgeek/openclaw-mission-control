@@ -826,6 +826,30 @@ def _build_prioritise_prompt(board: Board, tasks: list[Task]) -> str:
     return "\n".join(lines)
 
 
+def _build_planning_prompt(board: Board) -> str:
+    """Build the prompt sent to the org planner when backlog auto-organise is enabled."""
+    return "\n".join(
+        [
+            f"BACKLOG SPRINT PLANNING REQUEST for board '{board.name}'.",
+            "This board has auto-organise backlog enabled. New backlog tickets have been "
+            "created or updated, so ensure they are planned into a draft sprint once they "
+            "have estimate_minutes and priority_score values.",
+            "",
+            "Workflow:",
+            "1. Read the board backlog with /api/v1/agent/boards/<board_id>/tasks?is_backlog=true.",
+            "2. Select estimated, unassigned backlog tickets using priority_score, dependencies, "
+            "recent sprint velocity, and workstream balance.",
+            "3. Reuse an existing empty draft sprint when one exists; otherwise create a draft sprint.",
+            "4. Add selected tickets with POST /api/v1/agent/boards/<board_id>/sprints/<sprint_id>/tickets.",
+            "5. Verify the selected tickets are attached and post the sprint plan rationale to board memory.",
+            "",
+            "Do not start the sprint. The lead or auto-advance sprint policy handles sprint start.",
+            "If tickets still need estimates or priorities, notify @estimator or @priority-agent "
+            "and return after a fresh read records that planning is waiting on those fields.",
+        ]
+    )
+
+
 async def _select_backlog_tasks_missing_field(
     session: "AsyncSession",
     *,
@@ -1031,6 +1055,8 @@ class _BacklogOrganiseResponse(BaseModel):
     prioritise_dispatched: bool
     prioritise_task_count: int
     prioritise_agent_session: str | None
+    planner_dispatched: bool = False
+    planner_agent_session: str | None = None
     sprint_id: UUID | None = None
     sprint_name: str | None = None
     sprint_task_ids: list[UUID] = []
@@ -1042,10 +1068,11 @@ async def _dispatch_organise_agents(
     *,
     board: Board,
     force: bool = False,
-) -> tuple[bool, str | None, int, bool, str | None, int]:
-    """Dispatch estimate + prioritise agents for the board backlog.
+) -> tuple[bool, str | None, int, bool, str | None, int, bool, str | None]:
+    """Dispatch estimate, prioritise, and planner agents for the board backlog.
 
-    Returns (est_dispatched, est_session, est_count, pri_dispatched, pri_session, pri_count).
+    Returns (est_dispatched, est_session, est_count, pri_dispatched, pri_session,
+    pri_count, planner_dispatched, planner_session).
     Swallows exceptions so callers (auto-trigger) do not fail on agent errors.
     """
     from app.services.openclaw.planning_service import (  # noqa: PLC0415
@@ -1122,6 +1149,16 @@ async def _dispatch_organise_agents(
         )
         pri_dispatched = pri_session is not None
 
+    plan_session = await dispatcher.dispatch_to_configured_org_agent(
+        board=board,
+        configured_agent_id=settings.org_planner_agent_id,
+        role_template="planner",
+        prompt=_build_planning_prompt(board),
+        log_prefix="backlog.organise.plan",
+        correlation_id=f"backlog.organise.plan:{board.id}",
+    )
+    plan_dispatched = plan_session is not None
+
     return (
         est_dispatched,
         est_session,
@@ -1129,6 +1166,8 @@ async def _dispatch_organise_agents(
         pri_dispatched,
         pri_session,
         len(pri_tasks),
+        plan_dispatched,
+        plan_session,
     )
 
 
@@ -1154,6 +1193,8 @@ async def organise_backlog(
         pri_dispatched,
         pri_session,
         pri_count,
+        planner_dispatched,
+        planner_session,
     ) = await _dispatch_organise_agents(session, board=board, force=force)
 
     sprint_id: UUID | None = None
@@ -1225,7 +1266,7 @@ async def organise_backlog(
     await session.commit()
 
     reason: str | None = None
-    if not est_dispatched and not pri_dispatched and not sprint_id:
+    if not est_dispatched and not pri_dispatched and not planner_dispatched and not sprint_id:
         reason = "no_tasks_need_processing"
 
     return _BacklogOrganiseResponse(
@@ -1235,6 +1276,8 @@ async def organise_backlog(
         prioritise_dispatched=pri_dispatched,
         prioritise_task_count=pri_count,
         prioritise_agent_session=pri_session,
+        planner_dispatched=planner_dispatched,
+        planner_agent_session=planner_session,
         sprint_id=sprint_id,
         sprint_name=sprint_out_name,
         sprint_task_ids=sprint_task_ids,

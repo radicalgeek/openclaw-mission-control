@@ -82,7 +82,8 @@ async def _seed(
     auto_organise_backlog: bool = False,
     with_estimator: bool = False,
     with_prioritiser: bool = False,
-) -> tuple[User, Board, Agent | None, Agent | None]:
+    with_planner: bool = False,
+) -> tuple[User, Board, Agent | None, Agent | None, Agent | None]:
     org_id = uuid4()
     gw_id = uuid4()
     board_id = uuid4()
@@ -122,6 +123,7 @@ async def _seed(
         )
     estimator: Agent | None = None
     prioritiser: Agent | None = None
+    planner: Agent | None = None
     if with_estimator:
         estimator = Agent(
             id=uuid4(),
@@ -140,10 +142,20 @@ async def _seed(
             openclaw_session_id="prioritiser-session",
         )
         session.add(prioritiser)
+    if with_planner:
+        planner = Agent(
+            id=uuid4(),
+            gateway_id=gw_id,
+            name="Planner",
+            agent_type=AGENT_TYPE_STANDALONE,
+            identity_profile={"role_template": "planner"},
+            openclaw_session_id="planner-session",
+        )
+        session.add(planner)
     await session.commit()
     board = await session.get(Board, board_id)
     assert board is not None
-    return user, board, estimator, prioritiser
+    return user, board, estimator, prioritiser, planner
 
 
 def _capture_dispatch() -> tuple[list[dict[str, Any]], Any, Any]:
@@ -181,7 +193,7 @@ async def test_organise_empty_backlog_returns_no_dispatch() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, _, _ = await _seed(session, task_count=0)
+        user, board, _, _, _ = await _seed(session, task_count=0)
     app = _build_app(sm, user=user)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post(f"/api/v1/boards/{board.id}/backlog/organise")
@@ -198,10 +210,14 @@ async def test_organise_dispatches_agents_when_configured() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, estimator, prioritiser = await _seed(
-            session, task_count=3, with_estimator=True, with_prioritiser=True
+        user, board, estimator, prioritiser, planner = await _seed(
+            session,
+            task_count=3,
+            with_estimator=True,
+            with_prioritiser=True,
+            with_planner=True,
         )
-    assert estimator is not None and prioritiser is not None
+    assert estimator is not None and prioritiser is not None and planner is not None
     app = _build_app(sm, user=user)
     captured, p1, p2 = _capture_dispatch()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -210,6 +226,7 @@ async def test_organise_dispatches_agents_when_configured() -> None:
             p2,
             patch("app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)),
             patch("app.api.sprints.settings.org_prioritiser_agent_id", str(prioritiser.id)),
+            patch("app.api.sprints.settings.org_planner_agent_id", str(planner.id)),
         ):
             resp = await c.post(f"/api/v1/boards/{board.id}/backlog/organise")
     assert resp.status_code == 200
@@ -218,8 +235,10 @@ async def test_organise_dispatches_agents_when_configured() -> None:
     assert body["estimate_task_count"] == 3
     assert body["prioritise_dispatched"] is True
     assert body["prioritise_task_count"] == 3
-    # two dispatches: one for estimator, one for prioritiser
-    assert len(captured) == 2
+    assert body["planner_dispatched"] is True
+    assert body["planner_agent_session"].startswith("agent:standalone-")
+    # three dispatches: estimator, prioritiser, and planner for sprint planning
+    assert len(captured) == 3
 
 
 @pytest.mark.asyncio
@@ -227,7 +246,7 @@ async def test_organise_no_agent_configured_returns_not_dispatched() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, _, _ = await _seed(session, task_count=2)
+        user, board, _, _, _ = await _seed(session, task_count=2)
     app = _build_app(sm, user=user)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         with (
@@ -246,7 +265,7 @@ async def test_organise_include_sprint_creates_draft_sprint() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, estimator, prioritiser = await _seed(
+        user, board, estimator, prioritiser, _planner = await _seed(
             session, task_count=2, with_estimator=True, with_prioritiser=True
         )
     assert estimator is not None and prioritiser is not None
@@ -279,7 +298,7 @@ async def test_organise_include_sprint_auto_names_sequentially() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, _, _ = await _seed(session, task_count=1)
+        user, board, _, _, _ = await _seed(session, task_count=1)
         # pre-create one sprint
         session.add(
             Sprint(
@@ -309,7 +328,7 @@ async def test_organise_include_sprint_empty_backlog_returns_no_sprint() -> None
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, _, _ = await _seed(session, task_count=0)
+        user, board, _, _, _ = await _seed(session, task_count=0)
     app = _build_app(sm, user=user)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post(f"/api/v1/boards/{board.id}/backlog/organise?include_sprint=true")
@@ -327,10 +346,14 @@ async def test_create_backlog_task_triggers_auto_organise() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, estimator, prioritiser = await _seed(
-            session, auto_organise_backlog=True, with_estimator=True, with_prioritiser=True
+        user, board, estimator, prioritiser, planner = await _seed(
+            session,
+            auto_organise_backlog=True,
+            with_estimator=True,
+            with_prioritiser=True,
+            with_planner=True,
         )
-    assert estimator is not None and prioritiser is not None
+    assert estimator is not None and prioritiser is not None and planner is not None
     app = _build_app(sm, user=user)
     captured, p1, p2 = _capture_dispatch()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -339,6 +362,7 @@ async def test_create_backlog_task_triggers_auto_organise() -> None:
             p2,
             patch("app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)),
             patch("app.api.sprints.settings.org_prioritiser_agent_id", str(prioritiser.id)),
+            patch("app.api.sprints.settings.org_planner_agent_id", str(planner.id)),
         ):
             resp = await c.post(
                 f"/api/v1/boards/{board.id}/backlog",
@@ -346,8 +370,44 @@ async def test_create_backlog_task_triggers_auto_organise() -> None:
                 json={"title": "Auto ticket", "priority_score": 50},
             )
     assert resp.status_code == 201
-    # agents should have been dispatched after creation (estimate + prioritise)
-    assert len(captured) == 2
+    # agents should have been dispatched after creation (estimate + prioritise + planner)
+    assert len(captured) == 3
+
+
+@pytest.mark.asyncio
+async def test_batch_create_backlog_triggers_auto_organise_planner() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with sm() as session:
+        user, board, estimator, prioritiser, planner = await _seed(
+            session,
+            auto_organise_backlog=True,
+            with_estimator=True,
+            with_prioritiser=True,
+            with_planner=True,
+        )
+    assert estimator is not None and prioritiser is not None and planner is not None
+    app = _build_app(sm, user=user)
+    captured, p1, p2 = _capture_dispatch()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        with (
+            p1,
+            p2,
+            patch("app.api.sprints.settings.org_estimator_agent_id", str(estimator.id)),
+            patch("app.api.sprints.settings.org_prioritiser_agent_id", str(prioritiser.id)),
+            patch("app.api.sprints.settings.org_planner_agent_id", str(planner.id)),
+        ):
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/backlog/batch",
+                json={
+                    "tickets": [
+                        {"title": "Auto ticket 1", "priority_score": 50},
+                        {"title": "Auto ticket 2", "priority_score": 50},
+                    ]
+                },
+            )
+    assert resp.status_code == 201
+    assert len(captured) == 3
 
 
 @pytest.mark.asyncio
@@ -355,7 +415,7 @@ async def test_create_backlog_task_no_auto_organise_when_flag_off() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as session:
-        user, board, estimator, prioritiser = await _seed(
+        user, board, estimator, prioritiser, _planner = await _seed(
             session, auto_organise_backlog=False, with_estimator=True, with_prioritiser=True
         )
     assert estimator is not None and prioritiser is not None
