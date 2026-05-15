@@ -501,3 +501,61 @@ async def test_agent_update_with_tickets_does_not_duplicate_existing_plan_tasks(
         assert tasks[0].title == "Existing ticket"
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_chat_existing_plan_sends_full_authoring_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, plan = await _seed(session)
+            plan.session_key = "stale-board-lead-session"
+            plan.content = ""
+            session.add(plan)
+            await session.commit()
+
+        captured: dict[str, str] = {}
+
+        class FakePlanningMessagingService:
+            def __init__(self, session: AsyncSession) -> None:
+                self.session = session
+
+            async def dispatch_plan_authoring_message(
+                self,
+                *,
+                board: Board,
+                plan: Plan,
+                message: str,
+                correlation_id: str | None = None,
+            ) -> str:
+                del board, plan, correlation_id
+                captured["message"] = message
+                return "planner-session"
+
+        monkeypatch.setattr(
+            plans_api,
+            "PlanningMessagingService",
+            FakePlanningMessagingService,
+        )
+
+        app = _build_app(sm, user=user)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            resp = await client.post(
+                f"/api/v1/boards/{board.id}/plans/{plan.id}/chat",
+                json={"message": "Let's start this plan"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert "Planning update endpoint: POST" in captured["message"]
+        assert f"/api/v1/boards/{board.id}/plans/{plan.id}/agent-update" in captured[
+            "message"
+        ]
+        assert "Let's start this plan" in captured["message"]
+    finally:
+        await engine.dispose()

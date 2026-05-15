@@ -464,24 +464,27 @@ async def chat_plan(
     user_message = str(payload.message)
     messages.append({"role": "user", "content": user_message})
 
-    # Build context-aware prompt for the agent
+    # Build a self-contained authoring prompt for every turn. Plans can move
+    # between board-lead and org-planner sessions, and OpenClaw sessions may be
+    # recreated; the planner must always receive the callback contract needed to
+    # update this markdown document.
+    system_prompt = build_plan_system_prompt(
+        board_name=board.name,
+        board_objective=board.objective,
+        current_content=plan.content,
+        base_url=settings.base_url,
+        board_id=str(board.id),
+        plan_id=str(plan.id),
+    )
     turn_prompt = build_plan_turn_prompt(
         user_message=user_message,
         current_content=plan.content,
     )
+    full_prompt = f"{system_prompt}\n\n{turn_prompt}"
 
     # Initialise or reuse gateway session
     dispatcher = PlanningMessagingService(session)
     if not plan.session_key:
-        system_prompt = build_plan_system_prompt(
-            board_name=board.name,
-            board_objective=board.objective,
-            current_content=plan.content,
-            base_url=settings.base_url,
-            board_id=str(board.id),
-            plan_id=str(plan.id),
-        )
-        full_prompt = f"{system_prompt}\n\n{turn_prompt}"
         session_key = await dispatcher.dispatch_plan_authoring_start(
             board=board,
             prompt=full_prompt,
@@ -492,7 +495,7 @@ async def chat_plan(
         session_key = await dispatcher.dispatch_plan_authoring_message(
             board=board,
             plan=plan,
-            message=turn_prompt,
+            message=full_prompt,
             correlation_id=f"planning.chat:{plan.id}",
         )
         plan.session_key = session_key
