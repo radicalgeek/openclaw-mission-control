@@ -14,6 +14,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api import plans as plans_api
 from app.api.deps import (
+    get_board_for_actor_read,
     get_board_for_user_read,
     get_board_for_user_write,
     require_user_auth,
@@ -61,6 +62,7 @@ def _build_app(session_maker: async_sessionmaker[AsyncSession], *, user: User) -
         return board
 
     app.dependency_overrides[get_session] = _session_override
+    app.dependency_overrides[get_board_for_actor_read] = _board_override
     app.dependency_overrides[get_board_for_user_read] = _board_override
     app.dependency_overrides[get_board_for_user_write] = _board_override
     app.dependency_overrides[require_user_auth] = lambda: AuthContext(actor_type="user", user=user)
@@ -457,6 +459,64 @@ async def test_agent_update_with_tickets_preserves_plan_content() -> None:
         assert refreshed.messages[-1]["content"] == "Decomposed into 1 ticket"
         assert refreshed.decomposed_tickets is not None
         assert len(tasks) == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_update_accepts_markdown_alias_from_planner() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, plan = await _seed(session, decomposed_tickets=None)
+
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/plans/{plan.id}/agent-update",
+                json={
+                    "message": "Drafted an initial testing plan.",
+                    "markdown": "# Testing plan\n\n## Goals\nImprove automated coverage.",
+                },
+            )
+
+        assert resp.status_code == 200, resp.text
+        async with sm() as session:
+            refreshed = await session.get(Plan, plan.id)
+        assert refreshed is not None
+        assert refreshed.content == "# Testing plan\n\n## Goals\nImprove automated coverage."
+        assert refreshed.messages is not None
+        assert refreshed.messages[-1]["content"] == "Drafted an initial testing plan."
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_update_accepts_nested_content_from_planner() -> None:
+    engine = await _make_engine()
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with sm() as session:
+            user, board, plan = await _seed(session, decomposed_tickets=None)
+
+        app = _build_app(sm, user=user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                f"/api/v1/boards/{board.id}/plans/{plan.id}/agent-update",
+                json={
+                    "reply": "Expanded the plan.",
+                    "content": {"markdown": "# Global scale\n\n## Risks\nLatency and data residency."},
+                },
+            )
+
+        assert resp.status_code == 200, resp.text
+        async with sm() as session:
+            refreshed = await session.get(Plan, plan.id)
+        assert refreshed is not None
+        assert refreshed.content == "# Global scale\n\n## Risks\nLatency and data residency."
+        assert refreshed.messages is not None
+        assert refreshed.messages[-1]["content"] == "Expanded the plan."
     finally:
         await engine.dispose()
 

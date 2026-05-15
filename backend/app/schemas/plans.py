@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
 from app.schemas.common import NonEmptyStr
@@ -95,6 +98,59 @@ class PlanAgentUpdateRequest(SQLModel):
     tickets: list[DecomposedTicket] | None = None  # If provided, stores decomposed tickets
     content_type: str = "text"  # "text" | "mcp_app_result"
     app_metadata: dict[str, object] | None = None  # Required when content_type == "mcp_app_result"
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_agent_payload(cls, data: Any) -> Any:
+        """Accept common planner callback shapes without weakening ticket parsing.
+
+        OpenClaw agents do not always follow the exact preferred JSON shape. The
+        triager already posts ``reply``/``tickets`` correctly, while planner
+        authoring may use names like ``message`` or ``markdown``. Normalize those
+        aliases before FastAPI/Pydantic validation so a good plan update is not
+        rejected with a 422.
+        """
+        if isinstance(data, str):
+            return {"reply": data}
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        if not isinstance(normalized.get("reply"), str) or not normalized.get("reply"):
+            for key in ("message", "summary", "text"):
+                value = normalized.get(key)
+                if isinstance(value, str) and value.strip():
+                    normalized["reply"] = value
+                    break
+
+        content = normalized.get("content")
+        if isinstance(content, dict):
+            nested = cls._first_string(
+                content,
+                ("markdown", "plan_markdown", "updated_plan", "document", "body", "text"),
+            )
+            if nested is not None:
+                normalized["content"] = nested
+        elif not isinstance(content, str):
+            alias = cls._first_string(
+                normalized,
+                ("markdown", "plan_markdown", "updated_plan", "plan", "document", "body"),
+            )
+            if alias is not None:
+                normalized["content"] = alias
+
+        app_metadata = normalized.get("app_metadata")
+        if app_metadata is not None and not isinstance(app_metadata, dict):
+            normalized.pop("app_metadata", None)
+        return normalized
+
+    @staticmethod
+    def _first_string(values: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+        for key in keys:
+            value = values.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return None
 
 
 class PlanCommitTicketsResponse(SQLModel):

@@ -90,7 +90,10 @@ def build_plan_system_prompt(
         "All planning responses MUST be sent to Product Foundry via API.\n"
         "Use the AUTH_TOKEN from USER.md or TOOLS.md and pass it as X-Agent-Token.\n"
         f"Planning update endpoint: POST {agent_update_url}\n"
-        'Request body JSON: {"reply": "<your conversational reply>", "content": "<full updated plan markdown or omit if no plan update>"}\n'
+        "Request body MUST be a JSON object with these exact keys:\n"
+        '  {"reply": "<your conversational reply>", "content": "<full updated plan markdown>"}\n'
+        "The content value must be a plain markdown string, not a nested object.\n"
+        "Omit content only when you are not changing the plan.\n"
     )
 
 
