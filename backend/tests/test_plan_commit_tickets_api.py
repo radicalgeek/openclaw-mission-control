@@ -572,8 +572,13 @@ async def test_chat_existing_plan_sends_full_authoring_contract(
     try:
         async with sm() as session:
             user, board, plan = await _seed(session)
+            board.context = {
+                "production_repo_url": "https://dev.azure.com/oag/cargoflights",
+                "source_path": "src",
+            }
             plan.session_key = "stale-board-lead-session"
             plan.content = ""
+            session.add(board)
             session.add(plan)
             await session.commit()
 
@@ -614,6 +619,11 @@ async def test_chat_existing_plan_sends_full_authoring_contract(
         assert resp.status_code == 200, resp.text
         assert "Planning update endpoint: POST" in captured["message"]
         assert f"/api/v1/boards/{board.id}/plans/{plan.id}/agent-update" in captured[
+            "message"
+        ]
+        assert "https://dev.azure.com/oag/cargoflights" in captured["message"]
+        assert f"GET /api/v1/agent/boards/{board.id}" in captured["message"]
+        assert "Before drafting, investigate the project context and source code" in captured[
             "message"
         ]
         assert "Let's start this plan" in captured["message"]

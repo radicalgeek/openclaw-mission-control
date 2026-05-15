@@ -61,6 +61,7 @@ def build_plan_system_prompt(
     *,
     board_name: str,
     board_objective: str | None,
+    board_context: dict[str, object] | None = None,
     current_content: str,
     base_url: str,
     board_id: str,
@@ -69,13 +70,28 @@ def build_plan_system_prompt(
     """Build the gateway prompt for a planning session start."""
     objective_text = board_objective or "Not yet defined"
     content_section = current_content.strip() or "(Empty — let's start building!)"
+    context_text = _json.dumps(board_context or {}, indent=2, sort_keys=True)
     agent_update_url = f"{base_url}/api/v1/boards/{board_id}/plans/{plan_id}/agent-update"
     return (
-        f'You are the lead agent for board "{board_name}".\n'
+        f'You are the planning agent for board "{board_name}".\n'
         "The user is collaborating with you to build a planning document.\n\n"
         f"Board objective: {objective_text}\n\n"
+        "## Board Context\n"
+        f"{context_text}\n\n"
         "## Instructions\n"
         "- Help the user create a structured markdown planning document.\n"
+        "- Before drafting, investigate the project context and source code. Fetch the\n"
+        f"  board with GET /api/v1/agent/boards/{board_id}; use its `context`,\n"
+        "  repo/source fields, and any workspace files it identifies.\n"
+        "- If the board context contains a source repository, production repository,\n"
+        "  source workspace, or prototype path, inspect relevant files before writing\n"
+        "  the plan. Directory paths must be listed first; do not try to read a\n"
+        "  directory as if it were a file.\n"
+        "- If source access is missing or fails, state that in the reply and still\n"
+        "  draft the best plan from the board context and user request.\n"
+        "- When the user asks to create, start, investigate, or explore a plan, produce\n"
+        "  a first markdown draft in that same turn; ask questions only when the\n"
+        "  missing information blocks a useful first draft.\n"
         "- After each exchange where you update the plan, output the complete updated plan\n"
         "  wrapped in a ```plan``` fenced code block.\n"
         "- Be collaborative: ask clarifying questions, suggest structure,\n"

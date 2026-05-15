@@ -28,6 +28,8 @@ import { PlanStatusBadge } from "./PlanStatusBadge";
 // ─── Markdown editor toolbar ─────────────────────────────────────────────────
 
 const SAVE_DEBOUNCE_MS = 1200;
+const AGENT_POLL_INTERVAL_MS = 2000;
+const AGENT_POLL_MAX_ATTEMPTS = 180;
 
 type ContentMode = "preview" | "edit";
 
@@ -227,8 +229,8 @@ export function PlanDetail({
 
   const startPolling = useCallback(
     (baselineMessageCount = messages.length) => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
       let attempts = 0;
-      const MAX_ATTEMPTS = 30;
 
       const poll = async () => {
         attempts++;
@@ -255,13 +257,13 @@ export function PlanDetail({
         } catch {
           // ignore poll errors
         }
-        if (attempts < MAX_ATTEMPTS) {
-          pollTimerRef.current = setTimeout(poll, 2000);
+        if (attempts < AGENT_POLL_MAX_ATTEMPTS) {
+          pollTimerRef.current = setTimeout(poll, AGENT_POLL_INTERVAL_MS);
         } else {
           markAgentSettled();
         }
       };
-      pollTimerRef.current = setTimeout(poll, 2000);
+      pollTimerRef.current = setTimeout(poll, AGENT_POLL_INTERVAL_MS);
     },
     [
       boardId,
@@ -285,6 +287,13 @@ export function PlanDetail({
     // Only run on plan switch / explicit local pending state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPlan.id, startAgentPolling]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   // Send chat message
   const handleSend = async (message: string) => {

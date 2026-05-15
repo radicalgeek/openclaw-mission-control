@@ -273,6 +273,7 @@ async def create_plan(
             prompt = build_plan_system_prompt(
                 board_name=board.name,
                 board_objective=board.objective,
+                board_context=board.context,
                 current_content="",
                 base_url=settings.base_url,
                 board_id=str(board.id),
@@ -471,6 +472,7 @@ async def chat_plan(
     system_prompt = build_plan_system_prompt(
         board_name=board.name,
         board_objective=board.objective,
+        board_context=board.context,
         current_content=plan.content,
         base_url=settings.base_url,
         board_id=str(board.id),
