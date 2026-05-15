@@ -31,6 +31,10 @@ import {
 } from "@/api/sprints";
 import { ApiError } from "@/api/mutator";
 import { TaskCard } from "@/components/molecules/TaskCard";
+import {
+  durationMinutesTitle,
+  formatDurationMinutes,
+} from "@/lib/duration";
 
 type Props = {
   boardId: string;
@@ -409,24 +413,33 @@ export function SprintDetail({
           <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500">
             {sprint.committed_minutes != null && (
               <span>
-                <span className="font-semibold text-slate-700">
-                  {sprint.committed_minutes}m
+                <span
+                  className="font-semibold text-slate-700"
+                  title={durationMinutesTitle(sprint.committed_minutes)}
+                >
+                  {formatDurationMinutes(sprint.committed_minutes)}
                 </span>{" "}
                 committed
               </span>
             )}
             {sprint.completed_minutes != null && (
               <span>
-                <span className="font-semibold text-slate-700">
-                  {sprint.completed_minutes}m
+                <span
+                  className="font-semibold text-slate-700"
+                  title={durationMinutesTitle(sprint.completed_minutes)}
+                >
+                  {formatDurationMinutes(sprint.completed_minutes)}
                 </span>{" "}
                 completed
               </span>
             )}
             {sprint.actual_minutes != null && (
               <span>
-                <span className="font-semibold text-slate-700">
-                  {sprint.actual_minutes}m
+                <span
+                  className="font-semibold text-slate-700"
+                  title={durationMinutesTitle(sprint.actual_minutes)}
+                >
+                  {formatDurationMinutes(sprint.actual_minutes)}
                 </span>{" "}
                 actual
               </span>

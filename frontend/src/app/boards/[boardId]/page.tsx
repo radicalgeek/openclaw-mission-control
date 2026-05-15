@@ -133,6 +133,7 @@ import {
   parseApiDatetime,
   toLocalDateInput,
 } from "@/lib/datetime";
+import { formatDurationMinutes } from "@/lib/duration";
 import {
   DEFAULT_HUMAN_LABEL,
   resolveHumanActorName,
@@ -561,14 +562,6 @@ const formatShortTimestamp = (value: string) => {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
-const formatDurationMinutes = (value?: number | null) => {
-  if (value == null) return "Not set";
-  if (value < 60) return `${value}m`;
-  const hours = Math.floor(value / 60);
-  const minutes = value % 60;
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 };
 
 const commentElementId = (id: string): string =>
