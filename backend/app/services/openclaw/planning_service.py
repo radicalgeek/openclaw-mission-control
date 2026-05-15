@@ -370,6 +370,84 @@ class PlanningMessagingService(AbstractGatewayMessagingService):
             correlation_id=correlation_id,
         )
 
+    async def dispatch_plan_authoring_start(
+        self,
+        *,
+        board: Board,
+        prompt: str,
+        correlation_id: str | None = None,
+    ) -> str:
+        """Start a plan-authoring conversation with the org planner.
+
+        Gallery/automation plans may arrive with content already loaded, while
+        operator-created plans need an agent to draft markdown through chat.
+        That drafting is the planner's job. Decomposition remains separate and
+        is routed by ``dispatch_plan_decompose``.
+        """
+        planner = await self._resolve_org_agent(
+            settings.org_planner_agent_id,
+            gateway_id=board.gateway_id,
+            role_template="planner",
+        )
+        if planner is not None and planner.openclaw_session_id is not None:
+            return await self._dispatch_to_session(
+                board=board,
+                session_key=planner.openclaw_session_id,
+                agent_name=planner.name,
+                prompt=prompt,
+                correlation_id=correlation_id,
+                log_prefix="planning.author.start",
+                standalone_agent=planner,
+            )
+
+        self.logger.warning(
+            "planning.author.planner_unavailable board_id=%s falling back to board lead",
+            board.id,
+        )
+        return await self.dispatch_plan_start(
+            board=board,
+            prompt=prompt,
+            correlation_id=correlation_id,
+        )
+
+    async def dispatch_plan_authoring_message(
+        self,
+        *,
+        board: Board,
+        plan: Plan,
+        message: str,
+        correlation_id: str | None = None,
+    ) -> str:
+        """Send a follow-up plan-authoring message to the planner when available."""
+        planner = await self._resolve_org_agent(
+            settings.org_planner_agent_id,
+            gateway_id=board.gateway_id,
+            role_template="planner",
+        )
+        if planner is not None and planner.openclaw_session_id is not None:
+            return await self._dispatch_to_session(
+                board=board,
+                session_key=planner.openclaw_session_id,
+                agent_name=planner.name,
+                prompt=message,
+                correlation_id=correlation_id,
+                log_prefix="planning.author.message",
+                standalone_agent=planner,
+            )
+
+        self.logger.warning(
+            "planning.author.planner_unavailable board_id=%s plan_id=%s "
+            "falling back to board lead",
+            board.id,
+            plan.id,
+        )
+        return await self.dispatch_plan_message(
+            board=board,
+            plan=plan,
+            message=message,
+            correlation_id=correlation_id,
+        )
+
     async def dispatch_to_configured_org_agent(
         self,
         *,

@@ -29,10 +29,9 @@ class Plan(TenantScoped, table=True):
     )  # "draft" | "active" | "completed" | "archived"
 
     # Routes plan decomposition to a specific agent role.
-    # "board_lead" (default): the board's lead agent runs decomposition in the
-    # planning chat. "org_planner": dispatch to the org-wide standalone planner
-    # agent (used by automated graduation flows).
-    decomposition_target: str = Field(default="board_lead")
+    # New operator-created plans default to org_triager so "Generate tasks"
+    # uses the triage agent; loaded automation plans may set this explicitly.
+    decomposition_target: str = Field(default="org_triager")
 
     created_by_user_id: UUID | None = Field(
         default=None,

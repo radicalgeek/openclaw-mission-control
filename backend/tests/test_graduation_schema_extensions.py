@@ -39,9 +39,9 @@ async def _make_session(engine: AsyncEngine) -> AsyncSession:
 # ── Plan.decomposition_target ────────────────────────────────────────────────
 
 
-def test_plan_create_defaults_decomposition_target_to_board_lead() -> None:
+def test_plan_create_defaults_decomposition_target_to_org_triager() -> None:
     payload = PlanCreate(title="My plan")
-    assert payload.decomposition_target == "board_lead"
+    assert payload.decomposition_target == "org_triager"
 
 
 def test_plan_create_accepts_org_planner_target() -> None:
@@ -85,7 +85,7 @@ async def test_plan_persists_decomposition_target() -> None:
             default_plan = await session.get(Plan, default_plan_id)
             org_plan = await session.get(Plan, org_plan_id)
             assert default_plan is not None
-            assert default_plan.decomposition_target == "board_lead"
+            assert default_plan.decomposition_target == "org_triager"
             assert org_plan is not None
             assert org_plan.decomposition_target == "org_planner"
     finally:

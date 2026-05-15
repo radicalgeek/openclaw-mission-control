@@ -37,6 +37,7 @@ export type PlanRead = {
 export type PlanCreate = {
   title: string;
   initial_prompt?: string;
+  decomposition_target?: "board_lead" | "org_planner" | "org_triager";
 };
 
 export type PlanUpdate = {
@@ -138,4 +139,3 @@ export const decomposePlan = (
     `${base(boardId)}/${planId}/decompose`,
     { method: "POST", body: JSON.stringify({}) },
   );
-

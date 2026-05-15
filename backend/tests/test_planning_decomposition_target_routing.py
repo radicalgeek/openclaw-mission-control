@@ -143,92 +143,67 @@ def _expected_lead_session(board: Board) -> str:
 
 
 @pytest.mark.asyncio
-async def test_plan_start_ensures_board_lead_instead_of_gateway_fallback() -> None:
+async def test_plan_authoring_start_routes_to_org_planner_when_configured() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with sm() as session:
-            board, _plan, _lead, _org = await _seed(session, lead_session=None)
+            board, _plan, _lead, org_planner = await _seed(session, lead_session=None)
+            assert org_planner is not None
             captured, (p1, p2) = _capture_dispatches()
-            ensure_calls: list[UUID] = []
-
-            async def _fake_ensure(self: Any, *, request: Any) -> tuple[Agent, bool]:
-                ensure_calls.append(request.board.id)
-                return (
-                    Agent(
-                        id=uuid4(),
-                        board_id=request.board.id,
-                        gateway_id=request.gateway.id,
-                        name="Lead Agent",
-                        agent_type=AGENT_TYPE_BOARD_LEAD,
-                        is_board_lead=True,
-                        openclaw_session_id="created-lead-session",
-                    ),
-                    True,
-                )
 
             with (
                 p1,
                 p2,
                 patch(
-                    "app.services.openclaw.planning_service.OpenClawProvisioningService."
-                    "ensure_board_lead_agent",
-                    _fake_ensure,
+                    "app.services.openclaw.planning_service.settings.org_planner_agent_id",
+                    str(org_planner.id),
                 ),
             ):
                 svc = PlanningMessagingService(session)
-                returned = await svc.dispatch_plan_start(board=board, prompt="write a plan")
+                returned = await svc.dispatch_plan_authoring_start(
+                    board=board,
+                    prompt="write a plan",
+                )
 
-        assert returned == "created-lead-session"
-        assert ensure_calls == [board.id]
-        assert captured[0]["session_key"] == "created-lead-session"
-        assert captured[0]["agent_name"] == "Lead Agent"
-        assert captured[0]["agent_name"] != "Gateway Agent"
+        assert returned == "org-planner-session-key"
+        assert captured[0]["session_key"] == "org-planner-session-key"
+        assert captured[0]["agent_name"] == "Org Planner"
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_plan_message_uses_ensured_lead_not_plan_session_fallback() -> None:
+async def test_plan_authoring_message_routes_to_org_planner_not_stale_plan_session() -> None:
     engine = await _make_engine()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with sm() as session:
-            board, plan, _lead, _org = await _seed(session, lead_session=None)
+            board, plan, _lead, org_planner = await _seed(session, lead_session=None)
+            assert org_planner is not None
             plan.session_key = "gateway-main-session"
             session.add(plan)
             await session.commit()
             captured, (p1, p2) = _capture_dispatches()
 
-            async def _fake_ensure(self: Any, *, request: Any) -> tuple[Agent, bool]:
-                return (
-                    Agent(
-                        id=uuid4(),
-                        board_id=request.board.id,
-                        gateway_id=request.gateway.id,
-                        name="Lead Agent",
-                        agent_type=AGENT_TYPE_BOARD_LEAD,
-                        is_board_lead=True,
-                        openclaw_session_id="created-lead-session",
-                    ),
-                    True,
-                )
-
             with (
                 p1,
                 p2,
                 patch(
-                    "app.services.openclaw.planning_service.OpenClawProvisioningService."
-                    "ensure_board_lead_agent",
-                    _fake_ensure,
+                    "app.services.openclaw.planning_service.settings.org_planner_agent_id",
+                    str(org_planner.id),
                 ),
             ):
                 svc = PlanningMessagingService(session)
-                await svc.dispatch_plan_message(board=board, plan=plan, message="revise it")
+                await svc.dispatch_plan_authoring_message(
+                    board=board,
+                    plan=plan,
+                    message="revise it",
+                )
 
-        assert captured[0]["session_key"] == "created-lead-session"
+        assert captured[0]["session_key"] == "org-planner-session-key"
         assert captured[0]["session_key"] != "gateway-main-session"
-        assert captured[0]["agent_name"] == "Lead Agent"
+        assert captured[0]["agent_name"] == "Org Planner"
     finally:
         await engine.dispose()
 
@@ -554,8 +529,9 @@ async def test_decompose_routes_to_current_triager_by_role_template_when_env_id_
                     plan=plan,
                     prompt="decompose this plan",
                 )
-        assert returned == "current-triager-session"
-        assert captured[0]["session_key"] == "current-triager-session"
+        expected_session = f"agent:standalone-{triager.id}:main"
+        assert returned == expected_session
+        assert captured[0]["session_key"] == expected_session
         assert captured[0]["agent_name"] == "Current Triager"
     finally:
         await engine.dispose()

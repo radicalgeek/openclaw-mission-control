@@ -279,7 +279,7 @@ async def create_plan(
                 plan_id=str(plan.id),
             )
             full_prompt = f"{prompt}\n\n## Opening Message\n{payload.initial_prompt}"
-            session_key = await dispatcher.dispatch_plan_start(
+            session_key = await dispatcher.dispatch_plan_authoring_start(
                 board=board,
                 prompt=full_prompt,
                 correlation_id=f"planning.create:{plan.id}",
@@ -482,19 +482,20 @@ async def chat_plan(
             plan_id=str(plan.id),
         )
         full_prompt = f"{system_prompt}\n\n{turn_prompt}"
-        session_key = await dispatcher.dispatch_plan_start(
+        session_key = await dispatcher.dispatch_plan_authoring_start(
             board=board,
             prompt=full_prompt,
             correlation_id=f"planning.chat.start:{plan.id}",
         )
         plan.session_key = session_key
     else:
-        await dispatcher.dispatch_plan_message(
+        session_key = await dispatcher.dispatch_plan_authoring_message(
             board=board,
             plan=plan,
             message=turn_prompt,
             correlation_id=f"planning.chat:{plan.id}",
         )
+        plan.session_key = session_key
 
     # ---- Simulate synchronous reply polling ----------------------------------
     # Note: in production the gateway pushes responses back via the agent-update

@@ -31,7 +31,8 @@ class PlanCreate(SQLModel):
 
     title: NonEmptyStr
     initial_prompt: str | None = None  # Optional kickoff message to the agent
-    decomposition_target: str = "board_lead"  # "board_lead" | "org_planner"
+    # Plan authoring is handled by the planner; task generation defaults to the triager.
+    decomposition_target: str = "org_triager"
 
 
 class PlanUpdate(SQLModel):
@@ -51,7 +52,7 @@ class PlanRead(SQLModel):
     slug: str
     content: str
     status: str
-    decomposition_target: str = "board_lead"
+    decomposition_target: str = "org_triager"
     created_by_user_id: UUID | None
     task_id: UUID | None
     task_status: str | None  # Denormalized from linked task for display

@@ -96,6 +96,7 @@ export function PlanningLayout({ boardId }: Props) {
     const result = await createPlan(boardId, {
       title,
       initial_prompt: initialPrompt || undefined,
+      decomposition_target: "org_triager",
     });
     if (result.status === 201 || result.status === 200) {
       const newPlan = result.data;
