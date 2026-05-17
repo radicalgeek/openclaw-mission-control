@@ -67,18 +67,22 @@ def _upsert_channel(
     now: datetime,
 ) -> None:
     slug = str(definition["slug"])
+    candidate_slugs = [slug]
+    if existing_slug is not None:
+        candidate_slugs.append(existing_slug)
+
     existing = conn.execute(
         sa.text(
             """
             SELECT id
             FROM channels
             WHERE board_id = :board_id
-              AND (slug = :slug OR (:existing_slug IS NOT NULL AND slug = :existing_slug))
+              AND slug IN :candidate_slugs
             ORDER BY CASE WHEN slug = :slug THEN 0 ELSE 1 END
             LIMIT 1
             """
-        ),
-        {"board_id": board_id, "slug": slug, "existing_slug": existing_slug},
+        ).bindparams(sa.bindparam("candidate_slugs", expanding=True)),
+        {"board_id": board_id, "slug": slug, "candidate_slugs": candidate_slugs},
     ).fetchone()
 
     if existing is not None:
