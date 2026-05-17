@@ -7,6 +7,7 @@ import random
 import time
 from uuid import UUID
 
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
@@ -17,7 +18,10 @@ from app.models.agents import Agent
 from app.models.board_webhook_payloads import BoardWebhookPayload
 from app.models.board_webhooks import BoardWebhook
 from app.models.boards import Board
+from app.models.gateways import Gateway
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
+from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.provisioning import OpenClawGatewayProvisioner
 from app.services.queue import QueuedTask
 from app.services.webhooks.queue import (
     QueuedAgentWebhookDelivery,
@@ -28,6 +32,7 @@ from app.services.webhooks.queue import (
 )
 
 logger = get_logger(__name__)
+_AGENT_MISSING_HINT = "no longer exists in configuration"
 
 
 def _build_payload_preview(payload_value: object) -> str:
@@ -92,12 +97,63 @@ async def _notify_target_agent(
         return
 
     message = _webhook_message(board=board, webhook=webhook, payload=payload)
-    await dispatch.try_send_agent_message(
+    error = await dispatch.try_send_agent_message(
         session_key=target_agent.openclaw_session_id,
         config=config,
         agent_name=target_agent.name,
         message=message,
         deliver=False,
+    )
+    if error is None or _AGENT_MISSING_HINT not in str(error).lower():
+        return
+
+    await _refresh_board_runtime_registration(
+        session=session,
+        board=board,
+        target_agent=target_agent,
+        error=error,
+    )
+    retry_error = await dispatch.try_send_agent_message(
+        session_key=target_agent.openclaw_session_id,
+        config=config,
+        agent_name=target_agent.name,
+        message=message,
+        deliver=False,
+    )
+    if retry_error is not None:
+        raise retry_error
+
+
+async def _refresh_board_runtime_registration(
+    *,
+    session: AsyncSession,
+    board: Board,
+    target_agent: Agent,
+    error: OpenClawGatewayError,
+) -> None:
+    if board.gateway_id is None:
+        raise error
+    gateway = await session.get(Gateway, board.gateway_id)
+    if gateway is None or gateway.organization_id != board.organization_id:
+        raise error
+    agents = (
+        await session.exec(
+            select(Agent)
+            .where(col(Agent.board_id) == board.id)
+            .where(col(Agent.gateway_id) == gateway.id)
+            .order_by(col(Agent.created_at).asc())
+        )
+    ).all()
+    if not agents:
+        raise error
+    await OpenClawGatewayProvisioner().sync_gateway_agent_heartbeats(gateway, list(agents))
+    logger.warning(
+        "webhook.dispatch.runtime_registration_refreshed",
+        extra={
+            "board_id": str(board.id),
+            "gateway_id": str(gateway.id),
+            "agent_id": str(target_agent.id),
+        },
     )
 
 

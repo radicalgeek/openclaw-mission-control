@@ -345,6 +345,104 @@ async def test_notify_target_agent_falls_back_to_lead(monkeypatch: pytest.Monkey
     assert sent == [{"session_key": "lead:session", "agent_name": "Lead Agent"}]
 
 
+@pytest.mark.asyncio
+async def test_notify_target_agent_refreshes_runtime_registration_on_missing_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway_id = uuid4()
+    organization_id = uuid4()
+    lead_agent = SimpleNamespace(
+        id=uuid4(),
+        name="Lead Agent",
+        openclaw_session_id="lead:session",
+        board_id=uuid4(),
+        gateway_id=gateway_id,
+        created_at=datetime.now(UTC),
+    )
+    gateway = SimpleNamespace(id=gateway_id, organization_id=organization_id)
+    sent: list[str] = []
+    synced: list[list[object]] = []
+
+    class _FakeAgentObjects:
+        def filter_by(self, **kwargs: object) -> _FakeAgentObjects:
+            self._kwargs = kwargs
+            return self
+
+        async def first(self, session: object) -> object | None:
+            del session
+            if self._kwargs.get("is_board_lead") is True:
+                return lead_agent
+            return None
+
+    class _FakeExecResult:
+        def all(self) -> list[object]:
+            return [lead_agent]
+
+    class _FakeSession:
+        async def get(self, model: object, value: object) -> object | None:
+            del model, value
+            return gateway
+
+        async def exec(self, statement: object) -> _FakeExecResult:
+            del statement
+            return _FakeExecResult()
+
+    class _FakeDispatchService:
+        def __init__(self, session: object) -> None:
+            del session
+            self.calls = 0
+
+        async def optional_gateway_config_for_board(self, board: object) -> object:
+            del board
+            return object()
+
+        async def try_send_agent_message(
+            self,
+            *,
+            session_key: str,
+            config: object,
+            agent_name: str,
+            message: str,
+            deliver: bool = False,
+        ) -> object | None:
+            del config, agent_name, message, deliver
+            self.calls += 1
+            sent.append(session_key)
+            if self.calls == 1:
+                return dispatch.OpenClawGatewayError(
+                    'Agent "lead-board" no longer exists in configuration'
+                )
+            return None
+
+    class _FakeProvisioner:
+        async def sync_gateway_agent_heartbeats(self, gateway_arg: object, agents: list[object]):
+            del gateway_arg
+            synced.append(agents)
+
+    monkeypatch.setattr(dispatch.Agent, "objects", _FakeAgentObjects())
+    monkeypatch.setattr(dispatch, "GatewayDispatchService", _FakeDispatchService)
+    monkeypatch.setattr(dispatch, "OpenClawGatewayProvisioner", _FakeProvisioner)
+
+    webhook = SimpleNamespace(id=uuid4(), description="desc", agent_id=None)
+    board = SimpleNamespace(
+        id=lead_agent.board_id,
+        name="Board",
+        gateway_id=gateway_id,
+        organization_id=organization_id,
+    )
+    payload = SimpleNamespace(id=uuid4(), payload={"event": "test"})
+
+    await dispatch._notify_target_agent(
+        session=_FakeSession(),
+        board=board,
+        webhook=webhook,
+        payload=payload,
+    )
+
+    assert sent == ["lead:session", "lead:session"]
+    assert synced == [[lead_agent]]
+
+
 def test_dispatch_run_entrypoint_calls_async_flush(monkeypatch: pytest.MonkeyPatch) -> None:
     called: list[bool] = []
 
