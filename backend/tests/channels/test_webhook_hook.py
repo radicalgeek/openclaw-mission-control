@@ -234,6 +234,10 @@ async def test_hook_with_none_task_creates_triage_task_for_failure() -> None:
 
         task = await session.get(Task, threads[0].task_id)
         assert task is not None
+        assert task.title.startswith("Triage alert: ")
+        assert "Lead triage required before assigning implementation work." in task.description
+        assert "duplicate" in task.description
+        assert "alert storm" in task.description
         assert task.status == "inbox"
         assert task.priority == "high"
         assert task.auto_created is True

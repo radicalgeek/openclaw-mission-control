@@ -47,6 +47,10 @@ def _priority_for_alert(severity: str) -> tuple[str, int]:
     return "low", 20
 
 
+def _triage_title(event_summary: str) -> str:
+    return f"Triage alert: {event_summary}"
+
+
 async def _board_lead_id(session: "AsyncSession", board: "Board") -> UUID | None:
     lead = (
         await session.exec(
@@ -76,13 +80,19 @@ async def _create_triage_task_for_alert(
     """
     priority, priority_score = _priority_for_alert(event_severity)
     assigned_agent_id = await _board_lead_id(session, board)
-    description = event_content
+    description = (
+        "Lead triage required before assigning implementation work.\n\n"
+        "Check whether this alert is a duplicate, part of an alert storm, or already "
+        "covered by existing remediation work. If it is genuinely new, assign the "
+        "right agent and keep this thread linked to the incident.\n\n"
+        f"{event_content}"
+    )
     if event_url:
         description = f"{description}\n\nSource: {event_url}"
 
     task = Task(
         board_id=board.id,
-        title=event_summary,
+        title=_triage_title(event_summary),
         description=description,
         status="inbox",
         priority=priority,
@@ -103,7 +113,7 @@ async def _create_triage_task_for_alert(
         thread_id=thread.id,
         sender_type="system",
         sender_name="System",
-        content=f"Created triage issue for this alert: #{task.id}",
+        content=f"Created lead triage issue for this alert: #{task.id}",
         content_type="system_notification",
     )
     session.add(system_msg)
