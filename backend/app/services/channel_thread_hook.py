@@ -14,13 +14,16 @@ Always call within try/except at the call site.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from sqlmodel import col, select
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.time import utcnow
+from app.models.agents import Agent
 from app.models.channel import Channel
+from app.models.tasks import Task
 from app.models.thread import Thread
 from app.models.thread_message import ThreadMessage
 from app.webhooks.classifier import classify_webhook_event
@@ -29,9 +32,85 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
     from app.models.boards import Board
-    from app.models.tasks import Task
-
 logger = get_logger(__name__)
+
+_TASK_WORTHY_ALERT_SEVERITIES = {"error", "critical"}
+
+
+def _priority_for_alert(severity: str) -> tuple[str, int]:
+    if severity == "critical":
+        return "critical", 95
+    if severity == "error":
+        return "high", 80
+    if severity == "warning":
+        return "medium", 50
+    return "low", 20
+
+
+async def _board_lead_id(session: "AsyncSession", board: "Board") -> UUID | None:
+    lead = (
+        await session.exec(
+            select(Agent).where(
+                col(Agent.board_id) == board.id,
+                col(Agent.is_board_lead).is_(True),
+            )
+        )
+    ).first()
+    return lead.id if lead is not None else None
+
+
+async def _create_triage_task_for_alert(
+    session: "AsyncSession",
+    *,
+    board: "Board",
+    thread: Thread,
+    event_summary: str,
+    event_content: str,
+    event_severity: str,
+    event_url: str | None,
+) -> Task:
+    """Create visible triage work for an urgent alert thread.
+
+    The board lead still owns triage. This only prevents failed builds and incidents
+    from living solely as passive channel messages when the agent wake path is slow.
+    """
+    priority, priority_score = _priority_for_alert(event_severity)
+    assigned_agent_id = await _board_lead_id(session, board)
+    description = event_content
+    if event_url:
+        description = f"{description}\n\nSource: {event_url}"
+
+    task = Task(
+        board_id=board.id,
+        title=event_summary,
+        description=description,
+        status="inbox",
+        priority=priority,
+        priority_score=priority_score,
+        assigned_agent_id=assigned_agent_id,
+        auto_created=True,
+        auto_reason="webhook_alert_triage",
+        thread_id=thread.id,
+    )
+    session.add(task)
+    await session.flush()
+
+    thread.task_id = task.id
+    thread.is_resolved = False
+    thread.updated_at = utcnow()
+
+    system_msg = ThreadMessage(
+        thread_id=thread.id,
+        sender_type="system",
+        sender_name="System",
+        content=f"Created triage issue for this alert: #{task.id}",
+        content_type="system_notification",
+    )
+    session.add(system_msg)
+    thread.message_count = (thread.message_count or 0) + 1
+    thread.last_message_at = system_msg.created_at
+
+    return task
 
 
 async def on_task_created_by_webhook(
@@ -110,6 +189,22 @@ async def on_task_created_by_webhook(
             )
             session.add(thread)
             await session.flush()
+
+        if (
+            task is None
+            and thread.task_id is None
+            and event.severity in _TASK_WORTHY_ALERT_SEVERITIES
+        ):
+            task = await _create_triage_task_for_alert(
+                session,
+                board=board,
+                thread=thread,
+                event_summary=event.summary,
+                event_content=event.content_markdown,
+                event_severity=event.severity,
+                event_url=event.url,
+            )
+            task_id = task.id
 
         # 5. Create the initial webhook event message
         msg = ThreadMessage(

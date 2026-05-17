@@ -23,6 +23,7 @@ os.environ["LOCAL_AUTH_TOKEN"] = "test-local-token-0123456789-0123456789-0123456
 os.environ["BASE_URL"] = "http://localhost:8000"
 os.environ["CHANNELS_ENABLED"] = "true"
 
+from app.models.agents import Agent  # noqa: E402
 from app.models import Channel, Thread, ThreadMessage  # noqa: E402
 from app.models.boards import Board  # noqa: E402
 from app.models.gateways import Gateway  # noqa: E402
@@ -73,6 +74,22 @@ async def _seed_task(session: AsyncSession, board: Board) -> Task:
     session.add(task)
     await session.commit()
     return task
+
+
+async def _seed_lead(session: AsyncSession, board: Board) -> Agent:
+    lead = Agent(
+        organization_id=board.organization_id,
+        board_id=board.id,
+        gateway_id=board.gateway_id,
+        name="Lead Agent",
+        slug=f"lead-{uuid4().hex[:8]}",
+        is_board_lead=True,
+        agent_type="board_lead",
+        openclaw_session_id=f"lead-{uuid4().hex}",
+    )
+    session.add(lead)
+    await session.commit()
+    return lead
 
 
 # ---------------------------------------------------------------------------
@@ -182,11 +199,12 @@ async def test_hook_deduplicates_by_source_ref() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hook_with_none_task_creates_thread_no_link() -> None:
-    """When called without a task (from webhook ingest), thread is created but task_id is None."""
+async def test_hook_with_none_task_creates_triage_task_for_failure() -> None:
+    """Failed webhook ingest creates visible, linked triage work for the board lead."""
     engine, session_maker = await _make_session_maker()
     async with session_maker() as session:
         board = await _seed_board(session)
+        lead = await _seed_lead(session, board)
         await on_board_created(session, board)
 
         headers = {"x-github-event": "deployment_status"}
@@ -212,9 +230,60 @@ async def test_hook_with_none_task_creates_thread_no_link() -> None:
             await session.exec(select(Thread).where(col(Thread.channel_id) == dep_channel.id))
         ).all()
         assert len(threads) == 1
-        assert threads[0].task_id is None
+        assert threads[0].task_id is not None
+
+        task = await session.get(Task, threads[0].task_id)
+        assert task is not None
+        assert task.status == "inbox"
+        assert task.priority == "high"
+        assert task.auto_created is True
+        assert task.auto_reason == "webhook_alert_triage"
+        assert task.assigned_agent_id == lead.id
+        assert task.thread_id == threads[0].id
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_hook_with_none_task_leaves_info_alert_as_thread_only() -> None:
+    """Non-urgent webhook ingest remains a channel thread without creating board work."""
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        board = await _seed_board(session)
+        await on_board_created(session, board)
+
+        headers = {"x-github-event": "workflow_run"}
+        payload = {
+            "workflow_run": {
+                "id": 321,
+                "run_number": 12,
+                "name": "CI",
+                "head_branch": "main",
+                "conclusion": "success",
+            },
+            "repository": {"full_name": "org/api"},
+        }
+
+        await on_task_created_by_webhook(session, None, board, payload, headers)
+
+        build_channel = (
+            await session.exec(
+                select(Channel).where(
+                    col(Channel.board_id) == board.id,
+                    col(Channel.slug) == "ci-cd-alerts",
+                )
+            )
+        ).first()
+        assert build_channel is not None
+
+        threads = (
+            await session.exec(select(Thread).where(col(Thread.channel_id) == build_channel.id))
+        ).all()
+        assert len(threads) == 1
+        assert threads[0].task_id is None
+
+        tasks = (await session.exec(select(Task).where(col(Task.board_id) == board.id))).all()
+        assert tasks == []
 
 
 @pytest.mark.asyncio
