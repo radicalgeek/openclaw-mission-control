@@ -872,6 +872,91 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
 
 
 @pytest.mark.asyncio
+async def test_active_work_recovery_does_not_wake_merge_agent_for_alert_triage_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            lead_id = uuid4()
+            merger_id = uuid4()
+            task_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="Lead Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:lead:main",
+                    is_board_lead=True,
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Agent(
+                    id=merger_id,
+                    name="Merge Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:merge:main",
+                    identity_profile={"role_template": "merger"},
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="Triage alert: CI/CD pipeline failed",
+                    status="review",
+                    assigned_agent_id=lead_id,
+                    auto_created=True,
+                    auto_reason="webhook_alert_triage",
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert len(wake_calls) == 1
+            assert wake_calls[0]["session_key"] == "agent:lead:main"
+            message = wake_calls[0]["message"]
+            assert "Webhook alert triage task is in `review`" in message
+            assert "this is not merge-ready code" in message
+            assert "do not send them to the merge agent" in message
+            assert '{"assigned_agent_id":"<developer_agent_id>","status":"in_progress"' in message
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_active_work_recovery_wakes_stale_board_lead_for_orchestration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

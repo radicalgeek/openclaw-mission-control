@@ -319,7 +319,13 @@ def _lead_wake_message(
         "If a message/channel tool returns `Action send requires a target`, `Channel is "
         "required`, or any similar routing error, abandon that path immediately and use the "
         "PATCH assignment endpoint instead. Assignment via AxiaCraft wakes the worker "
-        "automatically. Make the board-lead decision using "
+        "automatically. For webhook alert triage tasks, including any that have incorrectly "
+        "landed in `review`, do not send them to the merge agent and do not leave them in "
+        "`review`: decide whether they are duplicate/noise/already-covered/genuine. For genuine "
+        "work, assign a non-lead developer and start the same task with JSON "
+        '{"assigned_agent_id":"<developer_agent_id>","status":"in_progress",'
+        '"comment":"<triage decision and reason>"}. If duplicate/noise/already-covered, close '
+        "or comment with the decision and evidence. Make the board-lead decision using "
         "the task comments, merge evidence, and "
         "available checks. Do not mark review tasks `done` before the code is merged to mainline. "
         "If the work is ready, wake or mention the merge agent with the task id, "
@@ -384,13 +390,23 @@ async def _lead_review_actions_for_board(
             )
         ).first()
         if latest_comment is None or not _comment_needs_lead_review_action(latest_comment.message):
-            continue
+            if task.auto_reason != "webhook_alert_triage":
+                continue
+            comment = (
+                "Webhook alert triage task is in `review`; this is not merge-ready code. "
+                "Lead must triage duplicate/storm/already-covered/genuine, then assign and "
+                "start a developer with status `in_progress` or close with evidence."
+            )
+            created_at = task.updated_at or task.created_at
+        else:
+            comment = latest_comment.message or ""
+            created_at = latest_comment.created_at
         actions.append(
             {
                 "task_id": task.id,
                 "title": task.title,
-                "comment": latest_comment.message or "",
-                "created_at": latest_comment.created_at,
+                "comment": comment,
+                "created_at": created_at,
             }
         )
     return actions
@@ -634,6 +650,10 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             .join(Task, col(Task.board_id) == col(Board.id))
             .join(Gateway, col(Gateway.id) == col(Board.gateway_id))
             .where(col(Task.status) == "review")
+            .where(
+                (col(Task.auto_reason).is_(None))
+                | (col(Task.auto_reason) != "webhook_alert_triage")
+            )
             .where(col(Gateway.url).is_not(None))
         )
     ).all()
