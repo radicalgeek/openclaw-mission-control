@@ -80,6 +80,15 @@ def build_task_wake_message(
     gateway_workspace_root: str,
     reason: str,
 ) -> str:
+    if agent.is_board_lead and task.auto_reason == "webhook_alert_triage":
+        return _lead_alert_triage_wake_message(
+            board=board,
+            task=task,
+            agent=agent,
+            gateway_workspace_root=gateway_workspace_root,
+            reason=reason,
+        )
+
     description = _truncate_snippet(task.description)
     details = [
         f"Board: {board.name}",
@@ -113,6 +122,58 @@ def build_task_wake_message(
         '{"status":"review","comment":"<summary, commits, tests, and evidence>"}. '
         "Do not invent a separate task status endpoint. Read and write comments only through "
         f"/api/v1/agent/boards/{board.id}/tasks/{task.id}/comments."
+    )
+
+
+def _lead_alert_triage_wake_message(
+    *,
+    board: Board,
+    task: Task,
+    agent: Agent,
+    gateway_workspace_root: str,
+    reason: str,
+) -> str:
+    description = _truncate_snippet(task.description, limit=900)
+    details = [
+        "LEAD ALERT TRIAGE WAKE",
+        f"Board: {board.name}",
+        f"Board ID: {board.id}",
+        f"Task: {task.title}",
+        f"Task ID: {task.id}",
+        f"Status: {task.status}",
+        f"Wake reason: {reason}",
+        f"Task endpoint: PATCH {_agent_api_url(f'/api/v1/agent/boards/{board.id}/tasks/{task.id}')}",
+        f"Comments endpoint: GET {_agent_api_url(f'/api/v1/agent/boards/{board.id}/tasks/{task.id}/comments')}",
+    ]
+    if task.thread_id:
+        details.append(f"Linked alert thread ID: {task.thread_id}")
+    if description:
+        details.append(f"Description: {description}")
+    repo_url = _board_code_repo_url(board)
+    if repo_url:
+        details.append(f"Repo URL: {repo_url}")
+    if gateway_workspace_root:
+        details.extend(
+            [
+                f"CODE_WORKSPACE_ROOT: {_board_code_workspace_root(board, gateway_workspace_root)}",
+                f"CODE_WORKTREE_PATH: {_board_code_worktree_path(agent, board, gateway_workspace_root)}",
+            ]
+        )
+    return (
+        "\n".join(details)
+        + "\n\nTake action now as the board lead. This is alert triage, not developer "
+        "implementation work. Inspect the linked alert thread and board state, then decide "
+        "whether this CI/CD or observability alert is a duplicate, part of an alert storm, "
+        "already covered by existing remediation, or genuine new work.\n\n"
+        "If it is duplicate/noise/already covered, add a task comment with the evidence and "
+        "the decision so the operator can see why no developer was assigned. If it is genuine "
+        "new work, list board agents, choose an available non-lead developer, and assign this "
+        "same task with PATCH "
+        f"`/api/v1/agent/boards/{board.id}/tasks/{task.id}` and JSON "
+        '{"assigned_agent_id":"<developer_agent_id>","comment":"<triage decision and reason>"}. '
+        "Do not create a duplicate task unless the alert needs to be split. Do not use "
+        "OpenClaw direct-message or channel-send tools for assignment; assignment is an "
+        "AxiaCraft API write and will wake the developer automatically."
     )
 
 

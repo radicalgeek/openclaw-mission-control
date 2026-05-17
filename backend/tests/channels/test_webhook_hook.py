@@ -23,6 +23,7 @@ os.environ["LOCAL_AUTH_TOKEN"] = "test-local-token-0123456789-0123456789-0123456
 os.environ["BASE_URL"] = "http://localhost:8000"
 os.environ["CHANNELS_ENABLED"] = "true"
 
+from app.core.config import settings  # noqa: E402
 from app.models.agents import Agent  # noqa: E402
 from app.models import Channel, Thread, ThreadMessage  # noqa: E402
 from app.models.boards import Board  # noqa: E402
@@ -93,6 +94,11 @@ async def _seed_lead(session: AsyncSession, board: Board) -> Agent:
 
 
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _enable_channels(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "channels_enabled", True)
 
 
 @pytest.mark.asyncio

@@ -589,6 +589,96 @@ async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
 
 
 @pytest.mark.asyncio
+async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wake_calls: list[dict[str, Any]] = []
+    _patch_wake_services(monkeypatch, wake_calls)
+    engine = await _make_engine()
+    try:
+        async with await _make_session(engine) as session:
+            org_id = uuid4()
+            gateway_id = uuid4()
+            board_id = uuid4()
+            lead_id = uuid4()
+            task_id = uuid4()
+            thread_id = uuid4()
+            session.add(Organization(id=org_id, name="org"))
+            session.add(
+                Gateway(
+                    id=gateway_id,
+                    organization_id=org_id,
+                    name="gateway",
+                    url="https://gateway.local",
+                    workspace_root="/tmp/openclaw",
+                ),
+            )
+            session.add(
+                Board(
+                    id=board_id,
+                    organization_id=org_id,
+                    name="board",
+                    slug="board",
+                    gateway_id=gateway_id,
+                    context={"source_repo_url": "https://example.test/repo.git"},
+                ),
+            )
+            session.add(
+                Agent(
+                    id=lead_id,
+                    name="Lead Agent",
+                    board_id=board_id,
+                    gateway_id=gateway_id,
+                    status="offline",
+                    openclaw_session_id="agent:lead:main",
+                    is_board_lead=True,
+                    last_seen_at=utcnow() - timedelta(hours=2),
+                ),
+            )
+            session.add(
+                Task(
+                    id=task_id,
+                    board_id=board_id,
+                    title="Triage alert: CI/CD pipeline failed",
+                    description="Lead triage required before assigning implementation work.",
+                    status="inbox",
+                    assigned_agent_id=lead_id,
+                    auto_created=True,
+                    auto_reason="webhook_alert_triage",
+                    thread_id=thread_id,
+                ),
+            )
+            await session.commit()
+
+            woken = await recovery.wake_stale_board_agents_with_active_work(session)
+
+            assert woken == 1
+            assert wake_calls
+            message = wake_calls[0]["message"]
+            assert "LEAD ALERT TRIAGE WAKE" in message
+            assert "This is alert triage, not developer implementation work" in message
+            assert "duplicate, part of an alert storm" in message
+            assert "already covered by existing remediation" in message
+            assert f"Linked alert thread ID: {thread_id}" in message
+            assert f"/api/v1/agent/boards/{board_id}/tasks/{task_id}" in message
+            assert '{"assigned_agent_id":"<developer_agent_id>"' in message
+            assert "Do not create a duplicate task unless the alert needs to be split" in message
+            assert "assignment is an AxiaCraft API write" in message
+
+            events = (
+                await session.exec(
+                    select(ActivityEvent)
+                    .where(col(ActivityEvent.task_id) == task_id)
+                    .where(col(ActivityEvent.event_type) == "task.assignee_woken"),
+                )
+            ).all()
+            assert len(events) == 1
+            assert "(assigned_inbox_work_recovery)" in (events[0].message or "")
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_active_work_recovery_wakes_online_agent_with_stale_heartbeat(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
