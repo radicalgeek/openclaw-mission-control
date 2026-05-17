@@ -660,7 +660,12 @@ async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
             assert "duplicate, part of an alert storm" in message
             assert "already covered by existing remediation" in message
             assert f"Linked alert thread ID: {thread_id}" in message
+            assert f"GET /api/v1/agent/boards/{board_id}/tasks?status=inbox" in message
+            assert f"GET /api/v1/agent/agents?board_id={board_id}" in message
             assert f"/api/v1/agent/boards/{board_id}/tasks/{task_id}" in message
+            assert f"The board_id is exactly `{board_id}`" in message
+            assert f"the task_id is exactly `{task_id}`" in message
+            assert "never combine, concatenate, shorten, or rewrite these IDs" in message
             assert '{"assigned_agent_id":"<developer_agent_id>"' in message
             assert "Do not create a duplicate task unless the alert needs to be split" in message
             assert "assignment is an AxiaCraft API write" in message

@@ -142,8 +142,10 @@ def _lead_alert_triage_wake_message(
         f"Task ID: {task.id}",
         f"Status: {task.status}",
         f"Wake reason: {reason}",
-        f"Task endpoint: PATCH {_agent_api_url(f'/api/v1/agent/boards/{board.id}/tasks/{task.id}')}",
-        f"Comments endpoint: GET {_agent_api_url(f'/api/v1/agent/boards/{board.id}/tasks/{task.id}/comments')}",
+        f"Inspect board tasks: GET /api/v1/agent/boards/{board.id}/tasks?status=inbox",
+        f"List assignable agents: GET /api/v1/agent/agents?board_id={board.id}",
+        f"Inspect this task comments: GET /api/v1/agent/boards/{board.id}/tasks/{task.id}/comments",
+        f"Assign this task: PATCH /api/v1/agent/boards/{board.id}/tasks/{task.id}",
     ]
     if task.thread_id:
         details.append(f"Linked alert thread ID: {task.thread_id}")
@@ -168,9 +170,10 @@ def _lead_alert_triage_wake_message(
         "If it is duplicate/noise/already covered, add a task comment with the evidence and "
         "the decision so the operator can see why no developer was assigned. If it is genuine "
         "new work, list board agents, choose an available non-lead developer, and assign this "
-        "same task with PATCH "
-        f"`/api/v1/agent/boards/{board.id}/tasks/{task.id}` and JSON "
+        "same task with the exact Assign this task endpoint above and JSON "
         '{"assigned_agent_id":"<developer_agent_id>","comment":"<triage decision and reason>"}. '
+        f"The board_id is exactly `{board.id}` and the task_id is exactly `{task.id}`; never "
+        "combine, concatenate, shorten, or rewrite these IDs when building URLs. "
         "Do not create a duplicate task unless the alert needs to be split. Do not use "
         "OpenClaw direct-message or channel-send tools for assignment; assignment is an "
         "AxiaCraft API write and will wake the developer automatically."
