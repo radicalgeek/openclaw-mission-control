@@ -562,6 +562,9 @@ async def wake_agent_for_task(
             board=board,
             agent=agent,
             message=message,
+            reset_session=(
+                agent.is_board_lead and task.auto_reason == "webhook_alert_triage"
+            ),
         )
         if error is not None:
             raise error

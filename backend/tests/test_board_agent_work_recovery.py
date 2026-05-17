@@ -654,6 +654,7 @@ async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
 
             assert woken == 1
             assert wake_calls
+            assert wake_calls[0]["reset_session"] is True
             message = wake_calls[0]["message"]
             assert "LEAD ALERT TRIAGE WAKE" in message
             assert "This is alert triage, not developer implementation work" in message
