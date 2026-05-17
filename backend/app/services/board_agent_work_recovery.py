@@ -145,6 +145,7 @@ def _lead_alert_triage_wake_message(
         f"Inspect board tasks: GET /api/v1/agent/boards/{board.id}/tasks?status=inbox",
         f"List assignable agents: GET /api/v1/agent/agents?board_id={board.id}",
         f"Inspect this task comments: GET /api/v1/agent/boards/{board.id}/tasks/{task.id}/comments",
+        f"Comment on this task: POST /api/v1/agent/boards/{board.id}/tasks/{task.id}/comments",
         f"Assign this task: PATCH /api/v1/agent/boards/{board.id}/tasks/{task.id}",
     ]
     if task.thread_id:
@@ -167,10 +168,14 @@ def _lead_alert_triage_wake_message(
         "implementation work. Inspect the linked alert thread and board state, then decide "
         "whether this CI/CD or observability alert is a duplicate, part of an alert storm, "
         "already covered by existing remediation, or genuine new work.\n\n"
-        "If it is duplicate/noise/already covered, add a task comment with the evidence and "
-        "the decision so the operator can see why no developer was assigned. If it is genuine "
-        "new work, list board agents, choose an available non-lead developer, and assign this "
-        "same task with the exact Assign this task endpoint above and JSON "
+        "Do not end this wake after inspection only. Before ending, perform exactly one "
+        "AxiaCraft API write: either POST the exact Comment on this task endpoint above with "
+        'JSON {"message":"<duplicate/noise/already-covered triage decision and evidence>"} '
+        "or PATCH the exact Assign this task endpoint above to assign the task to a developer. "
+        "If it is duplicate/noise/already covered, add the comment so the operator can see why "
+        "no developer was assigned. If at least one non-lead developer exists and there is no "
+        "existing active remediation task for the same alert/source, treat it as genuine work: "
+        "choose an available non-lead developer and assign this same task with JSON "
         '{"assigned_agent_id":"<developer_agent_id>","comment":"<triage decision and reason>"}. '
         f"The board_id is exactly `{board.id}` and the task_id is exactly `{task.id}`; never "
         "combine, concatenate, shorten, or rewrite these IDs when building URLs. "

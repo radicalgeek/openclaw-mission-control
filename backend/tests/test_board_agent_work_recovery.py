@@ -662,7 +662,11 @@ async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
             assert f"Linked alert thread ID: {thread_id}" in message
             assert f"GET /api/v1/agent/boards/{board_id}/tasks?status=inbox" in message
             assert f"GET /api/v1/agent/agents?board_id={board_id}" in message
+            assert f"POST /api/v1/agent/boards/{board_id}/tasks/{task_id}/comments" in message
             assert f"/api/v1/agent/boards/{board_id}/tasks/{task_id}" in message
+            assert "Do not end this wake after inspection only" in message
+            assert "Before ending, perform exactly one AxiaCraft API write" in message
+            assert '{"message":"<duplicate/noise/already-covered triage decision and evidence>"}' in message
             assert f"The board_id is exactly `{board_id}`" in message
             assert f"the task_id is exactly `{task_id}`" in message
             assert "never combine, concatenate, shorten, or rewrite these IDs" in message
