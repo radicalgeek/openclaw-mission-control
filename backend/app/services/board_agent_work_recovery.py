@@ -110,9 +110,19 @@ def build_task_wake_message(
                 f"CODE_WORKTREE_PATH: {_board_code_worktree_path(agent, board, gateway_workspace_root)}",
             ]
         )
+    inbox_claim = ""
+    if task.status == "inbox" and task.assigned_agent_id == agent.id:
+        inbox_claim = (
+            "\n\nThis task is assigned to you but is still in `inbox`. Your first "
+            "AxiaCraft API write must be to claim it before implementation: PATCH "
+            f"/api/v1/agent/boards/{board.id}/tasks/{task.id} with JSON "
+            '{"status":"in_progress","comment":"Starting work on this assigned task."}. '
+            "Do not inspect unrelated tasks first and do not wait for another assignment."
+        )
     return (
         "TASK WAKE\n"
         + "\n".join(details)
+        + inbox_claim
         + "\n\nTake action now: read TOOLS.md and HEARTBEAT.md, verify the code workspace, "
         "then continue this task. If the worktree is missing, clone/create it from the repo URL "
         "above. If code access is still missing, add a task comment with the exact missing path "
@@ -180,8 +190,9 @@ def _lead_alert_triage_wake_message(
         "If it is duplicate/noise/already covered, add the comment so the operator can see why "
         "no developer was assigned. If at least one non-lead developer exists and there is no "
         "existing active remediation task for the same alert/source, treat it as genuine work: "
-        "choose an available non-lead developer and assign this same task with JSON "
-        '{"assigned_agent_id":"<developer_agent_id>","comment":"<triage decision and reason>"}. '
+        "choose an available non-lead developer and assign plus start this same task with JSON "
+        '{"assigned_agent_id":"<developer_agent_id>","status":"in_progress",'
+        '"comment":"<triage decision and reason>"}. '
         f"The board_id is exactly `{board.id}` and the task_id is exactly `{task.id}`; never "
         "combine, concatenate, shorten, or rewrite these IDs when building URLs. "
         f"Use `GET /api/v1/agent/agents?board_id={board.id}` for the roster. Do not use "

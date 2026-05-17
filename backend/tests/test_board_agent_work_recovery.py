@@ -562,6 +562,9 @@ async def test_active_work_recovery_wakes_agent_with_assigned_inbox_work(
             assert wake_calls
             assert "Status: inbox" in wake_calls[0]["message"]
             assert "Wake reason: assigned_inbox_work_recovery" in wake_calls[0]["message"]
+            assert "Your first AxiaCraft API write must be to claim it" in wake_calls[0]["message"]
+            assert f"/api/v1/agent/boards/{board_id}/tasks/{task_id}" in wake_calls[0]["message"]
+            assert '{"status":"in_progress","comment":"Starting work on this assigned task."}' in wake_calls[0]["message"]
             reloaded_agent = (
                 await session.exec(select(Agent).where(col(Agent.id) == agent_id))
             ).one()
@@ -678,7 +681,7 @@ async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
             assert "never combine, concatenate, shorten, or rewrite these IDs" in message
             assert f"Use `GET /api/v1/agent/agents?board_id={board_id}`" in message
             assert "`/api/v1/agent/boards/<board_id>/agents`; that route is wrong" in message
-            assert '{"assigned_agent_id":"<developer_agent_id>"' in message
+            assert '{"assigned_agent_id":"<developer_agent_id>","status":"in_progress"' in message
             assert "Do not create a duplicate task unless the alert needs to be split" in message
             assert "assignment is an AxiaCraft API write" in message
 
