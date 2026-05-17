@@ -19,7 +19,7 @@ class ClassifiedEvent:
     """A webhook event parsed and categorised for channel routing."""
 
     source: str  # e.g. "github-actions", "argocd"
-    source_category: str  # "build" | "deployment" | "test" | "production"
+    source_category: str  # "cicd" | "observability"
     event_type: str  # e.g. "build_failure", "deployment_started"
     topic: str  # Thread topic string
     source_ref: str  # Unique dedup key
@@ -40,6 +40,23 @@ class BaseClassifier:
 
     def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:
         raise NotImplementedError
+
+
+def _severity_from_status(status: object) -> str:
+    status_text = str(status or "").lower()
+    if any(token in status_text for token in ("critical", "fatal")):
+        return "critical"
+    if any(token in status_text for token in ("fail", "error", "timed_out", "timeout")):
+        return "error"
+    if any(token in status_text for token in ("cancel", "warning", "warn", "degraded")):
+        return "warning"
+    return "info"
+
+
+def _repo_name_from_url(repo_url: object) -> str:
+    if not isinstance(repo_url, str) or not repo_url:
+        return "unknown"
+    return repo_url.rstrip("/").rsplit("/", 1)[-1] or "unknown"
 
 
 class GitHubActionsClassifier(BaseClassifier):
@@ -127,7 +144,7 @@ class GitHubActionsClassifier(BaseClassifier):
 
         return ClassifiedEvent(
             source="github-actions",
-            source_category="build",
+            source_category="cicd",
             event_type=event_type,
             topic=topic,
             source_ref=source_ref,
@@ -181,7 +198,7 @@ class GitHubPRClassifier(BaseClassifier):
 
         return ClassifiedEvent(
             source="github",
-            source_category="build",
+            source_category="cicd",
             event_type=f"pr_{action}",
             topic=topic,
             source_ref=source_ref,
@@ -264,7 +281,7 @@ class DeploymentClassifier(BaseClassifier):
 
         return ClassifiedEvent(
             source="deployment",
-            source_category="deployment",
+            source_category="cicd",
             event_type="deployment_event",
             topic=topic,
             source_ref=source_ref,
@@ -325,7 +342,7 @@ class TestResultsClassifier(BaseClassifier):
 
         return ClassifiedEvent(
             source="test-runner",
-            source_category="test",
+            source_category="cicd",
             event_type="test_results",
             topic=topic,
             source_ref=source_ref,
@@ -337,8 +354,86 @@ class TestResultsClassifier(BaseClassifier):
         )
 
 
+class AzureDevOpsPipelineClassifier(BaseClassifier):
+    """Classifies Azure DevOps pipeline status payloads posted by Runway."""
+
+    def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
+        if "pipeline_run_id" in payload and ("details_url" in payload or "repo_url" in payload):
+            return True
+        source = str(headers.get("x-webhook-source") or headers.get("user-agent") or "").lower()
+        repo_url = str(payload.get("repo_url") or payload.get("details_url") or "").lower()
+        return "azure" in source and "dev.azure.com" in repo_url
+
+    def classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> ClassifiedEvent:  # noqa: ARG002
+        run_id = payload.get("pipeline_run_id") or payload.get("build_id") or "unknown"
+        status = payload.get("status") or payload.get("result") or "unknown"
+        status_text = str(status).lower()
+        repo_name = _repo_name_from_url(payload.get("repo_url"))
+        branch = payload.get("branch") or "unknown"
+        commit_sha = str(payload.get("commit_sha") or "")
+        details_url = payload.get("details_url") if isinstance(payload.get("details_url"), str) else None
+        severity = _severity_from_status(status)
+
+        if severity in ("error", "critical"):
+            event_type = "pipeline_failure"
+            state_label = "failed"
+        elif status_text in ("succeeded", "success", "passed", "pass"):
+            event_type = "pipeline_success"
+            state_label = "passed"
+        elif severity == "warning":
+            event_type = "pipeline_warning"
+            state_label = status_text or "warning"
+        else:
+            event_type = "pipeline_update"
+            state_label = status_text or "updated"
+
+        short_commit = commit_sha[:8] if commit_sha else "unknown"
+        topic = f"CI/CD pipeline #{run_id} — {state_label}"
+        summary = f"CI/CD pipeline #{run_id} {state_label} on {branch}"
+        source_ref = f"azure-devops:pipeline:{run_id}"
+
+        content = (
+            f"## {summary}\n\n"
+            f"- **Repository**: {repo_name}\n"
+            f"- **Branch**: {branch}\n"
+            f"- **Commit**: `{short_commit}`\n"
+            f"- **Status**: {status}\n"
+        )
+        stage_results = payload.get("stage_results")
+        if isinstance(stage_results, dict) and stage_results:
+            failed_stages = [
+                name for name, result in stage_results.items()
+                if _severity_from_status(result) in ("error", "critical")
+            ]
+            if failed_stages:
+                content += f"- **Failed stages**: {', '.join(failed_stages)}\n"
+        if details_url:
+            content += f"\n[Open Azure DevOps run →]({details_url})"
+
+        return ClassifiedEvent(
+            source="azure-devops",
+            source_category="cicd",
+            event_type=event_type,
+            topic=topic,
+            source_ref=source_ref,
+            summary=summary,
+            content_markdown=content,
+            metadata={
+                "raw": payload,
+                "title": "CI/CD Alert",
+                "source_category": "cicd",
+                "pipeline_run_id": str(run_id),
+                "status": str(status),
+                "branch": str(branch),
+                "commit_sha": commit_sha,
+            },
+            severity=severity,
+            url=details_url,
+        )
+
+
 class GenericClassifier(BaseClassifier):
-    """Fallback classifier — always matches, routes to production channel."""
+    """Fallback classifier — always matches, routes to observability alerts."""
 
     def can_classify(self, headers: dict[str, Any], payload: dict[str, Any]) -> bool:
         return True
@@ -351,8 +446,11 @@ class GenericClassifier(BaseClassifier):
         ).hexdigest()[:12]
 
         topic = f"{source} — Alert {now[:16]}"
-        summary = f"Incoming event from {source}"
+        summary = f"Incoming observability event from {source}"
         source_ref = f"generic:{payload_hash}"
+        severity = _severity_from_status(
+            payload.get("severity") or payload.get("status") or payload.get("level")
+        )
 
         try:
             content = (
@@ -363,14 +461,14 @@ class GenericClassifier(BaseClassifier):
 
         return ClassifiedEvent(
             source=str(source),
-            source_category="production",
+            source_category="observability",
             event_type="generic_event",
             topic=topic,
             source_ref=source_ref,
             summary=summary,
             content_markdown=content,
-            metadata={"raw": payload},
-            severity="info",
+            metadata={"raw": payload, "title": "Observability Alert", "source_category": "observability"},
+            severity=severity,
             url=None,
         )
 
@@ -382,6 +480,7 @@ def classify_webhook_event(payload: dict[str, Any], headers: dict[str, Any]) -> 
         GitHubPRClassifier(),
         DeploymentClassifier(),
         TestResultsClassifier(),
+        AzureDevOpsPipelineClassifier(),
         GenericClassifier(),
     ]
     for classifier in classifiers:

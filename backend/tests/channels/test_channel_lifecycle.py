@@ -2,7 +2,7 @@
 """Tests for board channel lifecycle hooks.
 
 Tests that:
-- New board created → all 9 default channels created
+- New board created → all 3 default channels created
 - Board deleted → channels are archived or hard-deleted
 - Board lead changed → subscriptions updated
 - Agent added/removed → subscriptions updated
@@ -91,11 +91,11 @@ async def _seed_agent(session: AsyncSession, *, board: Board, is_lead: bool = Fa
 @pytest.mark.asyncio
 async def test_default_channel_count() -> None:
     defs = get_default_channel_definitions()
-    assert len(defs) == 9
+    assert len(defs) == 3
     alert_count = sum(1 for d in defs if d.channel_type == "alert")
     discussion_count = sum(1 for d in defs if d.channel_type == "discussion")
-    assert alert_count == 4
-    assert discussion_count == 5
+    assert alert_count == 2
+    assert discussion_count == 1
 
 
 @pytest.mark.asyncio
@@ -108,12 +108,10 @@ async def test_on_board_created_creates_channels() -> None:
         channels = (
             await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
         ).all()
-        assert len(channels) == 9
+        assert len(channels) == 3
         alert_names = {c.slug for c in channels if c.channel_type == "alert"}
-        assert "build-alerts" in alert_names
-        assert "deployment-alerts" in alert_names
-        assert "test-run-alerts" in alert_names
-        assert "production-alerts" in alert_names
+        assert "ci-cd-alerts" in alert_names
+        assert "observability-alerts" in alert_names
 
     await engine.dispose()
 
@@ -131,8 +129,8 @@ async def test_on_board_created_with_lead_creates_subscriptions() -> None:
                 select(ChannelSubscription).where(col(ChannelSubscription.agent_id) == agent.id)
             )
         ).all()
-        # Should have subscriptions to all 9 channels
-        assert len(subs) == 9
+        # Should have subscriptions to all 3 channels
+        assert len(subs) == 3
         assert all(s.notify_on == "all" for s in subs)
 
     await engine.dispose()
@@ -151,7 +149,7 @@ async def test_on_board_deleted_archives_channels() -> None:
         channels = (
             await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
         ).all()
-        assert len(channels) == 9
+        assert len(channels) == 3
         assert all(c.is_archived for c in channels)
 
     await engine.dispose()
@@ -198,7 +196,7 @@ async def test_on_board_lead_changed_updates_subscriptions() -> None:
         ).all()
 
         assert len(old_subs) == 0
-        assert len(new_subs) == 9
+        assert len(new_subs) == 3
 
     await engine.dispose()
 
@@ -219,8 +217,8 @@ async def test_on_agent_added_subscribes_to_discussion_channels() -> None:
             )
         ).all()
 
-        # Should be subscribed to all 9 default channels (4 alert + 5 discussion)
-        assert len(subs) == 9
+        # Should be subscribed to all 3 default channels
+        assert len(subs) == 3
         assert all(s.notify_on == "all" for s in subs)
 
     await engine.dispose()
@@ -242,7 +240,7 @@ async def test_on_agent_removed_removes_all_subscriptions() -> None:
                 select(ChannelSubscription).where(col(ChannelSubscription.agent_id) == agent.id)
             )
         ).all()
-        assert len(subs_before) == 9  # All channels (4 alert + 5 discussion)
+        assert len(subs_before) == 3
 
         await on_agent_removed_from_board(session, board, agent.id)
 

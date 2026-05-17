@@ -10,26 +10,26 @@ const SEVERITY_STYLES: Record<
   { border: string; bg: string; icon: string; label: string }
 > = {
   info: {
-    border: "border-blue-300",
-    bg: "bg-blue-50",
+    border: "border-blue-400",
+    bg: "bg-[color:var(--surface-muted)]",
     icon: "ℹ️",
     label: "Info",
   },
   warning: {
-    border: "border-amber-300",
-    bg: "bg-amber-50",
+    border: "border-amber-400",
+    bg: "bg-[color:var(--surface-muted)]",
     icon: "⚠️",
     label: "Warning",
   },
   error: {
-    border: "border-red-300",
-    bg: "bg-red-50",
+    border: "border-red-400",
+    bg: "bg-[color:var(--surface-muted)]",
     icon: "❌",
     label: "Error",
   },
   critical: {
     border: "border-red-500",
-    bg: "bg-red-100",
+    bg: "bg-[color:var(--surface-muted)]",
     icon: "🚨",
     label: "Critical",
   },
@@ -54,16 +54,18 @@ export function WebhookEventCard({ message }: Props) {
       : typeof meta.event === "string"
         ? meta.event
         : null;
+  const summary = typeof meta.summary === "string" ? meta.summary : null;
 
   // Metadata rows: exclude url (shown as link) and severity (shown via colour)
   const metaRows = Object.entries(meta).filter(
-    ([key]) => key !== "url" && key !== "severity",
+    ([key]) =>
+      !["url", "severity", "raw", "title", "summary"].includes(key),
   );
 
   return (
     <div
       className={cn(
-        "rounded-xl border-l-4 p-3 text-sm",
+        "rounded-lg border border-l-4 p-3 text-sm shadow-sm",
         style.border,
         style.bg,
       )}
@@ -75,12 +77,12 @@ export function WebhookEventCard({ message }: Props) {
           {style.icon}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-slate-900 break-words">
+          <p className="font-semibold text-[color:var(--text)] break-words">
             {title ?? message.content}
           </p>
-          {title && message.content && message.content !== title ? (
-            <p className="mt-1 text-xs text-slate-700 break-words">
-              {message.content}
+          {summary ? (
+            <p className="mt-1 text-xs text-[color:var(--text-muted)] break-words">
+              {summary}
             </p>
           ) : null}
           {metaRows.length > 0 ? (
@@ -91,7 +93,10 @@ export function WebhookEventCard({ message }: Props) {
                     ? String(value)
                     : JSON.stringify(value);
                 return (
-                  <div key={key} className="flex flex-wrap gap-x-2 text-xs text-slate-700">
+                  <div
+                    key={key}
+                    className="flex flex-wrap gap-x-2 text-xs text-[color:var(--text-muted)]"
+                  >
                     <dt className="font-semibold">{humanizeKey(key)}:</dt>
                     <dd className="break-all">{displayValue}</dd>
                   </div>

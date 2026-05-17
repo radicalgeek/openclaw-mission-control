@@ -30,7 +30,7 @@ describe("WebhookEventCard", () => {
     expect(screen.getByText("Build FAILED")).toBeDefined();
   });
 
-  it("renders info severity with blue border", () => {
+  it("renders info severity with branded dark card and blue border", () => {
     const { getByTestId } = render(
       <WebhookEventCard
         message={buildWebhookMessage({ event_metadata: { severity: "info" } })}
@@ -38,7 +38,8 @@ describe("WebhookEventCard", () => {
     );
 
     const card = getByTestId("webhook-event-card");
-    expect(card.className).toContain("border-blue-300");
+    expect(card.className).toContain("border-blue-400");
+    expect(card.className).toContain("bg-[color:var(--surface-muted)]");
     expect(card.getAttribute("data-severity")).toBe("info");
   });
 
@@ -50,7 +51,7 @@ describe("WebhookEventCard", () => {
     );
 
     const card = getByTestId("webhook-event-card");
-    expect(card.className).toContain("border-amber-300");
+    expect(card.className).toContain("border-amber-400");
     expect(card.getAttribute("data-severity")).toBe("warning");
   });
 
@@ -62,7 +63,7 @@ describe("WebhookEventCard", () => {
     );
 
     const card = getByTestId("webhook-event-card");
-    expect(card.className).toContain("border-red-300");
+    expect(card.className).toContain("border-red-400");
     expect(card.getAttribute("data-severity")).toBe("error");
   });
 
@@ -106,8 +107,29 @@ describe("WebhookEventCard", () => {
     expect(screen.getByText("production")).toBeDefined();
     expect(screen.getByText("Build Number:")).toBeDefined();
     expect(screen.getByText("1234")).toBeDefined();
-    // severity should NOT be shown as a metadata row
+    // severity/raw display control fields should NOT be shown as metadata rows
     expect(screen.queryByText("Severity:")).toBeNull();
+    expect(screen.queryByText("Raw:")).toBeNull();
+  });
+
+  it("uses title and summary metadata instead of dumping markdown", () => {
+    render(
+      <WebhookEventCard
+        message={buildWebhookMessage({
+          content: "## CI/CD pipeline #224315 failed\n\n```json\n{}\n```",
+          event_metadata: {
+            severity: "error",
+            title: "CI/CD Alert",
+            summary: "CI/CD pipeline #224315 failed on main",
+            raw: { noisy: true },
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("CI/CD Alert")).toBeDefined();
+    expect(screen.getByText("CI/CD pipeline #224315 failed on main")).toBeDefined();
+    expect(screen.queryByText(/```json/)).toBeNull();
   });
 
   it("renders a View link when event_metadata.url is present", () => {

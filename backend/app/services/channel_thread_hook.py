@@ -119,6 +119,7 @@ async def on_task_created_by_webhook(
             content=event.content_markdown,
             content_type="webhook_event",
             event_metadata={
+                **{k: v for k, v in event.metadata.items() if k != "raw"},
                 "source": event.source,
                 "source_category": event.source_category,
                 "event_type": event.event_type,

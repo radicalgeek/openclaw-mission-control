@@ -101,12 +101,12 @@ async def test_hook_creates_thread_for_build_failure() -> None:
 
         await on_task_created_by_webhook(session, task, board, payload, headers)
 
-        # Verify thread was created in build-alerts channel
+        # Verify thread was created in CI/CD alert channel
         build_channel = (
             await session.exec(
                 select(Channel).where(
                     col(Channel.board_id) == board.id,
-                    col(Channel.slug) == "build-alerts",
+                    col(Channel.slug) == "ci-cd-alerts",
                 )
             )
         ).first()
@@ -167,7 +167,7 @@ async def test_hook_deduplicates_by_source_ref() -> None:
             await session.exec(
                 select(Channel).where(
                     col(Channel.board_id) == board.id,
-                    col(Channel.slug) == "build-alerts",
+                    col(Channel.slug) == "ci-cd-alerts",
                 )
             )
         ).first()
@@ -202,7 +202,7 @@ async def test_hook_with_none_task_creates_thread_no_link() -> None:
             await session.exec(
                 select(Channel).where(
                     col(Channel.board_id) == board.id,
-                    col(Channel.slug) == "deployment-alerts",
+                    col(Channel.slug) == "ci-cd-alerts",
                 )
             )
         ).first()

@@ -88,7 +88,7 @@ async def _seed_lead(session: AsyncSession, board: Board) -> Agent:
 
 @pytest.mark.asyncio
 async def test_platform_board_creates_support_channel() -> None:
-    """Platform board should have Support channel created with 10 total channels."""
+    """Platform board should have Support channel created with 4 total channels."""
     engine, session_maker = await _make_session_maker()
     async with session_maker() as session:
         gateway = await _seed_gateway(session)
@@ -101,13 +101,13 @@ async def test_platform_board_creates_support_channel() -> None:
             await session.exec(select(Channel).where(col(Channel.board_id) == platform_board.id))
         ).all()
 
-        # 9 default + 1 Support channel
-        assert len(channels) == 10
+        # 3 default + 1 Support channel
+        assert len(channels) == 4
         support = next((c for c in channels if c.slug == "support"), None)
         assert support is not None
         assert support.name == "Support"
         assert support.channel_type == "discussion"
-        assert support.position == 9
+        assert support.position == 3
 
         # Lead should be subscribed to Support channel
         sub = (
@@ -139,8 +139,8 @@ async def test_non_platform_board_no_support_channel() -> None:
             await session.exec(select(Channel).where(col(Channel.board_id) == regular_board.id))
         ).all()
 
-        # Only 9 default channels
-        assert len(channels) == 9
+        # Only 3 default channels
+        assert len(channels) == 3
         support = next((c for c in channels if c.slug == "support"), None)
         assert support is None
 
@@ -211,7 +211,7 @@ async def test_on_board_marked_platform_creates_support() -> None:
         channels_before = (
             await session.exec(select(Channel).where(col(Channel.board_id) == board.id))
         ).all()
-        assert len(channels_before) == 9
+        assert len(channels_before) == 3
 
         # Mark as platform
         board.is_platform = True

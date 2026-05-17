@@ -49,90 +49,34 @@ class _ChannelDef:
 
 
 def get_default_channel_definitions() -> list[_ChannelDef]:
-    """Return the 9 default channels created for every new board."""
+    """Return the default channels created for every new board."""
     return [
-        # Alert channels (4)
         _ChannelDef(
-            name="Build Alerts",
-            slug="build-alerts",
+            name="CI/CD Alerts",
+            slug="ci-cd-alerts",
             channel_type="alert",
-            description="CI/CD build results and failures",
+            description="Build, test, deployment, and release pipeline alerts",
             is_readonly=True,
-            webhook_source_filter="build",
+            webhook_source_filter="cicd",
             position=0,
         ),
         _ChannelDef(
-            name="Deployment Alerts",
-            slug="deployment-alerts",
+            name="Observability Alerts",
+            slug="observability-alerts",
             channel_type="alert",
-            description="Deployment status and rollback notifications",
+            description="Runtime health, monitoring, and production incident alerts",
             is_readonly=True,
-            webhook_source_filter="deployment",
+            webhook_source_filter="observability",
             position=1,
-        ),
-        _ChannelDef(
-            name="Test Run Alerts",
-            slug="test-run-alerts",
-            channel_type="alert",
-            description="Test suite results and coverage changes",
-            is_readonly=True,
-            webhook_source_filter="test",
-            position=2,
-        ),
-        _ChannelDef(
-            name="Production Alerts",
-            slug="production-alerts",
-            channel_type="alert",
-            description="Production incidents, errors, and health checks",
-            is_readonly=True,
-            webhook_source_filter="production",
-            position=3,
-        ),
-        # Discussion channels (5)
-        _ChannelDef(
-            name="Development",
-            slug="development",
-            channel_type="discussion",
-            description="Code discussions, feature planning, technical decisions",
-            is_readonly=False,
-            webhook_source_filter=None,
-            position=4,
-        ),
-        _ChannelDef(
-            name="DevOps",
-            slug="devops",
-            channel_type="discussion",
-            description="Infrastructure, pipelines, and operational topics",
-            is_readonly=False,
-            webhook_source_filter=None,
-            position=5,
-        ),
-        _ChannelDef(
-            name="Testing",
-            slug="testing",
-            channel_type="discussion",
-            description="Test strategy, QA discussions, bug triage",
-            is_readonly=False,
-            webhook_source_filter=None,
-            position=6,
-        ),
-        _ChannelDef(
-            name="Architecture",
-            slug="architecture",
-            channel_type="discussion",
-            description="System design, ADRs, and architectural decisions",
-            is_readonly=False,
-            webhook_source_filter=None,
-            position=7,
         ),
         _ChannelDef(
             name="General",
             slug="general",
             channel_type="discussion",
-            description="Anything that doesn't fit elsewhere",
+            description="Project discussion and coordination",
             is_readonly=False,
             webhook_source_filter=None,
-            position=8,
+            position=2,
         ),
     ]
 
@@ -144,7 +88,7 @@ _PLATFORM_SUPPORT_CHANNEL = _ChannelDef(
     description="Cross-board support requests for the platform/infrastructure team",
     is_readonly=False,
     webhook_source_filter=None,
-    position=9,
+    position=3,
 )
 
 
