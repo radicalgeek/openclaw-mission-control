@@ -163,7 +163,12 @@ def _lead_alert_triage_wake_message(
             ]
         )
     return (
-        "\n".join(details)
+        "URGENT API-ONLY LEAD ACTION\n"
+        "This wake overrides the normal heartbeat loop. Do not open a browser, do not edit "
+        "workspace files, do not edit HEARTBEAT.md, do not update local memory, and do not "
+        "search for work assigned to your own AGENT_ID. The task below is already assigned "
+        "to you as the board lead. Use AxiaCraft HTTP API calls only, then stop.\n\n"
+        + "\n".join(details)
         + "\n\nTake action now as the board lead. This is alert triage, not developer "
         "implementation work. Inspect the linked alert thread and board state, then decide "
         "whether this CI/CD or observability alert is a duplicate, part of an alert storm, "
@@ -179,6 +184,8 @@ def _lead_alert_triage_wake_message(
         '{"assigned_agent_id":"<developer_agent_id>","comment":"<triage decision and reason>"}. '
         f"The board_id is exactly `{board.id}` and the task_id is exactly `{task.id}`; never "
         "combine, concatenate, shorten, or rewrite these IDs when building URLs. "
+        f"Use `GET /api/v1/agent/agents?board_id={board.id}` for the roster. Do not use "
+        "`/api/v1/agent/boards/<board_id>/agents`; that route is wrong for roster listing. "
         "Do not create a duplicate task unless the alert needs to be split. Do not use "
         "OpenClaw direct-message or channel-send tools for assignment; assignment is an "
         "AxiaCraft API write and will wake the developer automatically."

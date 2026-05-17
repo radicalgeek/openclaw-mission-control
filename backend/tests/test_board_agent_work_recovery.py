@@ -656,6 +656,11 @@ async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
             assert wake_calls
             assert wake_calls[0]["reset_session"] is True
             message = wake_calls[0]["message"]
+            assert "URGENT API-ONLY LEAD ACTION" in message
+            assert "This wake overrides the normal heartbeat loop" in message
+            assert "do not edit HEARTBEAT.md" in message
+            assert "do not search for work assigned to your own AGENT_ID" in message
+            assert "The task below is already assigned to you as the board lead" in message
             assert "LEAD ALERT TRIAGE WAKE" in message
             assert "This is alert triage, not developer implementation work" in message
             assert "duplicate, part of an alert storm" in message
@@ -671,6 +676,8 @@ async def test_active_work_recovery_wakes_lead_with_alert_triage_instructions(
             assert f"The board_id is exactly `{board_id}`" in message
             assert f"the task_id is exactly `{task_id}`" in message
             assert "never combine, concatenate, shorten, or rewrite these IDs" in message
+            assert f"Use `GET /api/v1/agent/agents?board_id={board_id}`" in message
+            assert "`/api/v1/agent/boards/<board_id>/agents`; that route is wrong" in message
             assert '{"assigned_agent_id":"<developer_agent_id>"' in message
             assert "Do not create a duplicate task unless the alert needs to be split" in message
             assert "assignment is an AxiaCraft API write" in message
