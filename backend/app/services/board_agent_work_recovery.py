@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TypedDict
 
+from sqlalchemy import and_, not_, or_
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -390,7 +391,14 @@ async def _lead_review_actions_for_board(
             )
         ).first()
         if latest_comment is None or not _comment_needs_lead_review_action(latest_comment.message):
-            if task.auto_reason != "webhook_alert_triage":
+            assigned_agent = None
+            if task.assigned_agent_id is not None:
+                assigned_agent = await Agent.objects.by_id(task.assigned_agent_id).first(session)
+            still_lead_triage = task.auto_reason == "webhook_alert_triage" and (
+                task.assigned_agent_id is None
+                or (assigned_agent is not None and assigned_agent.is_board_lead)
+            )
+            if not still_lead_triage:
                 continue
             comment = (
                 "Webhook alert triage task is in `review`; this is not merge-ready code. "
@@ -649,10 +657,15 @@ async def wake_merge_agents_for_active_board_work(session: AsyncSession) -> int:
             )
             .join(Task, col(Task.board_id) == col(Board.id))
             .join(Gateway, col(Gateway.id) == col(Board.gateway_id))
+            .outerjoin(Agent, col(Agent.id) == col(Task.assigned_agent_id))
             .where(col(Task.status) == "review")
             .where(
-                (col(Task.auto_reason).is_(None))
-                | (col(Task.auto_reason) != "webhook_alert_triage")
+                not_(
+                    and_(
+                        col(Task.auto_reason) == "webhook_alert_triage",
+                        or_(col(Task.assigned_agent_id).is_(None), col(Agent.is_board_lead).is_(True)),
+                    )
+                )
             )
             .where(col(Gateway.url).is_not(None))
         )

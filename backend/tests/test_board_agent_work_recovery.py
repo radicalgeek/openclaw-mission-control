@@ -827,6 +827,8 @@ async def test_active_work_recovery_wakes_stale_merge_agent_for_board_work(
                     title="Developer work",
                     status="review",
                     assigned_agent_id=worker_id,
+                    auto_created=True,
+                    auto_reason="webhook_alert_triage",
                     in_progress_at=utcnow() - timedelta(minutes=30),
                 ),
             )
