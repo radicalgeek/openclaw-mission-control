@@ -51,8 +51,10 @@ async def get_agents_to_notify(
     Routing rules:
     - The message sender (if an agent) is never dispatched back to themselves.
     - For direct channels: only the target agent is notified.
-    - For regular channels: the board lead always responds; other subscribed
-      agents only respond when @mentioned.
+    - For regular discussion channels: the board lead always responds. For user
+      messages, subscribed same-board agents with notify_on="all" are also
+      woken so project channels behave like real agent rooms. For agent
+      messages, non-lead agents are only woken when @mentioned to avoid loops.
     - For the platform Support channel: the platform lead always responds;
       cross-board leads only receive dispatches for threads their board started
       (identified by thread.owner_board_id) or when @mentioned.
@@ -141,6 +143,9 @@ async def get_agents_to_notify(
 
     notifications: list[_AgentNotification] = []
     _mentions = extract_mentions(message.content)
+    is_user_discussion_message = (
+        message.sender_type == "user" and channel.channel_type == "discussion"
+    )
 
     for agent_id, sub in sub_by_agent.items():
         agent = (await session.exec(select(Agent).where(col(Agent.id) == agent_id))).first()
@@ -192,12 +197,19 @@ async def get_agents_to_notify(
         elif is_platform_lead:
             # The channel's own board lead always responds
             should_notify = True
+        elif (
+            is_user_discussion_message
+            and not is_support_channel
+            and not is_cross_board_agent
+            and sub.notify_on == "all"
+        ):
+            # Normal project channels are agent rooms. The lifecycle layer subscribes
+            # board agents with notify_on="all"; honor that for user messages while
+            # keeping agent-to-agent replies mention-gated to prevent loops.
+            should_notify = True
         elif is_mentioned:
             # Non-lead agents only respond when explicitly @mentioned
             should_notify = True
-        # Note: notify_on="all" for non-lead, non-mentioned agents is intentionally
-        # ignored here — dispatch should only trigger responses, not broadcast to
-        # every subscriber. Subscriptions track membership; routing controls responses.
 
         if should_notify:
             notifications.append(
@@ -226,6 +238,12 @@ async def dispatch_channel_message_to_agents(
 
     notifications = await get_agents_to_notify(session, thread, message, channel)
     if not notifications:
+        logger.info(
+            "channel_routing.no_notifications channel_id=%s thread_id=%s sender_type=%s",
+            channel.id,
+            thread.id,
+            message.sender_type,
+        )
         return
 
     dispatch = GatewayDispatchService(session)
@@ -276,14 +294,28 @@ async def dispatch_channel_message_to_agents(
         preamble = ""
         if not notification.is_lead and notification.is_mentioned:
             preamble = f'You were mentioned in #{channel.name} > "{thread.topic}".\n\n'
+        elif not notification.is_lead:
+            preamble = (
+                f'You are subscribed to #{channel.name} > "{thread.topic}". '
+                "Reply only if you can materially help with this message; "
+                "otherwise do not post a filler reply.\n\n"
+            )
 
         reply_instructions = (
             f"\n\n---\n"
-            f"To reply in this thread, make an HTTP POST request:\n"
+            f"To reply visibly in AxiaCraft, make an HTTP POST request with curl or another "
+            f"HTTP client. Do not use OpenClaw `message`, `message.send`, Discord, "
+            f"channel-send, or direct-message tools; errors such as `Channel is required`, "
+            f"`Unknown channel`, or `Unknown target` mean you used the wrong path.\n"
             f"  URL: {settings.base_url}/api/v1/threads/{thread.id}/messages\n"
             f"  Header: X-Agent-Token: <your MC agent token from TOOLS.md>\n"
             f"  Header: Content-Type: application/json\n"
             f'  Body: {{"content": "your reply here"}}\n'
+            f"\n"
+            f"Example:\n"
+            f"  curl -fsS -X POST \"{settings.base_url}/api/v1/threads/{thread.id}/messages\" "
+            f"-H \"X-Agent-Token: $AUTH_TOKEN\" -H \"Content-Type: application/json\" "
+            f"-d '{{\"content\":\"your reply here\"}}'\n"
             f"\n"
             f"You MUST reply in the thread — do not just reply in this session."
         )

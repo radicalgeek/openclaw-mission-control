@@ -200,8 +200,8 @@ async def test_lead_always_notified_regular_channel() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_lead_not_notified_without_mention() -> None:
-    """Non-lead subscribed agent is NOT dispatched unless @mentioned."""
+async def test_non_lead_notified_for_user_discussion_message() -> None:
+    """Non-lead subscribed agents see user discussion messages when notify_on=all."""
     engine, session_maker = await _make_session_maker()
     async with session_maker() as session:
         org, gw = await _seed_org_gateway(session)
@@ -226,7 +226,44 @@ async def test_non_lead_not_notified_without_mention() -> None:
         agent_ids = {n.agent_id for n in result}
 
         assert lead.id in agent_ids, "Lead must be notified"
-        assert worker.id not in agent_ids, "Non-lead must NOT be notified without @mention"
+        assert worker.id in agent_ids, "Subscribed non-lead must see user discussion messages"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_agent_message_does_not_broadcast_to_non_leads_without_mention() -> None:
+    """Agent replies do not wake every subscriber and create loops."""
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        org, gw = await _seed_org_gateway(session)
+        board = await _seed_board(session, org, gw)
+        lead = await _seed_agent(session, board, is_lead=True)
+        worker = await _seed_agent(session, board, is_lead=False)
+
+        channel = _discussion_channel(board)
+        session.add(channel)
+        session.add(_subscribe(channel, lead))
+        session.add(_subscribe(channel, worker, notify_on="all"))
+        await session.commit()
+
+        thread = _thread(channel)
+        session.add(thread)
+        await session.commit()
+
+        msg = _message(
+            thread,
+            content="I replied already.",
+            sender_type="agent",
+            sender_id=lead.id,
+            sender_name=lead.name,
+        )
+
+        result = await get_agents_to_notify(session, thread, msg, channel)
+        agent_ids = {n.agent_id for n in result}
+
+        assert lead.id not in agent_ids, "Agent sender must not receive their own message back"
+        assert worker.id not in agent_ids, "Agent replies must remain mention-gated"
 
     await engine.dispose()
 
@@ -683,5 +720,8 @@ async def test_channel_dispatch_wakes_lead_session(monkeypatch: pytest.MonkeyPat
     assert wake_calls[0]["agent_name"] == lead.name
     assert wake_calls[0]["reset_stuck_session"] is True
     assert "CHANNEL MESSAGE" in str(wake_calls[0]["message"])
+    assert "Do not use OpenClaw `message`, `message.send`, Discord" in str(
+        wake_calls[0]["message"]
+    )
 
     await engine.dispose()
