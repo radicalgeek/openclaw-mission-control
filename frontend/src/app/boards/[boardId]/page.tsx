@@ -660,22 +660,22 @@ const TaskCommentCard = memo(function TaskCommentCard({
     <div
       id={commentElementId(comment.id)}
       className={cn(
-        "scroll-mt-28 rounded-xl border bg-white p-3 transition",
+        "scroll-mt-28 rounded-xl border bg-[color:var(--surface)] p-3 transition",
         isHighlighted
           ? "border-[color:var(--accent)] ring-2 ring-[color:var(--accent-soft)]"
-          : "border-slate-200",
+          : "border-[color:var(--border)]",
       )}
     >
-      <div className="flex items-center justify-between text-xs text-slate-500">
+      <div className="flex items-center justify-between text-xs text-[color:var(--text-quiet)]">
         <span>{authorLabel}</span>
         <span>{formatShortTimestamp(comment.created_at)}</span>
       </div>
       {message ? (
-        <div className="mt-2 select-text cursor-text text-sm leading-relaxed text-slate-900 break-words">
+        <div className="mt-2 select-text cursor-text text-sm leading-relaxed text-[color:var(--text)] break-words">
           <Markdown content={message} variant="comment" />
         </div>
       ) : (
-        <p className="mt-2 text-sm text-slate-900">—</p>
+        <p className="mt-2 text-sm text-[color:var(--text)]">—</p>
       )}
     </div>
   );
@@ -4335,17 +4335,19 @@ export default function BoardDetailPage() {
                             className={cn(
                               "rounded-xl border p-3",
                               isCurrentUser
-                                ? "border-blue-200 bg-blue-50"
+                                ? "border-[color:rgba(96,165,250,0.35)] bg-[color:rgba(37,99,235,0.14)]"
                                 : isAgent
-                                  ? "border-teal-200 bg-teal-50"
-                                  : "border-slate-200 bg-white",
+                                  ? "border-[color:rgba(45,212,191,0.35)] bg-[color:rgba(20,184,166,0.12)]"
+                                  : "border-[color:var(--border)] bg-[color:var(--surface)]",
                             )}
                           >
-                            <div className="flex items-center justify-between text-xs text-slate-500">
+                            <div className="flex items-center justify-between text-xs text-[color:var(--text-quiet)]">
                               <span
                                 className={cn(
                                   "font-semibold",
-                                  isAgent ? "text-teal-700" : "text-slate-700",
+                                  isAgent
+                                    ? "text-[color:#5eead4]"
+                                    : "text-[color:var(--text-muted)]",
                                 )}
                               >
                                 {msg.sender_name ||
@@ -4365,7 +4367,7 @@ export default function BoardDetailPage() {
                                 )}
                               </span>
                             </div>
-                            <div className="mt-2 text-sm leading-relaxed text-slate-900 break-words">
+                            <div className="mt-2 text-sm leading-relaxed text-[color:var(--text)] break-words">
                               <Markdown
                                 content={msg.content}
                                 variant="comment"
