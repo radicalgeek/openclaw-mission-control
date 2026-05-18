@@ -593,50 +593,6 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                         })
                       )}
 
-                      {/* Members section */}
-                      {boardAgentList.length > 0 && (
-                        <div className="mt-2 mb-1">
-                          <p className="px-3 pb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            Members
-                          </p>
-                          {boardAgentList.map((agent) => {
-                            const isActive = agent.status === "active";
-                            return (
-                              <button
-                                key={agent.id}
-                                type="button"
-                                onClick={() =>
-                                  void handleOpenDM(agent, board.id)
-                                }
-                                disabled={isDmLoading === agent.id}
-                                title={`DM ${agent.name}`}
-                                className={cn(
-                                  "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
-                                  "mx-1 w-[calc(100%-8px)]",
-                                  "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                                  isDmLoading === agent.id &&
-                                    "opacity-50 cursor-wait",
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    "h-2 w-2 flex-shrink-0 rounded-full",
-                                    isActive ? "bg-green-400" : "bg-slate-300",
-                                  )}
-                                />
-                                <User className="h-3 w-3 flex-shrink-0 text-slate-400" />
-                                <span className="truncate">{agent.name}</span>
-                                {agent.is_board_lead && (
-                                  <span className="ml-auto flex-shrink-0 text-[9px] font-bold uppercase text-slate-400">
-                                    Lead
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-
                       {/* Direct Messages section */}
                       {directChannels.length > 0 && (
                         <div className="mt-2 mb-1">
@@ -665,6 +621,52 @@ export function ChannelsLayout({ boardId, currentUserName = "You" }: Props) {
                                 {(ch.unread_count ?? 0) > 0 && (
                                   <span className="ml-auto flex-shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                                     {ch.unread_count}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Members section */}
+                      {boardAgentList.length > 0 && (
+                        <div className="mt-3 border-t border-slate-200 pt-2">
+                          <p className="px-3 pb-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            Members
+                          </p>
+                          {boardAgentList.map((agent) => {
+                            const isOnline =
+                              (agent.status ?? "").toLowerCase() === "online";
+                            return (
+                              <button
+                                key={agent.id}
+                                type="button"
+                                onClick={() =>
+                                  void handleOpenDM(agent, board.id)
+                                }
+                                disabled={isDmLoading === agent.id}
+                                title={`DM ${agent.name}`}
+                                className={cn(
+                                  "flex w-full items-center gap-2 rounded-md px-3 py-1 text-left text-sm transition-colors",
+                                  "mx-1 w-[calc(100%-8px)]",
+                                  "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                                  isDmLoading === agent.id &&
+                                    "opacity-50 cursor-wait",
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "h-2 w-2 flex-shrink-0 rounded-full",
+                                    isOnline ? "bg-green-400" : "bg-slate-300",
+                                  )}
+                                  title={isOnline ? "Online" : "Offline"}
+                                />
+                                <User className="h-3 w-3 flex-shrink-0 text-slate-400" />
+                                <span className="truncate">{agent.name}</span>
+                                {agent.is_board_lead && (
+                                  <span className="ml-auto flex-shrink-0 text-[9px] font-bold uppercase text-slate-400">
+                                    Lead
                                   </span>
                                 )}
                               </button>

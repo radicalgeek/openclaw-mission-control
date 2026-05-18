@@ -200,8 +200,8 @@ async def test_lead_always_notified_regular_channel() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_lead_notified_for_user_discussion_message() -> None:
-    """Non-lead subscribed agents see user discussion messages when notify_on=all."""
+async def test_non_lead_not_notified_for_generic_user_discussion_message() -> None:
+    """Generic user discussion messages go to the lead, not every subscribed agent."""
     engine, session_maker = await _make_session_maker()
     async with session_maker() as session:
         org, gw = await _seed_org_gateway(session)
@@ -226,7 +226,96 @@ async def test_non_lead_notified_for_user_discussion_message() -> None:
         agent_ids = {n.agent_id for n in result}
 
         assert lead.id in agent_ids, "Lead must be notified"
-        assert worker.id in agent_ids, "Subscribed non-lead must see user discussion messages"
+        assert worker.id not in agent_ids, "Subscribed non-lead needs a mention or reply context"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_non_lead_notified_when_user_replies_after_their_message() -> None:
+    """A user reply after a non-lead agent message wakes that specific agent."""
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        org, gw = await _seed_org_gateway(session)
+        board = await _seed_board(session, org, gw)
+        lead = await _seed_agent(session, board, is_lead=True)
+        worker = await _seed_agent(session, board, is_lead=False)
+        other_worker = await _seed_agent(session, board, is_lead=False)
+
+        channel = _discussion_channel(board)
+        session.add(channel)
+        session.add(_subscribe(channel, lead))
+        session.add(_subscribe(channel, worker, notify_on="all"))
+        session.add(_subscribe(channel, other_worker, notify_on="all"))
+        await session.commit()
+
+        thread = _thread(channel)
+        session.add(thread)
+        await session.commit()
+
+        agent_reply = _message(
+            thread,
+            content="I can answer that.",
+            sender_type="agent",
+            sender_id=worker.id,
+            sender_name=worker.name,
+        )
+        session.add(agent_reply)
+        await session.commit()
+
+        msg = _message(thread, content="Thanks, can you expand on that?")
+
+        result = await get_agents_to_notify(session, thread, msg, channel)
+        agent_ids = {n.agent_id for n in result}
+
+        assert lead.id in agent_ids, "Lead still tracks the conversation"
+        assert worker.id in agent_ids, "The agent being replied to should be notified"
+        assert other_worker.id not in agent_ids, "Other subscribed agents should stay quiet"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_non_lead_not_notified_when_latest_message_was_not_their_agent_reply() -> None:
+    """Only the latest prior agent message counts as reply context."""
+    engine, session_maker = await _make_session_maker()
+    async with session_maker() as session:
+        org, gw = await _seed_org_gateway(session)
+        board = await _seed_board(session, org, gw)
+        lead = await _seed_agent(session, board, is_lead=True)
+        worker = await _seed_agent(session, board, is_lead=False)
+
+        channel = _discussion_channel(board)
+        session.add(channel)
+        session.add(_subscribe(channel, lead))
+        session.add(_subscribe(channel, worker, notify_on="all"))
+        await session.commit()
+
+        thread = _thread(channel)
+        session.add(thread)
+        await session.commit()
+
+        session.add(
+            _message(
+                thread,
+                content="I can answer that.",
+                sender_type="agent",
+                sender_id=worker.id,
+                sender_name=worker.name,
+            )
+        )
+        await session.commit()
+
+        session.add(_message(thread, content="Actually, a separate thought."))
+        await session.commit()
+
+        msg = _message(thread, content="And another generic question.")
+
+        result = await get_agents_to_notify(session, thread, msg, channel)
+        agent_ids = {n.agent_id for n in result}
+
+        assert lead.id in agent_ids
+        assert worker.id not in agent_ids
 
     await engine.dispose()
 

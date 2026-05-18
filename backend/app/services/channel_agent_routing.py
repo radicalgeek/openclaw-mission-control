@@ -10,7 +10,7 @@ import dataclasses
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlmodel import col, select
+from sqlmodel import col, desc, select
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -51,10 +51,9 @@ async def get_agents_to_notify(
     Routing rules:
     - The message sender (if an agent) is never dispatched back to themselves.
     - For direct channels: only the target agent is notified.
-    - For regular discussion channels: the board lead always responds. For user
-      messages, subscribed same-board agents with notify_on="all" are also
-      woken so project channels behave like real agent rooms. For agent
-      messages, non-lead agents are only woken when @mentioned to avoid loops.
+    - For regular discussion channels: the board lead always responds.
+      Non-lead agents are only woken when @mentioned or when a user replies
+      after that agent's latest visible message in the thread.
     - For the platform Support channel: the platform lead always responds;
       cross-board leads only receive dispatches for threads their board started
       (identified by thread.owner_board_id) or when @mentioned.
@@ -146,6 +145,30 @@ async def get_agents_to_notify(
     is_user_discussion_message = (
         message.sender_type == "user" and channel.channel_type == "discussion"
     )
+    replied_to_agent_id: UUID | None = None
+    if is_user_discussion_message:
+        from app.models.thread_message import ThreadMessage as TM
+
+        previous_message = (
+            await session.exec(
+                select(TM)
+                .where(
+                    col(TM.thread_id) == thread.id,
+                    col(TM.id) != message.id,
+                )
+                .order_by(desc(col(TM.created_at)))
+                .limit(1)
+            )
+        ).first()
+        if (
+            previous_message is not None
+            and previous_message.sender_type == "agent"
+            and previous_message.sender_id is not None
+        ):
+            try:
+                replied_to_agent_id = UUID(str(previous_message.sender_id))
+            except (ValueError, AttributeError):
+                replied_to_agent_id = None
 
     for agent_id, sub in sub_by_agent.items():
         agent = (await session.exec(select(Agent).where(col(Agent.id) == agent_id))).first()
@@ -199,13 +222,11 @@ async def get_agents_to_notify(
             should_notify = True
         elif (
             is_user_discussion_message
-            and not is_support_channel
-            and not is_cross_board_agent
-            and sub.notify_on == "all"
+            and replied_to_agent_id is not None
+            and agent.id == replied_to_agent_id
         ):
-            # Normal project channels are agent rooms. The lifecycle layer subscribes
-            # board agents with notify_on="all"; honor that for user messages while
-            # keeping agent-to-agent replies mention-gated to prevent loops.
+            # A user reply after an agent message should wake that specific
+            # agent so the conversation can continue without requiring an @mention.
             should_notify = True
         elif is_mentioned:
             # Non-lead agents only respond when explicitly @mentioned
@@ -296,8 +317,8 @@ async def dispatch_channel_message_to_agents(
             preamble = f'You were mentioned in #{channel.name} > "{thread.topic}".\n\n'
         elif not notification.is_lead:
             preamble = (
-                f'You are subscribed to #{channel.name} > "{thread.topic}". '
-                "Reply only if you can materially help with this message; "
+                f'The user replied after your message in #{channel.name} > "{thread.topic}". '
+                "Continue the conversation only if you can materially help; "
                 "otherwise do not post a filler reply.\n\n"
             )
 
