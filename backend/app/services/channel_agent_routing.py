@@ -301,12 +301,12 @@ async def dispatch_channel_message_to_agents(
             f"{reply_instructions}"
         )
 
-        error = await dispatch.try_send_agent_message(
+        error = await dispatch.try_wake_agent_session(
             session_key=notification.session_key,
             config=config,  # type: ignore[arg-type]
             agent_name=notification.agent_name,
             message=gateway_message,
-            deliver=True,  # trigger the LLM so the agent actually generates a reply
+            reset_stuck_session=True,
         )
         if error is not None:
             logger.warning(

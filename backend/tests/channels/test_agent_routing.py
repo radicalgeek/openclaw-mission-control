@@ -34,7 +34,11 @@ from app.models.gateways import Gateway  # noqa: E402
 from app.models.organizations import Organization  # noqa: E402
 from app.models.thread import Thread  # noqa: E402
 from app.models.thread_message import ThreadMessage  # noqa: E402
-from app.services.channel_agent_routing import get_agents_to_notify  # noqa: E402
+from app.services.channel_agent_routing import (  # noqa: E402
+    dispatch_channel_message_to_agents,
+    get_agents_to_notify,
+)
+from app.services.openclaw.gateway_dispatch import GatewayDispatchService  # noqa: E402
 
 
 async def _make_session_maker() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
@@ -633,5 +637,51 @@ async def test_mention_by_first_name_matches_multi_word_agent() -> None:
         assert (
             worker.id in agent_ids
         ), "Agent with multi-word name must be notified when @mentioned by first name"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_channel_dispatch_wakes_lead_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regular channel messages must start an agent turn, not only append a session message."""
+
+    engine, session_maker = await _make_session_maker()
+    wake_calls: list[dict[str, object]] = []
+
+    async def fake_config(self: object, board: Board) -> object:
+        return object()
+
+    async def fake_wake(self: object, **kwargs: object) -> None:
+        wake_calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr(
+        GatewayDispatchService,
+        "optional_gateway_config_for_board",
+        fake_config,
+    )
+    monkeypatch.setattr(GatewayDispatchService, "try_wake_agent_session", fake_wake)
+
+    async with session_maker() as session:
+        org, gw = await _seed_org_gateway(session)
+        board = await _seed_board(session, org, gw)
+        lead = await _seed_agent(session, board, is_lead=True, session_key="lead-session")
+
+        channel = _discussion_channel(board)
+        thread = _thread(channel)
+        msg = _message(thread, content="Can you help with the code?")
+        session.add(channel)
+        session.add(_subscribe(channel, lead))
+        session.add(thread)
+        session.add(msg)
+        await session.commit()
+
+        await dispatch_channel_message_to_agents(session, thread, msg, channel)
+
+    assert len(wake_calls) == 1
+    assert wake_calls[0]["session_key"] == "lead-session"
+    assert wake_calls[0]["agent_name"] == lead.name
+    assert wake_calls[0]["reset_stuck_session"] is True
+    assert "CHANNEL MESSAGE" in str(wake_calls[0]["message"])
 
     await engine.dispose()
